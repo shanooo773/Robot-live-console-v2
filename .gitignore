@@ -64,3 +64,10 @@ Thumbs.db
 
 # Local development
 .cache/fresh_env/
+# Temporary test files
+test_video_endpoint.py
+test_simple_video.py
+test_video_frontend.html
+turtlebot_test.mp4
+*.tmp
+/tmp/*

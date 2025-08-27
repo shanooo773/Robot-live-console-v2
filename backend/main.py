@@ -428,7 +428,7 @@ async def get_video(robot_type: str, current_user: dict = Depends(get_current_us
     if robot_type not in video_files:
         raise HTTPException(status_code=404, detail=f"Video not found for robot type: {robot_type}")
     
-    video_path = Path("../videos") / video_files[robot_type]
+    video_path = Path("videos") / video_files[robot_type]
     
     if not video_path.exists():
         raise HTTPException(
