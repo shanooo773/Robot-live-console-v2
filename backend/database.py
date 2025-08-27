@@ -161,7 +161,9 @@ class DatabaseManager:
                 VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
             """, ("Admin User", "admin@robot-console.com", password_hash, "admin"))
             if self.db_type == 'sqlite':
-                conn.commit()
+                if self.db_type == "sqlite":
+
+                    conn.commit()
             print(f"Created default admin user: admin@robot-console.com / {admin_password}")
     
     def _hash_password(self, password: str) -> str:
@@ -240,12 +242,13 @@ class DatabaseManager:
     
     def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
         """Get user by ID"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
+        placeholder = self._get_placeholder()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT id, name, email, role, created_at
-            FROM users WHERE id = ?
+            FROM users WHERE id = {placeholder}
         """, (user_id,))
         
         user = cursor.fetchone()
@@ -263,17 +266,19 @@ class DatabaseManager:
     
     def create_booking(self, user_id: int, robot_type: str, date: str, start_time: str, end_time: str) -> Dict[str, Any]:
         """Create a new booking"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
+        placeholder = self._get_placeholder()
         
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 INSERT INTO bookings (user_id, robot_type, date, start_time, end_time)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
             """, (user_id, robot_type, date, start_time, end_time))
             
             booking_id = cursor.lastrowid
-            conn.commit()
+            if self.db_type == "sqlite":
+                conn.commit()
             
             return {
                 "id": booking_id,
@@ -290,7 +295,7 @@ class DatabaseManager:
     
     def get_user_bookings(self, user_id: int) -> List[Dict[str, Any]]:
         """Get all bookings for a user"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -317,7 +322,7 @@ class DatabaseManager:
     
     def get_all_bookings(self) -> List[Dict[str, Any]]:
         """Get all bookings (admin only)"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -349,7 +354,7 @@ class DatabaseManager:
     
     def get_all_users(self) -> List[Dict[str, Any]]:
         """Get all users (admin only)"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -373,7 +378,7 @@ class DatabaseManager:
     
     def update_booking_status(self, booking_id: int, status: str) -> bool:
         """Update booking status"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -381,27 +386,31 @@ class DatabaseManager:
         """, (status, booking_id))
         
         updated = cursor.rowcount > 0
-        conn.commit()
+        if self.db_type == "sqlite":
+
+            conn.commit()
         conn.close()
         
         return updated
     
     def delete_booking(self, booking_id: int) -> bool:
         """Delete a booking"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("DELETE FROM bookings WHERE id = ?", (booking_id,))
         
         deleted = cursor.rowcount > 0
-        conn.commit()
+        if self.db_type == "sqlite":
+
+            conn.commit()
         conn.close()
         
         return deleted
     
     def get_bookings_for_date_range(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
         """Get bookings within a date range"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -433,7 +442,7 @@ class DatabaseManager:
     # Message management methods
     def create_message(self, name: str, email: str, message: str) -> Dict[str, Any]:
         """Create a new contact message"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
@@ -443,7 +452,9 @@ class DatabaseManager:
             """, (name, email, message))
             
             message_id = cursor.lastrowid
-            conn.commit()
+            if self.db_type == "sqlite":
+
+                conn.commit()
             
             return {
                 "id": message_id,
@@ -458,7 +469,7 @@ class DatabaseManager:
     
     def get_all_messages(self) -> List[Dict[str, Any]]:
         """Get all contact messages (admin only)"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -483,7 +494,7 @@ class DatabaseManager:
     
     def update_message_status(self, message_id: int, status: str) -> bool:
         """Update message status"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -491,20 +502,24 @@ class DatabaseManager:
         """, (status, message_id))
         
         updated = cursor.rowcount > 0
-        conn.commit()
+        if self.db_type == "sqlite":
+
+            conn.commit()
         conn.close()
         
         return updated
     
     def delete_message(self, message_id: int) -> bool:
         """Delete a message"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("DELETE FROM messages WHERE id = ?", (message_id,))
         
         deleted = cursor.rowcount > 0
-        conn.commit()
+        if self.db_type == "sqlite":
+
+            conn.commit()
         conn.close()
         
         return deleted
@@ -512,7 +527,7 @@ class DatabaseManager:
     # Announcement management methods
     def create_announcement(self, title: str, content: str, priority: str, created_by: int) -> Dict[str, Any]:
         """Create a new announcement"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
@@ -522,7 +537,9 @@ class DatabaseManager:
             """, (title, content, priority, created_by))
             
             announcement_id = cursor.lastrowid
-            conn.commit()
+            if self.db_type == "sqlite":
+
+                conn.commit()
             
             return {
                 "id": announcement_id,
@@ -539,7 +556,7 @@ class DatabaseManager:
     
     def get_all_announcements(self) -> List[Dict[str, Any]]:
         """Get all announcements"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -570,7 +587,7 @@ class DatabaseManager:
     
     def get_active_announcements(self) -> List[Dict[str, Any]]:
         """Get active announcements for users"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -602,7 +619,7 @@ class DatabaseManager:
     
     def update_announcement(self, announcement_id: int, title: str, content: str, priority: str, is_active: bool) -> bool:
         """Update an announcement"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
@@ -612,20 +629,24 @@ class DatabaseManager:
         """, (title, content, priority, is_active, announcement_id))
         
         updated = cursor.rowcount > 0
-        conn.commit()
+        if self.db_type == "sqlite":
+
+            conn.commit()
         conn.close()
         
         return updated
     
     def delete_announcement(self, announcement_id: int) -> bool:
         """Delete an announcement"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("DELETE FROM announcements WHERE id = ?", (announcement_id,))
         
         deleted = cursor.rowcount > 0
-        conn.commit()
+        if self.db_type == "sqlite":
+
+            conn.commit()
         conn.close()
         
         return deleted
