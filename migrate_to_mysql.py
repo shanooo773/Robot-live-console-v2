@@ -30,12 +30,13 @@ TABLE_SCHEMAS = {
         user_id INT,
         robot_type VARCHAR(50),
         date DATE,
-        start_time DATETIME,
-        end_time DATETIME,
+        start_time TIME,
+        end_time TIME,
         status VARCHAR(50),
         created_at DATETIME
     )
-"""
+""",
+
 
     "sessions": """
         CREATE TABLE IF NOT EXISTS sessions (
