@@ -1,9 +1,29 @@
 import axios from "axios";
 
+// Environment-based API URL configuration
+const getApiUrl = () => {
+  // Check for environment variable first
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  
+  // Production detection
+  if (import.meta.env.PROD) {
+    // In production, try to use the same host with /api prefix
+    return `${window.location.origin}/api`;
+  }
+  
+  // Development fallback
+  return "http://localhost:8000";
+};
+
 // Backend API (authentication, booking, and video serving)
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000",
+  baseURL: getApiUrl(),
 });
+
+// Log the API URL for debugging
+console.log("API Base URL:", getApiUrl());
 
 // Authentication API
 export const registerUser = async (userData) => {

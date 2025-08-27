@@ -10,6 +10,13 @@ from typing import Optional, List
 import logging
 from pathlib import Path
 
+# Import environment support
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 # Import our modules
 from database import DatabaseManager
 from auth import auth_manager, get_current_user, require_admin
@@ -18,6 +25,28 @@ from services.service_manager import AdminServiceManager
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Environment-based configuration
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+
+# CORS configuration based on environment
+def get_cors_origins():
+    if ENVIRONMENT == 'production':
+        production_origins = os.getenv('PRODUCTION_CORS_ORIGINS', '')
+        if production_origins:
+            return production_origins.split(',')
+        else:
+            # Fallback to VPS IP if no production origins specified
+            vps_url = os.getenv('VPS_URL', 'http://172.104.207.139')
+            return [vps_url, f"{vps_url}:3000", f"{vps_url}:5173"]
+    else:
+        # Development origins
+        dev_origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173')
+        return dev_origins.split(',')
+
+CORS_ORIGINS = get_cors_origins()
+logger.info(f"Environment: {ENVIRONMENT}")
+logger.info(f"CORS Origins: {CORS_ORIGINS}")
 
 # Initialize database
 db = DatabaseManager()
@@ -47,7 +76,7 @@ app = FastAPI(title="Robot Admin Backend API", version="1.0.0", lifespan=lifespa
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # Vite dev server
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
