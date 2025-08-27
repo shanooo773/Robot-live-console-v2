@@ -42,10 +42,7 @@ admin-backend/venv/
 simulation-service/venv/
 
 # Video files and temporary data
-backend/videos/*.mp4
-backend/temp/
-*.mp4
-videos/
+
 
 # IDE files
 .vscode/
