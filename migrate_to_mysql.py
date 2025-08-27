@@ -25,15 +25,18 @@ TABLE_SCHEMAS = {
         )
     """,
     "bookings": """
-        CREATE TABLE IF NOT EXISTS bookings (
-            id INT PRIMARY KEY,
-            user_id INT,
-            robot_type VARCHAR(50),
-            start_time DATETIME,
-            end_time DATETIME,
-            status VARCHAR(50)
-        )
-    """,
+    CREATE TABLE IF NOT EXISTS bookings (
+        id INT PRIMARY KEY,
+        user_id INT,
+        robot_type VARCHAR(50),
+        date DATE,
+        start_time DATETIME,
+        end_time DATETIME,
+        status VARCHAR(50),
+        created_at DATETIME
+    )
+"""
+
     "sessions": """
         CREATE TABLE IF NOT EXISTS sessions (
             id INT PRIMARY KEY,
