@@ -98,7 +98,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   const loadBookings = async () => {
     try {
       if (authToken) {
-        // Get user's bookings
+        // Regular authenticated mode
         const bookings = await getUserBookings(authToken);
         setUserBookings(bookings);
         
@@ -112,6 +112,20 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
           endDate.toISOString().split('T')[0]
         );
         setBookedSlots(schedule.bookings || []);
+      } else if (user?.isDemoMode) {
+        // Demo mode - create dummy data
+        const dummyBookings = [
+          {
+            id: 1,
+            robot_type: "turtlebot",
+            date: new Date().toISOString().split('T')[0],
+            start_time: "10:00",
+            end_time: "11:00",
+            status: "completed"
+          }
+        ];
+        setUserBookings(dummyBookings);
+        setBookedSlots([]);
       }
     } catch (error) {
       console.error('Error loading bookings:', error);
@@ -161,25 +175,47 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     setIsLoading(true);
     
     try {
-      const bookingData = {
-        robot_type: slot.robotType,
-        date: slot.date,
-        start_time: slot.startTime,
-        end_time: slot.endTime
-      };
-      
-      const booking = await createBooking(bookingData, authToken);
-      
-      // Update local state
-      await loadBookings();
-      
-      onBooking({
-        ...slot,
-        bookingId: booking.id,
-        available: false,
-        bookedBy: user.name,
-        bookingTime: booking.created_at,
-      });
+      if (authToken) {
+        // Regular authenticated booking
+        const bookingData = {
+          robot_type: slot.robotType,
+          date: slot.date,
+          start_time: slot.startTime,
+          end_time: slot.endTime
+        };
+        
+        const booking = await createBooking(bookingData, authToken);
+        
+        // Update local state
+        await loadBookings();
+        
+        onBooking({
+          ...slot,
+          bookingId: booking.id,
+          available: false,
+          bookedBy: user.name,
+          bookingTime: booking.created_at,
+        });
+      } else if (user?.isDemoMode) {
+        // Demo mode - create dummy booking
+        const demoBooking = {
+          id: Math.random().toString(36).substr(2, 9),
+          robot_type: slot.robotType,
+          date: slot.date,
+          start_time: slot.startTime,
+          end_time: slot.endTime,
+          status: "completed",
+          created_at: new Date().toISOString()
+        };
+        
+        onBooking({
+          ...slot,
+          bookingId: demoBooking.id,
+          available: false,
+          bookedBy: user.name,
+          bookingTime: demoBooking.created_at,
+        });
+      }
       
       toast({
         title: "Development session booked!",
