@@ -14,7 +14,7 @@ const getApiUrl = () => {
   }
   
   // Development fallback
-  return "http://localhost:8000";
+  return "http://172.104.207.139:8000";
 };
 
 // Backend API (authentication, booking, and video serving)

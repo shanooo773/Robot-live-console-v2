@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Default values
 BACKEND_PORT=8000
 FRONTEND_PORT=3000
-PRODUCTION_MODE=false
+PRODUCTION_MODE=True
 
 # Function to print colored output
 print_status() {
@@ -43,7 +43,7 @@ command_exists() {
 deploy_backend() {
     print_status "Deploying FastAPI backend..."
     
-    cd backend
+    cd ../backend
     
     # Create production virtual environment
     if [ ! -d "venv" ]; then
@@ -94,7 +94,7 @@ deploy_backend() {
 # Function to deploy frontend
 deploy_frontend() {
     print_status "Deploying React frontend..."
-    
+    pwd
     cd frontend
     
     # Install dependencies
