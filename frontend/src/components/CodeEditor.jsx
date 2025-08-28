@@ -51,8 +51,9 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
         const isDemoUser = localStorage.getItem('isDemoUser');
         const isDemoAdmin = localStorage.getItem('isDemoAdmin');
         const isDummy = localStorage.getItem('isDummy');
+        const isDemoMode = localStorage.getItem('isDemoMode');
         
-        if (isDemoUser || isDemoAdmin || isDummy || user?.isDemoUser || user?.isDemoAdmin) {
+        if (isDemoUser || isDemoAdmin || isDummy || isDemoMode || user?.isDemoUser || user?.isDemoAdmin || user?.isDemoMode) {
           // Demo users get immediate access
           setHasAccess(true);
           setLoading(false);
@@ -112,17 +113,29 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
   const handleGetRealResult = async () => {
     setVideoLoading(true);
     try {
-      const videoBlob = await getVideo(robot, authToken);
-      const url = URL.createObjectURL(videoBlob);
-      setVideoUrl(url);
-      setShowVideo(true);
-      toast({
-        title: "Video Loaded",
-        description: `${robotNames[robot].name} simulation video is now playing.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
+      if (authToken) {
+        // Regular video loading with authentication
+        const videoBlob = await getVideo(robot, authToken);
+        const url = URL.createObjectURL(videoBlob);
+        setVideoUrl(url);
+        setShowVideo(true);
+        toast({
+          title: "Video Loaded",
+          description: `${robotNames[robot].name} simulation video is now playing.`,
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+      } else if (user?.isDemoMode) {
+        // Demo mode - show success message but no video
+        toast({
+          title: "Demo Mode",
+          description: `In demo mode, ${robotNames[robot].name} simulation would display here. Full video access requires account registration.`,
+          status: "info",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
     } catch (error) {
       console.error("Failed to load video:", error);
       toast({

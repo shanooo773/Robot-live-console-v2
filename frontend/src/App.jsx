@@ -18,21 +18,28 @@ function App() {
     const token = localStorage.getItem('authToken');
     const isDemoUser = localStorage.getItem('isDemoUser');
     const isDemoAdmin = localStorage.getItem('isDemoAdmin');
+    const isDemoMode = localStorage.getItem('isDemoMode');
     
     // Handle demo sessions
-    if (isDemoUser || isDemoAdmin) {
+    if (isDemoUser || isDemoAdmin || isDemoMode) {
       const demoUser = isDemoUser ? {
         username: "demo_user",
         name: "Demo User", 
         email: "demo.user@example.com",
         role: "user",
         isDemoUser: true,
-      } : {
+      } : isDemoAdmin ? {
         username: "demo_admin",
         name: "Demo Admin",
         email: "demo.admin@example.com", 
         role: "admin",
         isDemoAdmin: true,
+      } : {
+        id: "demo",
+        name: "Demo User",
+        email: "demo@example.com",
+        role: "user",
+        isDemoMode: true
       };
       
       setUser(demoUser);
@@ -75,6 +82,7 @@ function App() {
     localStorage.removeItem('isDemoUser');
     localStorage.removeItem('isDemoAdmin');
     localStorage.removeItem('isDummy');
+    localStorage.removeItem('isDemoMode');
     setCurrentPage("landing");
   };
 
