@@ -7,6 +7,7 @@ services:
       dockerfile: Dockerfile.theia
     # This service acts as a template - actual instances will be created dynamically
     # by the backend application for each user session
+    # Uses code-server (VS Code in browser) as the IDE interface
     image: robot-theia-ide:latest
     # Note: This template service is not started automatically
     # Individual user containers are managed by the backend

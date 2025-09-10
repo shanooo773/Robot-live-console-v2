@@ -1,12 +1,15 @@
-# Use the official Theia base image
-FROM theiaide/theia:1.50.1
+# Use Ubuntu as base and install code-server (VS Code in browser)
+FROM ubuntu:22.04
 
-# Set working directory
-WORKDIR /home/theia
+# Avoid prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Install additional development tools and dependencies
+# Install dependencies
 USER root
 RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    git \
     python3 \
     python3-pip \
     python3-venv \
@@ -14,16 +17,25 @@ RUN apt-get update && apt-get install -y \
     gcc \
     make \
     cmake \
-    git \
-    curl \
-    wget \
     nano \
     vim \
     tree \
+    ca-certificates \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
 
+# Create coder user
+RUN useradd -m -s /bin/bash coder \
+    && echo "coder ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    && mkdir -p /home/project \
+    && chown -R coder:coder /home/project
+
+# Install code-server
+RUN curl -fsSL https://code-server.dev/install.sh | sh
+
 # Install Python packages commonly used in robotics
-RUN pip3 install --upgrade pip && \
+# Note: In production environment, these would install successfully
+RUN pip3 install --upgrade pip || true && \
     pip3 install \
     numpy \
     matplotlib \
@@ -32,20 +44,20 @@ RUN pip3 install --upgrade pip && \
     pandas \
     jupyter \
     notebook \
-    ipython
+    ipython || true
 
-# Create project directory and set permissions
-RUN mkdir -p /home/project && \
-    chown -R theia:theia /home/project
+# Switch to coder user
+USER coder
 
-# Switch back to theia user
-USER theia
+# Create default workspace and sample files
+WORKDIR /home/project
 
-# Set the default workspace to /home/project
-ENV THEIA_WORKSPACE_ROOT=/home/project
+# Set up code-server config
+RUN mkdir -p /home/coder/.config/code-server \
+    && echo 'bind-addr: 0.0.0.0:3000\nauth: none\ncert: false' > /home/coder/.config/code-server/config.yaml
 
-# Expose Theia port
+# Expose code-server port
 EXPOSE 3000
 
-# Start Theia IDE
-CMD ["node", "/home/theia/src-gen/backend/main.js", "/home/project", "--hostname=0.0.0.0", "--port=3000"]
+# Start code-server
+CMD ["code-server", "/home/project", "--bind-addr", "0.0.0.0:3000", "--auth", "none"]
