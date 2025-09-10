@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  theia-base:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: robot-console-theia:latest
+    # This is a base service, not meant to run directly
+    profiles:
+      - base
+
+networks:
+  default:
+    name: robot-console-network
+    external: false
+
+# Volume for shared project data
+volumes:
+  theia_data:
+    driver: local

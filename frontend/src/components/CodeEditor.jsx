@@ -17,10 +17,9 @@ import {
   Alert,
   AlertIcon
 } from "@chakra-ui/react";
-import { Editor } from "@monaco-editor/react";
+import TheiaIDE from "./TheiaIDE";
+import RTSPVideoPlayer from "./RTSPVideoPlayer";
 import RobotSelector from "./RobotSelector";
-import LanguageSelector from "./LanguageSelector";
-import { ROBOT_CODE_SNIPPETS } from "../constants";
 import { checkAccess, getVideo } from "../api";
 
 const robotNames = {
@@ -29,13 +28,8 @@ const robotNames = {
   hand: { name: "Robot Hand", emoji: "🤲" },
 };
 
-const VPS_URL = import.meta.env.VITE_VPS_URL || "http://172.104.207.139";
-
 const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
-  const editorRef = useRef();
   const [robot, setRobot] = useState(slot?.robotType || "turtlebot");
-  const [language, setLanguage] = useState("python");
-  const [value, setValue] = useState(ROBOT_CODE_SNIPPETS["python"][slot?.robotType || "turtlebot"]);
   const [hasAccess, setHasAccess] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const [videoUrl, setVideoUrl] = useState(null);
@@ -93,21 +87,10 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
     checkUserAccess();
   }, [authToken, user, toast]);
 
-  const onMount = (editor) => {
-    editorRef.current = editor;
-    editor.focus();
-  };
-
   const onSelect = (robotType) => {
     setRobot(robotType);
-    setValue(ROBOT_CODE_SNIPPETS[language][robotType]);
     setShowVideo(false); // Reset video when robot changes
     setVideoUrl(null);
-  };
-
-  const onLanguageSelect = (languageType) => {
-    setLanguage(languageType);
-    setValue(ROBOT_CODE_SNIPPETS[languageType][robot]);
   };
 
   const handleGetRealResult = async () => {
@@ -236,13 +219,21 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
           </CardHeader>
         </Card>
 
-        {/* Main Editor and VPS Panel */}
+        {/* Main IDE and Video Panel */}
         <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
           <CardHeader>
             <HStack justify="space-between" align="center">
-              <Text fontSize="xl" fontWeight="bold" color="white">
-                Development Console - Robot Control Interface
-              </Text>
+              <VStack align="start" spacing={1}>
+                <Text fontSize="xl" fontWeight="bold" color="white">
+                  Development Console - Robot Control Interface
+                </Text>
+                <HStack spacing={4}>
+                  <RobotSelector robot={robot} onSelect={onSelect} />
+                  <Badge colorScheme="blue" fontSize="xs">
+                    Eclipse Theia IDE + Robot Video Feed
+                  </Badge>
+                </HStack>
+              </VStack>
               <Button 
                 colorScheme="green" 
                 onClick={handleGetRealResult}
@@ -256,41 +247,28 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
           </CardHeader>
           <CardBody>
             <HStack spacing={6} align="start">
-              {/* Left Panel - Monaco Editor */}
+              {/* Left Panel - Eclipse Theia IDE */}
               <Box w="50%">
-                <VStack spacing={4} align="start">
-                  <HStack spacing={4}>
-                    <RobotSelector robot={robot} onSelect={onSelect} />
-                    <LanguageSelector language={language} onSelect={onLanguageSelect} />
-                  </HStack>
-                  <Box w="full">
-                    <Editor
-                      options={{
-                        minimap: {
-                          enabled: false,
-                        },
-                        fontSize: 14,
-                        lineNumbers: "on",
-                        automaticLayout: true,
-                        scrollBeyondLastLine: false,
-                      }}
-                      height="75vh"
-                      theme="vs-dark"
-                      language={language === "cpp" ? "cpp" : "python"}
-                      defaultValue={ROBOT_CODE_SNIPPETS[language][robot]}
-                      onMount={onMount}
-                      value={value}
-                      onChange={(value) => setValue(value)}
-                    />
-                  </Box>
-                </VStack>
+                <TheiaIDE 
+                  user={user} 
+                  authToken={authToken}
+                  onError={(error) => {
+                    toast({
+                      title: "IDE Error",
+                      description: error.message,
+                      status: "error",
+                      duration: 5000,
+                      isClosable: true,
+                    });
+                  }}
+                />
               </Box>
               
-              {/* Right Panel - VPS iframe or Video */}
+              {/* Right Panel - Robot Video Feed */}
               <Box w="50%">
                 <VStack spacing={4} align="start" h="100%">
                   <Text fontSize="lg" color="white" fontWeight="bold">
-                    {showVideo ? `${robotNames[robot].name} Simulation Result` : "Live VPS Control"}
+                    {showVideo ? `${robotNames[robot].name} Simulation Result` : "Robot Video Feed"}
                   </Text>
                   <Box w="full" h="75vh" border="1px solid" borderColor="gray.600" borderRadius="md" overflow="hidden">
                     {showVideo && videoUrl ? (
@@ -305,16 +283,13 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
                         Your browser does not support the video tag.
                       </video>
                     ) : (
-                      <iframe
-                        src={VPS_URL}
-                        width="100%"
-                        height="100%"
-                        style={{ border: "none", background: "#000" }}
-                        title="VPS Control Interface"
-                        onError={() => {
+                      <RTSPVideoPlayer 
+                        user={user}
+                        authToken={authToken}
+                        onError={(error) => {
                           toast({
-                            title: "VPS Connection Error",
-                            description: "Unable to connect to VPS. Please check your connection.",
+                            title: "Video Stream Error",
+                            description: error.message,
                             status: "error",
                             duration: 5000,
                             isClosable: true,
@@ -335,7 +310,7 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
                         }
                       }}
                     >
-                      Back to VPS View
+                      Back to Live Video Feed
                     </Button>
                   )}
                 </VStack>

@@ -1,6 +1,6 @@
 # 🤖 Robot Live Console App
 
-A modern web application for robot control and simulation with secure user authentication, booking system, and real-time VPS interaction.
+A modern web application for robot control and simulation with secure user authentication, booking system, and **Eclipse Theia IDE** for development.
 
 ## 🏗️ Architecture
 
@@ -8,8 +8,10 @@ The application is organized in a clean, maintainable structure:
 
 ```
 app/
-├── frontend/           # React + Monaco Editor interface
-├── backend/            # Python FastAPI (authentication, booking, video serving)
+├── frontend/           # React + Eclipse Theia IDE interface
+├── backend/            # Python FastAPI (authentication, booking, container management)
+├── theia/              # Eclipse Theia Docker configuration
+├── projects/           # Per-user project directories  
 ├── videos/             # Pre-saved simulation videos
 ├── scripts/            # Setup and deployment scripts
 ├── other-docs/         # Documentation files
@@ -23,47 +25,68 @@ app/
 - **Home Page**: Landing page for first-time visitors
 - **Authentication**: Secure sign-in/sign-up system
 - **Booking System**: Time slot booking for robot access
-- **Access Control**: Monaco Editor and VPS iframe only accessible after completed booking
+- **Access Control**: Theia IDE and video feed only accessible after completed booking
 
 ### 💻 Development Interface  
 - **Two-Panel Layout**:
-  - **Left Panel**: Monaco Editor for code input (Python/C++)
-  - **Right Panel**: Live VPS iframe (`http://172.104.207.139`)
-- **"Get Real Result" Button**: Replaces iframe with pre-saved simulation videos
+  - **Left Panel**: Eclipse Theia IDE (containerized per user)
+  - **Right Panel**: Robot video feed (RTSP/WebRTC support)
+- **"Get Real Result" Button**: Shows pre-saved simulation videos
 - **Robot Selection**: Support for TurtleBot3, Robot Arm, and Robot Hand
 
 ### 🎥 Video System
-- Pre-saved simulation videos for each robot type
-- Secure video serving with access control
-- Automatic video playback when requested
-- Support for MP4 format videos
+- **RTSP/WebRTC Video Player**: Ready for robot camera integration
+- **Test Streams**: Development mode with sample videos
+- **Future Robot Integration**: Marked locations for Raspberry Pi camera
+- **Secure video serving** with access control
+
+### 🐳 Eclipse Theia IDE
+- **Per-User Containers**: Each user gets isolated development environment
+- **Pre-installed Extensions**: Python, C++, Git, Terminal, File Explorer
+- **Project Persistence**: Files saved in `/projects/<user_id>/`
+- **Container Management**: Start/stop/restart via API
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.8+
 - Node.js 16+
+- Docker & Docker Compose
 - npm
 
-### 1. Setup and Run (Development)
+### 1. Setup and Build
 
 ```bash
-cd app/scripts
-./setup.sh
+./build.sh
 ```
 
 This will:
+- Build Eclipse Theia Docker image
 - Install all dependencies
-- Start the backend server (port 8000)
-- Start the frontend server (port 3000)
+- Build the frontend
 
-### 2. Access the Application
+### 2. Start Services
+
+**Backend:**
+```bash
+cd backend
+source venv/bin/activate
+python main.py
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
+### 3. Access the Application
 
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 
-### 3. Default Admin Account
+### 4. Default Admin Account
 
 - **Email**: admin@example.com  
 - **Password**: admin123
@@ -86,9 +109,20 @@ Key configurations:
 
 ### VPS Configuration
 
-The application connects to a VPS interface at:
-- Default: `http://172.104.207.139`
-- Configurable via `VPS_URL` environment variable
+⚠️ **REPLACED**: The VPS iframe has been replaced with a modern video streaming system.
+
+The application now features:
+- **RTSP/WebRTC Video Player**: Ready for robot camera integration
+- **Test Stream Mode**: Development with sample videos
+- **Future Robot Integration**: Raspberry Pi camera support planned
+
+### Container Configuration
+
+Eclipse Theia containers are managed automatically:
+- **Base Port**: 3001+ (auto-assigned per user)
+- **Project Mounting**: `/projects/<user_id>/ → /home/project`
+- **Security**: Isolated containers per user
+- **Persistence**: Project files survive container restarts
 
 ## 📝 User Guide
 
@@ -97,9 +131,10 @@ The application connects to a VPS interface at:
 1. **Visit Homepage**: Navigate to the application
 2. **Sign Up/Sign In**: Create account or log in
 3. **Book Time Slot**: Select robot type and time slot
-4. **Access Console**: After booking completion, access Monaco Editor
-5. **Code & Control**: Write code and interact with VPS
-6. **Get Results**: Click "Get Real Result" to view simulation videos
+4. **Access Console**: After booking completion, access Eclipse Theia IDE
+5. **Develop & Control**: Write code in full IDE environment
+6. **View Video Feed**: Monitor robot through live video stream
+7. **Get Results**: Click "Get Real Result" to view simulation videos
 
 ### For Administrators
 
@@ -107,6 +142,7 @@ The application connects to a VPS interface at:
 2. **Dashboard Access**: View user and booking statistics
 3. **Booking Management**: Approve/modify bookings
 4. **User Management**: View and manage users
+5. **Container Management**: Monitor Theia containers
 
 ## 🔧 Development
 
@@ -161,21 +197,36 @@ This creates:
 ## 🏗️ Project Structure Details
 
 ### Backend (`app/backend/`)
-- **FastAPI application** with authentication and booking
+- **FastAPI application** with authentication, booking, and container management
 - **JWT-based authentication** for secure access
 - **SQLite database** for user and booking data
 - **Video serving** with access control
+- **Theia container management** with Docker integration
+- **WebSocket support** for future robot communication
 - **CORS configuration** for frontend integration
 
 ### Frontend (`app/frontend/`)
 - **React application** with modern UI components
-- **Monaco Editor** for code editing
+- **Eclipse Theia IDE** embedded via iframe
+- **RTSP/WebRTC Video Player** for robot camera feeds
 - **Chakra UI** for consistent design
 - **Axios** for API communication
 - **Responsive design** for various screen sizes
 
+### Theia (`app/theia/`)
+- **Docker configuration** for Eclipse Theia IDE
+- **Per-user containers** with isolated environments
+- **Pre-installed extensions**: Python, C++, Git, Terminal
+- **Project persistence** with volume mounting
+
+### Projects (`app/projects/`)
+- **Per-user directories** for code and files
+- **Automatic initialization** with welcome examples
+- **Persistent storage** across container restarts
+
 ### Scripts (`app/scripts/`)
-- **setup.sh**: Development environment setup
+- **build.sh**: Complete build automation
+- **setup.sh**: Development environment setup (legacy)
 - **deploy.sh**: Production deployment automation
 - **Cross-platform support** for Windows/Linux/macOS
 
