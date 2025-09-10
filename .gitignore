@@ -65,3 +65,8 @@ test_video_frontend.html
 turtlebot_test.mp4
 *.tmp
 /tmp/*
+
+# Theia Docker setup
+data/users/*/
+!data/users/.gitkeep
+docker-compose.override.yml

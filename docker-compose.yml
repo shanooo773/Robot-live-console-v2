@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  theia-template:
+    build:
+      context: .
+      dockerfile: Dockerfile.theia
+    # This service acts as a template - actual instances will be created dynamically
+    # by the backend application for each user session
+    image: robot-theia-ide:latest
+    # Note: This template service is not started automatically
+    # Individual user containers are managed by the backend
+    profiles:
+      - "template"
+    
+networks:
+  robot-network:
+    driver: bridge
+    
+volumes:
+  # User data will be mounted as external volumes
+  # Format: user_data_<userid>
+  user_data:
+    external: true
+    name: "user_data_default"

@@ -204,3 +204,54 @@ export const deleteAnnouncement = async (announcementId, token) => {
   });
   return response.data;
 };
+
+// Theia IDE API
+export const startTheiaIDE = async (token) => {
+  const response = await API.post("/theia/start", {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const getTheiaStatus = async (token) => {
+  const response = await API.get("/theia/status", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const stopTheiaIDE = async (token) => {
+  const response = await API.post("/theia/stop", {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const getTheiaLogs = async (token, lines = 100) => {
+  const response = await API.get(`/theia/logs?lines=${lines}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+// Admin Theia API
+export const listAllTheiaContainers = async (token) => {
+  const response = await API.get("/admin/theia/containers", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const cleanupTheiaContainers = async (token) => {
+  const response = await API.post("/admin/theia/cleanup", {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const removeUserTheiaContainer = async (userId, token) => {
+  const response = await API.delete(`/admin/theia/containers/${userId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};

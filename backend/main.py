@@ -21,6 +21,7 @@ load_dotenv()
 from database import DatabaseManager
 from auth import auth_manager, get_current_user, require_admin
 from services.service_manager import AdminServiceManager
+from theia_manager import TheiaDockerManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +54,9 @@ db = DatabaseManager()
 
 # Initialize service manager
 service_manager = AdminServiceManager(db)
+
+# Initialize Theia Docker manager
+theia_manager = TheiaDockerManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle application lifespan events"""
@@ -394,6 +398,178 @@ def get_available_robots():
         "robots": ["turtlebot", "arm", "hand"],
         "details": booking_service.get_available_robots()
     }
+
+# Theia IDE Endpoints
+@app.post("/theia/start")
+async def start_theia_ide(current_user: dict = Depends(get_current_user)):
+    """Start or get Theia IDE container for current user"""
+    # Check if user has access (same logic as Monaco editor)
+    booking_service = service_manager.get_booking_service()
+    user_id = int(current_user["sub"])
+    
+    # Check for demo user access
+    if current_user.get("isDemoUser") or current_user.get("isDemoAdmin") or current_user.get("isDemoMode"):
+        # For demo users, return a placeholder URL
+        return {
+            "success": True,
+            "demo_mode": True,
+            "message": "Demo mode - Theia IDE would be available here in full version",
+            "theia_url": None,
+            "user_id": user_id
+        }
+    
+    # Get user's bookings for non-demo users
+    bookings = booking_service.get_user_bookings(user_id)
+    
+    # Check if user has at least one completed booking
+    has_completed_booking = any(
+        booking["status"] == "completed" for booking in bookings
+    )
+    
+    if not has_completed_booking:
+        raise HTTPException(
+            status_code=403, 
+            detail="Access denied. You need a completed booking before accessing the Theia IDE."
+        )
+    
+    try:
+        # Start or get existing Theia container
+        container_info = theia_manager.get_or_create_container(str(user_id))
+        
+        return {
+            "success": True,
+            "theia_url": container_info["url"],
+            "container_id": container_info["container_id"],
+            "status": container_info["status"],
+            "port": container_info["port"],
+            "user_id": user_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to start Theia for user {user_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start Theia IDE: {str(e)}"
+        )
+
+@app.get("/theia/status")
+async def get_theia_status(current_user: dict = Depends(get_current_user)):
+    """Get status of user's Theia IDE container"""
+    user_id = int(current_user["sub"])
+    
+    try:
+        containers = theia_manager.list_user_containers()
+        user_container = next(
+            (c for c in containers if c["user_id"] == str(user_id)), 
+            None
+        )
+        
+        if user_container:
+            return {
+                "running": user_container["status"] == "running",
+                "container_info": user_container
+            }
+        else:
+            return {
+                "running": False,
+                "container_info": None
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to get Theia status for user {user_id}: {e}")
+        return {
+            "running": False,
+            "error": str(e)
+        }
+
+@app.post("/theia/stop")
+async def stop_theia_ide(current_user: dict = Depends(get_current_user)):
+    """Stop user's Theia IDE container"""
+    user_id = int(current_user["sub"])
+    
+    try:
+        success = theia_manager.stop_container(str(user_id))
+        
+        return {
+            "success": success,
+            "message": "Theia container stopped" if success else "Container not found or already stopped"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to stop Theia for user {user_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to stop Theia IDE: {str(e)}"
+        )
+
+@app.get("/theia/logs")
+async def get_theia_logs(current_user: dict = Depends(get_current_user), lines: int = 100):
+    """Get logs from user's Theia container"""
+    user_id = int(current_user["sub"])
+    
+    try:
+        logs = theia_manager.get_container_logs(str(user_id), lines)
+        return {
+            "logs": logs,
+            "user_id": user_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get Theia logs for user {user_id}: {e}")
+        return {
+            "logs": f"Error getting logs: {str(e)}",
+            "user_id": user_id
+        }
+
+# Admin Theia Management Endpoints
+@app.get("/admin/theia/containers")
+async def list_all_theia_containers(current_user: dict = Depends(require_admin)):
+    """List all Theia containers (admin only)"""
+    try:
+        containers = theia_manager.list_user_containers()
+        return {
+            "containers": containers,
+            "total": len(containers)
+        }
+    except Exception as e:
+        logger.error(f"Failed to list Theia containers: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list containers: {str(e)}"
+        )
+
+@app.post("/admin/theia/cleanup")
+async def cleanup_theia_containers(current_user: dict = Depends(require_admin)):
+    """Cleanup stopped Theia containers (admin only)"""
+    try:
+        count = theia_manager.cleanup_stopped_containers()
+        return {
+            "success": True,
+            "cleaned_containers": count,
+            "message": f"Cleaned up {count} stopped containers"
+        }
+    except Exception as e:
+        logger.error(f"Failed to cleanup Theia containers: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to cleanup containers: {str(e)}"
+        )
+
+@app.delete("/admin/theia/containers/{user_id}")
+async def remove_user_theia_container(user_id: str, current_user: dict = Depends(require_admin)):
+    """Remove specific user's Theia container (admin only)"""
+    try:
+        success = theia_manager.remove_container(user_id)
+        return {
+            "success": success,
+            "message": f"Container for user {user_id} removed" if success else "Container not found"
+        }
+    except Exception as e:
+        logger.error(f"Failed to remove Theia container for user {user_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to remove container: {str(e)}"
+        )
 
 # Video serving and access control
 @app.get("/videos/{robot_type}")

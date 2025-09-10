@@ -10,3 +10,5 @@ gunicorn==21.2.0
 # Database
 PyMySQL==1.1.0
 aiomysql==0.2.0
+# Docker management
+docker==7.1.0

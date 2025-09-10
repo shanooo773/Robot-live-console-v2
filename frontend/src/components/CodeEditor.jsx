@@ -17,11 +17,7 @@ import {
   Alert,
   AlertIcon
 } from "@chakra-ui/react";
-import { Editor } from "@monaco-editor/react";
-import RobotSelector from "./RobotSelector";
-import LanguageSelector from "./LanguageSelector";
-import { ROBOT_CODE_SNIPPETS } from "../constants";
-import { checkAccess, getVideo } from "../api";
+import { checkAccess, startTheiaIDE, getTheiaStatus } from "../api";
 
 const robotNames = {
   turtlebot: { name: "TurtleBot3", emoji: "🤖" },
@@ -32,20 +28,16 @@ const robotNames = {
 const VPS_URL = import.meta.env.VITE_VPS_URL || "http://172.104.207.139";
 
 const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
-  const editorRef = useRef();
   const [robot, setRobot] = useState(slot?.robotType || "turtlebot");
-  const [language, setLanguage] = useState("python");
-  const [value, setValue] = useState(ROBOT_CODE_SNIPPETS["python"][slot?.robotType || "turtlebot"]);
   const [hasAccess, setHasAccess] = useState(false);
-  const [showVideo, setShowVideo] = useState(false);
-  const [videoUrl, setVideoUrl] = useState(null);
+  const [theiaUrl, setTheiaUrl] = useState(null);
+  const [theiaLoading, setTheiaLoading] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [videoLoading, setVideoLoading] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
-    // Check if user has access to Monaco Editor
-    const checkUserAccess = async () => {
+    // Check if user has access and start Theia IDE
+    const checkUserAccessAndStartTheia = async () => {
       try {
         // Check for demo user access
         const isDemoUser = localStorage.getItem('isDemoUser');
@@ -57,6 +49,13 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
           // Demo users get immediate access
           setHasAccess(true);
           setLoading(false);
+          toast({
+            title: "Demo Mode",
+            description: "In demo mode, Theia IDE would be available here. Full access requires account registration.",
+            status: "info",
+            duration: 5000,
+            isClosable: true,
+          });
           return;
         }
         
@@ -64,7 +63,35 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
         if (authToken) {
           const accessData = await checkAccess(authToken);
           setHasAccess(accessData.has_access);
-          if (!accessData.has_access) {
+          
+          if (accessData.has_access) {
+            // Start Theia IDE
+            setTheiaLoading(true);
+            try {
+              const theiaData = await startTheiaIDE(authToken);
+              if (theiaData.success && !theiaData.demo_mode) {
+                setTheiaUrl(theiaData.theia_url);
+                toast({
+                  title: "Theia IDE Ready",
+                  description: "Your development environment is starting up...",
+                  status: "success",
+                  duration: 3000,
+                  isClosable: true,
+                });
+              }
+            } catch (error) {
+              console.error("Failed to start Theia:", error);
+              toast({
+                title: "Theia Startup Failed",
+                description: "Unable to start development environment. Please try again.",
+                status: "error",
+                duration: 5000,
+                isClosable: true,
+              });
+            } finally {
+              setTheiaLoading(false);
+            }
+          } else {
             toast({
               title: "Access Denied",
               description: "You need to complete a booking before accessing the development console.",
@@ -90,63 +117,40 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
       }
     };
 
-    checkUserAccess();
+    checkUserAccessAndStartTheia();
   }, [authToken, user, toast]);
-
-  const onMount = (editor) => {
-    editorRef.current = editor;
-    editor.focus();
-  };
 
   const onSelect = (robotType) => {
     setRobot(robotType);
-    setValue(ROBOT_CODE_SNIPPETS[language][robotType]);
-    setShowVideo(false); // Reset video when robot changes
-    setVideoUrl(null);
   };
 
-  const onLanguageSelect = (languageType) => {
-    setLanguage(languageType);
-    setValue(ROBOT_CODE_SNIPPETS[languageType][robot]);
-  };
-
-  const handleGetRealResult = async () => {
-    setVideoLoading(true);
+  const handleRefreshTheia = async () => {
+    if (!authToken) return;
+    
+    setTheiaLoading(true);
     try {
-      if (authToken) {
-        // Regular video loading with authentication
-        const videoBlob = await getVideo(robot, authToken);
-        const url = URL.createObjectURL(videoBlob);
-        setVideoUrl(url);
-        setShowVideo(true);
+      const theiaData = await startTheiaIDE(authToken);
+      if (theiaData.success && !theiaData.demo_mode) {
+        setTheiaUrl(theiaData.theia_url);
         toast({
-          title: "Video Loaded",
-          description: `${robotNames[robot].name} simulation video is now playing.`,
+          title: "Theia IDE Refreshed",
+          description: "Development environment reloaded successfully.",
           status: "success",
           duration: 3000,
           isClosable: true,
         });
-      } else if (user?.isDemoMode) {
-        // Demo mode - show success message but no video
-        toast({
-          title: "Demo Mode",
-          description: `In demo mode, ${robotNames[robot].name} simulation would display here. Full video access requires account registration.`,
-          status: "info",
-          duration: 5000,
-          isClosable: true,
-        });
       }
     } catch (error) {
-      console.error("Failed to load video:", error);
+      console.error("Failed to refresh Theia:", error);
       toast({
-        title: "Video Load Failed",
-        description: error.response?.data?.detail || "Unable to load simulation video. Please try again.",
+        title: "Refresh Failed",
+        description: "Unable to refresh development environment.",
         status: "error",
         duration: 5000,
         isClosable: true,
       });
     } finally {
-      setVideoLoading(false);
+      setTheiaLoading(false);
     }
   };
 
@@ -236,108 +240,114 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
           </CardHeader>
         </Card>
 
-        {/* Main Editor and VPS Panel */}
+        {/* Main Development and Camera Panel */}
         <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
           <CardHeader>
             <HStack justify="space-between" align="center">
               <Text fontSize="xl" fontWeight="bold" color="white">
-                Development Console - Robot Control Interface
+                Development Console - Theia IDE + Robot Camera Feed
               </Text>
               <Button 
-                colorScheme="green" 
-                onClick={handleGetRealResult}
-                isLoading={videoLoading}
-                loadingText="Loading Video..."
-                disabled={videoLoading}
+                colorScheme="blue" 
+                onClick={handleRefreshTheia}
+                isLoading={theiaLoading}
+                loadingText="Loading IDE..."
+                disabled={theiaLoading || !hasAccess}
               >
-                Get Real Result
+                Refresh IDE
               </Button>
             </HStack>
           </CardHeader>
           <CardBody>
             <HStack spacing={6} align="start">
-              {/* Left Panel - Monaco Editor */}
+              {/* Left Panel - Theia IDE */}
               <Box w="50%">
                 <VStack spacing={4} align="start">
                   <HStack spacing={4}>
-                    <RobotSelector robot={robot} onSelect={onSelect} />
-                    <LanguageSelector language={language} onSelect={onLanguageSelect} />
+                    <Text fontSize="lg" color="white" fontWeight="bold">
+                      Eclipse Theia IDE
+                    </Text>
+                    {theiaUrl && (
+                      <Badge colorScheme="green" fontSize="xs">
+                        RUNNING
+                      </Badge>
+                    )}
                   </HStack>
-                  <Box w="full">
-                    <Editor
-                      options={{
-                        minimap: {
-                          enabled: false,
-                        },
-                        fontSize: 14,
-                        lineNumbers: "on",
-                        automaticLayout: true,
-                        scrollBeyondLastLine: false,
-                      }}
-                      height="75vh"
-                      theme="vs-dark"
-                      language={language === "cpp" ? "cpp" : "python"}
-                      defaultValue={ROBOT_CODE_SNIPPETS[language][robot]}
-                      onMount={onMount}
-                      value={value}
-                      onChange={(value) => setValue(value)}
-                    />
-                  </Box>
-                </VStack>
-              </Box>
-              
-              {/* Right Panel - VPS iframe or Video */}
-              <Box w="50%">
-                <VStack spacing={4} align="start" h="100%">
-                  <Text fontSize="lg" color="white" fontWeight="bold">
-                    {showVideo ? `${robotNames[robot].name} Simulation Result` : "Live VPS Control"}
-                  </Text>
                   <Box w="full" h="75vh" border="1px solid" borderColor="gray.600" borderRadius="md" overflow="hidden">
-                    {showVideo && videoUrl ? (
-                      <video 
-                        width="100%" 
-                        height="100%" 
-                        controls 
-                        autoPlay
-                        style={{ background: "#000" }}
-                      >
-                        <source src={videoUrl} type="video/mp4" />
-                        Your browser does not support the video tag.
-                      </video>
-                    ) : (
+                    {theiaLoading ? (
+                      <VStack justify="center" h="100%" bg="gray.900">
+                        <Spinner size="xl" color="blue.500" />
+                        <Text color="white">Starting Theia IDE...</Text>
+                      </VStack>
+                    ) : theiaUrl ? (
                       <iframe
-                        src={VPS_URL}
+                        src={theiaUrl}
                         width="100%"
                         height="100%"
-                        style={{ border: "none", background: "#000" }}
-                        title="VPS Control Interface"
+                        style={{ border: "none", background: "#1e1e1e" }}
+                        title="Theia IDE"
                         onError={() => {
                           toast({
-                            title: "VPS Connection Error",
-                            description: "Unable to connect to VPS. Please check your connection.",
+                            title: "IDE Connection Error",
+                            description: "Unable to connect to Theia IDE. Please refresh.",
                             status: "error",
                             duration: 5000,
                             isClosable: true,
                           });
                         }}
                       />
+                    ) : (
+                      <VStack justify="center" h="100%" bg="gray.900" p={6}>
+                        <Text color="white" fontSize="lg" textAlign="center">
+                          {user?.isDemoMode ? 
+                            "🖥️ Theia IDE Preview (Demo Mode)" : 
+                            "🖥️ Theia IDE Loading..."
+                          }
+                        </Text>
+                        <Text color="gray.400" fontSize="sm" textAlign="center">
+                          {user?.isDemoMode ? 
+                            "Full IDE access available with account registration" :
+                            "Your personal development environment will appear here"
+                          }
+                        </Text>
+                      </VStack>
                     )}
                   </Box>
-                  {showVideo && (
-                    <Button 
-                      size="sm" 
-                      colorScheme="blue" 
-                      onClick={() => {
-                        setShowVideo(false);
-                        if (videoUrl) {
-                          URL.revokeObjectURL(videoUrl);
-                          setVideoUrl(null);
-                        }
-                      }}
-                    >
-                      Back to VPS View
-                    </Button>
-                  )}
+                </VStack>
+              </Box>
+              
+              {/* Right Panel - Robot Camera Feed Placeholder */}
+              <Box w="50%">
+                <VStack spacing={4} align="start" h="100%">
+                  <HStack spacing={4}>
+                    <Text fontSize="lg" color="white" fontWeight="bold">
+                      Live Robot Camera Feed
+                    </Text>
+                    <Badge colorScheme="orange" fontSize="xs">
+                      COMING SOON
+                    </Badge>
+                  </HStack>
+                  <Box w="full" h="75vh" border="1px solid" borderColor="gray.600" borderRadius="md" overflow="hidden">
+                    <VStack justify="center" h="100%" bg="gray.900" p={6} spacing={6}>
+                      <Text fontSize="6xl" color="gray.600">
+                        🎥
+                      </Text>
+                      <VStack spacing={2}>
+                        <Text color="white" fontSize="lg" textAlign="center" fontWeight="bold">
+                          Robot Camera Stream
+                        </Text>
+                        <Text color="gray.400" fontSize="sm" textAlign="center" maxW="300px">
+                          Live camera feed from your selected robot will appear here once the hardware integration is complete.
+                        </Text>
+                        <Text color="gray.500" fontSize="xs" textAlign="center">
+                          Current Selection: {robotNames[robot].emoji} {robotNames[robot].name}
+                        </Text>
+                      </VStack>
+                      <Badge colorScheme="blue" fontSize="xs" px={3} py={1}>
+                        Hardware Integration in Progress
+                      </Badge>
+                    </VStack>
+                  </Box>
                 </VStack>
               </Box>
             </HStack>
