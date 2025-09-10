@@ -15,7 +15,8 @@ NC='\033[0m' # No Color
 # Default values
 BACKEND_PORT=8000
 FRONTEND_PORT=3000
-PRODUCTION_MODE=True
+PRODUCTION_MODE=False
+
 
 # Function to print colored output
 print_status() {
@@ -42,8 +43,8 @@ command_exists() {
 # Function to deploy backend
 deploy_backend() {
     print_status "Deploying FastAPI backend..."
-    
-    cd ../backend
+	pwd    
+    cd backend
     
     # Create production virtual environment
     if [ ! -d "venv" ]; then
@@ -186,7 +187,7 @@ install_production_deps() {
     print_status "Installing production dependencies..."
     
     # Install gunicorn for production backend
-    cd backend
+    cd ../backend
     if [ -f "venv/bin/activate" ]; then
         source venv/bin/activate
         pip install gunicorn

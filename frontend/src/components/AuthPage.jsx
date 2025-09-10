@@ -324,7 +324,7 @@ const AuthPage = ({ onAuth, onBack }) => {
           </Text>
         </Alert>
 
-        {/* Skip Authentication Button */}
+        {/* Skip Authentication Button 
         <Card bg="orange.800" borderColor="orange.600" border="1px solid">
           <CardBody>
             <VStack spacing={3}>
@@ -346,7 +346,7 @@ const AuthPage = ({ onAuth, onBack }) => {
             </VStack>
           </CardBody>
         </Card>
-
+	*/}
         <Button variant="ghost" onClick={onBack} color="gray.400">
           ← Back to Home
         </Button>

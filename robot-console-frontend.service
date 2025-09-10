@@ -1,0 +1,13 @@
+[Unit]
+Description=Robot Console Frontend
+After=network.target
+
+[Service]
+Type=simple
+User=${USER}
+WorkingDirectory=/home/shayan/Robot-live-console-v2/frontend
+ExecStart=/usr/local/bin/serve -s dist -l 3000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
