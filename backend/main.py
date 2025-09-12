@@ -1,7 +1,8 @@
 import os
 import time
+import json
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +22,7 @@ load_dotenv()
 from database import DatabaseManager
 from auth import auth_manager, get_current_user, require_admin
 from services.service_manager import AdminServiceManager
+from services.theia_service import TheiaContainerManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +55,7 @@ db = DatabaseManager()
 
 # Initialize service manager
 service_manager = AdminServiceManager(db)
+theia_manager = TheiaContainerManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle application lifespan events"""
@@ -483,6 +486,122 @@ async def get_available_videos(current_user: dict = Depends(get_current_user)):
         "available_videos": available_robot_types,
         "completed_bookings": completed_bookings
     }
+
+# Eclipse Theia Container Management Endpoints
+
+@app.get("/theia/status")
+async def get_theia_status(current_user: dict = Depends(get_current_user)):
+    """Get status of user's Theia container"""
+    user_id = int(current_user["sub"])
+    status = theia_manager.get_container_status(user_id)
+    return status
+
+@app.post("/theia/start")
+async def start_theia_container(current_user: dict = Depends(get_current_user)):
+    """Start user's Theia container"""
+    # Check if user has access (completed booking)
+    booking_service = service_manager.get_booking_service()
+    user_id = int(current_user["sub"])
+    
+    # Get user's bookings
+    bookings = booking_service.get_user_bookings(user_id)
+    
+    # Check if user has at least one completed booking
+    has_completed_booking = any(
+        booking["status"] == "completed" for booking in bookings
+    )
+    
+    if not has_completed_booking:
+        raise HTTPException(
+            status_code=403, 
+            detail="You need to complete a booking before accessing the development environment"
+        )
+    
+    result = theia_manager.start_container(user_id)
+    
+    if result.get("success"):
+        return {
+            "message": "Theia container started successfully",
+            "status": result.get("status"),
+            "url": result.get("url"),
+            "port": result.get("port")
+        }
+    else:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to start Theia container: {result.get('error', 'Unknown error')}"
+        )
+
+@app.post("/theia/stop")
+async def stop_theia_container(current_user: dict = Depends(get_current_user)):
+    """Stop user's Theia container"""
+    user_id = int(current_user["sub"])
+    result = theia_manager.stop_container(user_id)
+    
+    if result.get("success"):
+        return {"message": "Theia container stopped successfully"}
+    else:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to stop Theia container: {result.get('error', 'Unknown error')}"
+        )
+
+@app.post("/theia/restart")
+async def restart_theia_container(current_user: dict = Depends(get_current_user)):
+    """Restart user's Theia container"""
+    user_id = int(current_user["sub"])
+    result = theia_manager.restart_container(user_id)
+    
+    if result.get("success"):
+        return {
+            "message": "Theia container restarted successfully",
+            "status": result.get("status"),
+            "url": result.get("url"),
+            "port": result.get("port")
+        }
+    else:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to restart Theia container: {result.get('error', 'Unknown error')}"
+        )
+
+@app.get("/theia/containers")
+async def list_theia_containers(current_user: dict = Depends(require_admin)):
+    """List all Theia containers (admin only)"""
+    containers = theia_manager.list_user_containers()
+    return {"containers": containers}
+
+# WebSocket endpoint for future robot communication
+@app.websocket("/ws/robot/{user_id}")
+async def robot_websocket(websocket, user_id: int):
+    """WebSocket endpoint for robot communication (future enhancement)"""
+    await websocket.accept()
+    try:
+        await websocket.send_text(json.dumps({
+            "type": "connection",
+            "message": f"Connected to robot WebSocket for user {user_id}",
+            "user_id": user_id
+        }))
+        
+        # TODO: Implement robot communication protocol
+        # This will be used for:
+        # - Real-time robot status updates
+        # - Streaming robot sensor data
+        # - Sending control commands to robots
+        
+        while True:
+            data = await websocket.receive_text()
+            # Echo back for now - replace with robot communication
+            await websocket.send_text(json.dumps({
+                "type": "echo",
+                "data": data,
+                "timestamp": time.time()
+            }))
+            
+    except Exception as e:
+        logger.error(f"WebSocket error for user {user_id}: {e}")
+    finally:
+        await websocket.close()
 
 if __name__ == "__main__":
     import uvicorn

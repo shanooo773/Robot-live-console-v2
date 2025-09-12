@@ -10,3 +10,7 @@ gunicorn==21.2.0
 # Database
 PyMySQL==1.1.0
 aiomysql==0.2.0
+# WebSocket support
+websockets==11.0.2
+# Docker container management
+docker==6.1.3

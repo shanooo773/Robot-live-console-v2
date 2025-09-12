@@ -65,3 +65,8 @@ test_video_frontend.html
 turtlebot_test.mp4
 *.tmp
 /tmp/*
+
+# Theia transformation - exclude test files
+backend/test_theia.py
+projects/123/
+playwright-logs/
