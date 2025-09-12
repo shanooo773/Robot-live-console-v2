@@ -37,7 +37,6 @@ RUN echo '{\
     "@theia/search-in-workspace": "1.42.0",\
     "@theia/terminal": "1.42.0",\
     "@theia/workspace": "1.42.0",\
-    "@theia/python": "1.42.0",\
     "@theia/cpp": "1.42.0"\
   },\
   "devDependencies": {\
@@ -52,9 +51,11 @@ RUN echo '{\
   },\
   "theiaPluginsDir": "plugins",\
   "theiaPlugins": {\
-    "vscode-builtin-extensions-pack": "https://github.com/theia-ide/vscode-builtin-extensions/releases/download/v1.39.1-prel/vscode-builtin-extensions-pack-v1.39.1-prel.vsix"\
+    "vscode-builtin-extensions-pack": "https://github.com/theia-ide/vscode-builtin-extensions/releases/download/v1.39.1-prel/vscode-builtin-extensions-pack-v1.39.1-prel.vsix",\
+    "ms-python.python": "https://ms-python.gallery.vsassets.io/_apis/public/gallery/publisher/ms-python/extension/python/latest/assetbyname/Microsoft.VisualStudio.Code.Extension.vsix"\
   }\
 }' > package.json
+
 
 # Install Theia
 RUN yarn install --frozen-lockfile && \
