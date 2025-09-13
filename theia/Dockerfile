@@ -48,7 +48,8 @@ RUN echo '{\
 }' > package.json
 
 # Install Theia
-RUN yarn install --frozen-lockfile && \
+RUN yarn config set registry https://registry.npmjs.org
+RUN yarn install --frozen-lockfile --network-timeout 600000 && \
     yarn run prepare && \
     yarn cache clean
 
