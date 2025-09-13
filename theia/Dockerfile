@@ -27,7 +27,6 @@ RUN echo '{\
     "@theia/search-in-workspace": "1.64.1",\
     "@theia/terminal": "1.64.1",\
     "@theia/workspace": "1.64.1",\
-    "@theia/cpp": "1.64.1"\
   },\
   "devDependencies": {\
     "@theia/cli": "1.64.1"\
@@ -42,7 +41,9 @@ RUN echo '{\
   "theiaPluginsDir": "plugins",\
   "theiaPlugins": {\
     "vscode-builtin-extensions-pack": "https://github.com/theia-ide/vscode-builtin-extensions/releases/download/v1.64.0/vscode-builtin-extensions-pack-v1.64.0.vsix",\
-    "ms-python.python": "https://ms-python.gallery.vsassets.io/_apis/public/gallery/publisher/ms-python/extension/python/latest/assetbyname/Microsoft.VisualStudio.Code.Extension.vsix"\
+    "ms-python.python": "https://ms-python.gallery.vsassets.io/_apis/public/gallery/publisher/ms-python/extension/python/latest/assetbyname/Microsoft.VisualStudio.Code.Extension.vsix",\
+    "ms-vscode.cpptools": "https://open-vsx.org/api/ms-vscode/cpptools/latest/file/ms-vscode.cpptools-latest.vsix"
+
   }\
 }' > package.json
 
