@@ -26,7 +26,7 @@ RUN echo '{\
     "@theia/preview": "1.64.1",\
     "@theia/search-in-workspace": "1.64.1",\
     "@theia/terminal": "1.64.1",\
-    "@theia/workspace": "1.64.1",\
+    "@theia/workspace": "1.64.1"
   },\
   "devDependencies": {\
     "@theia/cli": "1.64.1"\
