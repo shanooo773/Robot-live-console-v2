@@ -268,3 +268,38 @@ export const sendICECandidate = async (robotType, candidate, token) => {
   });
   return response.data;
 };
+
+// Robot Registry Admin API
+export const getAllRobots = async (token) => {
+  const response = await API.get("/admin/robots", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const createRobot = async (robotData, token) => {
+  const response = await API.post("/admin/robots", robotData, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const updateRobot = async (robotId, robotData, token) => {
+  const response = await API.put(`/admin/robots/${robotId}`, robotData, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const deleteRobot = async (robotId, token) => {
+  const response = await API.delete(`/admin/robots/${robotId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+// Get public robot list (includes registry data)
+export const getAvailableRobots = async () => {
+  const response = await API.get("/robots");
+  return response.data;
+};

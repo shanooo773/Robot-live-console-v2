@@ -115,6 +115,18 @@ class DatabaseManager:
             )
         """)
         
+        # Robots table for robot registry
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS robots (
+                id INTEGER {primary_key},
+                name VARCHAR(255) NOT NULL,
+                type VARCHAR(100) NOT NULL,
+                rtsp_url VARCHAR(500),
+                created_at TIMESTAMP {timestamp_default},
+                updated_at TIMESTAMP {timestamp_default} ON UPDATE CURRENT_TIMESTAMP
+            )
+        """)
+        
         # Create default admin user if none exists
         self._create_default_admin(cursor, conn)
         
@@ -586,6 +598,133 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         cursor.execute(f"DELETE FROM announcements WHERE id = {self._get_placeholder()}", (announcement_id,))
+        
+        deleted = cursor.rowcount > 0
+        conn.close()
+        
+        return deleted
+    
+    # Robot Registry Methods
+    def create_robot(self, name: str, robot_type: str, rtsp_url: str = None) -> Dict[str, Any]:
+        """Create a new robot in the registry"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        try:
+            cursor.execute(f"""
+                INSERT INTO robots (name, type, rtsp_url)
+                VALUES ({placeholder}, {placeholder}, {placeholder})
+            """, (name, robot_type, rtsp_url))
+            
+            robot_id = cursor.lastrowid
+            
+            return {
+                "id": robot_id,
+                "name": name,
+                "type": robot_type,
+                "rtsp_url": rtsp_url,
+                "created_at": datetime.now().isoformat()
+            }
+        finally:
+            conn.close()
+    
+    def get_all_robots(self) -> List[Dict[str, Any]]:
+        """Get all robots from the registry"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, name, type, rtsp_url, created_at, updated_at
+            FROM robots
+            ORDER BY created_at DESC
+        """)
+        
+        robots = cursor.fetchall()
+        conn.close()
+        
+        return [
+            {
+                "id": robot[0],
+                "name": robot[1],
+                "type": robot[2],
+                "rtsp_url": robot[3],
+                "created_at": robot[4].isoformat() if robot[4] else None,
+                "updated_at": robot[5].isoformat() if robot[5] else None
+            }
+            for robot in robots
+        ]
+    
+    def get_robot_by_id(self, robot_id: int) -> Optional[Dict[str, Any]]:
+        """Get a robot by ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            SELECT id, name, type, rtsp_url, created_at, updated_at
+            FROM robots WHERE id = {placeholder}
+        """, (robot_id,))
+        
+        robot = cursor.fetchone()
+        conn.close()
+        
+        if not robot:
+            return None
+            
+        return {
+            "id": robot[0],
+            "name": robot[1],
+            "type": robot[2],
+            "rtsp_url": robot[3],
+            "created_at": robot[4].isoformat() if robot[4] else None,
+            "updated_at": robot[5].isoformat() if robot[5] else None
+        }
+    
+    def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, rtsp_url: str = None) -> bool:
+        """Update a robot in the registry"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        # Build update query dynamically based on provided fields
+        update_fields = []
+        update_values = []
+        
+        if name is not None:
+            update_fields.append(f"name = {placeholder}")
+            update_values.append(name)
+        
+        if robot_type is not None:
+            update_fields.append(f"type = {placeholder}")
+            update_values.append(robot_type)
+        
+        if rtsp_url is not None:
+            update_fields.append(f"rtsp_url = {placeholder}")
+            update_values.append(rtsp_url)
+        
+        if not update_fields:
+            conn.close()
+            return False
+            
+        update_fields.append(f"updated_at = NOW()")
+        update_values.append(robot_id)
+        
+        query = f"UPDATE robots SET {', '.join(update_fields)} WHERE id = {placeholder}"
+        
+        cursor.execute(query, update_values)
+        updated = cursor.rowcount > 0
+        conn.close()
+        
+        return updated
+    
+    def delete_robot(self, robot_id: int) -> bool:
+        """Delete a robot from the registry"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"DELETE FROM robots WHERE id = {placeholder}", (robot_id,))
         
         deleted = cursor.rowcount > 0
         conn.close()

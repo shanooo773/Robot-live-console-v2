@@ -198,6 +198,25 @@ class AnnouncementResponse(BaseModel):
     created_at: str
     updated_at: str
 
+# Robot Registry Models
+class RobotCreate(BaseModel):
+    name: str
+    type: str
+    rtsp_url: Optional[str] = None
+
+class RobotUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    rtsp_url: Optional[str] = None
+
+class RobotResponse(BaseModel):
+    id: int
+    name: str
+    type: str
+    rtsp_url: Optional[str] = None
+    created_at: str
+    updated_at: Optional[str] = None
+
 # API Endpoints
 
 @app.get("/")
@@ -291,6 +310,7 @@ async def get_admin_stats(current_user: dict = Depends(require_admin)):
     bookings = db.get_all_bookings()
     messages = db.get_all_messages()
     announcements = db.get_all_announcements()
+    robots = db.get_all_robots()
     
     total_users = len(users)
     total_bookings = len(bookings)
@@ -299,6 +319,7 @@ async def get_admin_stats(current_user: dict = Depends(require_admin)):
     unread_messages = len([m for m in messages if m["status"] == "unread"])
     total_announcements = len(announcements)
     active_announcements = len([a for a in announcements if a["is_active"]])
+    total_robots = len(robots)
     
     return {
         "total_users": total_users,
@@ -308,10 +329,57 @@ async def get_admin_stats(current_user: dict = Depends(require_admin)):
         "unread_messages": unread_messages,
         "total_announcements": total_announcements,
         "active_announcements": active_announcements,
+        "total_robots": total_robots,
         "recent_users": users[:5],  # 5 most recent users
         "recent_bookings": bookings[:10],  # 10 most recent bookings
         "recent_messages": messages[:10]  # 10 most recent messages
     }
+
+# Robot Admin Endpoints
+@app.post("/admin/robots", response_model=RobotResponse)
+async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(require_admin)):
+    """Create a new robot (admin only)"""
+    robot = db.create_robot(
+        name=robot_data.name,
+        robot_type=robot_data.type,
+        rtsp_url=robot_data.rtsp_url
+    )
+    return RobotResponse(**robot)
+
+@app.get("/admin/robots", response_model=List[RobotResponse])
+async def get_all_robots_admin(current_user: dict = Depends(require_admin)):
+    """Get all robots (admin only)"""
+    robots = db.get_all_robots()
+    return [RobotResponse(**robot) for robot in robots]
+
+@app.put("/admin/robots/{robot_id}", response_model=RobotResponse)
+async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dict = Depends(require_admin)):
+    """Update a robot (admin only)"""
+    success = db.update_robot(
+        robot_id=robot_id,
+        name=robot_data.name,
+        robot_type=robot_data.type,
+        rtsp_url=robot_data.rtsp_url
+    )
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Robot not found")
+    
+    updated_robot = db.get_robot_by_id(robot_id)
+    if not updated_robot:
+        raise HTTPException(status_code=404, detail="Robot not found after update")
+    
+    return RobotResponse(**updated_robot)
+
+@app.delete("/admin/robots/{robot_id}")
+async def delete_robot(robot_id: int, current_user: dict = Depends(require_admin)):
+    """Delete a robot (admin only)"""
+    success = db.delete_robot(robot_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Robot not found")
+    
+    return {"message": "Robot deleted successfully"}
 
 # Message Endpoints
 @app.post("/messages", response_model=MessageResponse)
@@ -420,12 +488,32 @@ async def available_features():
 
 @app.get("/robots")
 def get_available_robots():
-    """Get list of available robot types"""
-    booking_service = service_manager.get_booking_service()
-    return {
-        "robots": ["turtlebot", "arm", "hand"],
-        "details": booking_service.get_available_robots()
-    }
+    """Get list of available robot types from registry"""
+    try:
+        # Get robots from registry
+        robots = db.get_all_robots()
+        
+        # Extract just the types for backward compatibility
+        robot_types = list(set(robot["type"] for robot in robots))
+        
+        # Fall back to hardcoded list if no robots in registry
+        if not robot_types:
+            robot_types = ["turtlebot", "arm", "hand"]
+        
+        booking_service = service_manager.get_booking_service()
+        return {
+            "robots": robot_types,
+            "details": booking_service.get_available_robots(),
+            "registry": robots  # Include full registry data for admin use
+        }
+    except Exception as e:
+        # Fallback to original hardcoded response if registry fails
+        logger.error(f"Error accessing robot registry: {e}")
+        booking_service = service_manager.get_booking_service()
+        return {
+            "robots": ["turtlebot", "arm", "hand"],
+            "details": booking_service.get_available_robots()
+        }
 
 # Video serving and access control
 @app.get("/videos/{robot_type}")
