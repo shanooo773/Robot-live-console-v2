@@ -1,0 +1,35 @@
+[mysqld]
+# Production MySQL Configuration for Robot Console
+
+# Connection settings
+max_connections = 100
+connect_timeout = 10
+
+# Buffer settings
+innodb_buffer_pool_size = 256M
+key_buffer_size = 32M
+query_cache_size = 32M
+query_cache_type = 1
+
+# Logging
+slow_query_log = 1
+long_query_time = 2
+slow_query_log_file = /var/log/mysql/slow.log
+log_error = /var/log/mysql/error.log
+
+# Performance
+innodb_flush_log_at_trx_commit = 2
+innodb_flush_method = O_DIRECT
+tmp_table_size = 32M
+max_heap_table_size = 32M
+
+# Character set
+character_set_server = utf8mb4
+collation_server = utf8mb4_unicode_ci
+
+# Binary logging (for backups)
+log_bin = /var/log/mysql/mysql-bin.log
+expire_logs_days = 7
+
+# Security
+skip_name_resolve = 1
