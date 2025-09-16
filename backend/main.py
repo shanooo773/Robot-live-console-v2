@@ -752,9 +752,7 @@ class WebRTCAnswer(BaseModel):
 
 class ICECandidate(BaseModel):
     robot_type: str
-    candidate: str
-    sdpMLineIndex: int
-    sdpMid: str
+    candidate: dict  # Full RTCIceCandidate object with candidate, sdpMLineIndex, sdpMid fields
 
 @app.post("/webrtc/offer")
 async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(get_current_user)):

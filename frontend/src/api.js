@@ -262,9 +262,7 @@ export const getWebRTCAnswer = async (robotType, token) => {
 export const sendICECandidate = async (robotType, candidate, token) => {
   const response = await API.post("/webrtc/ice-candidate", {
     robot_type: robotType,
-    candidate: candidate.candidate,
-    sdpMLineIndex: candidate.sdpMLineIndex,
-    sdpMid: candidate.sdpMid
+    candidate: candidate  // Send the full RTCIceCandidate object
   }, {
     headers: { Authorization: `Bearer ${token}` }
   });
