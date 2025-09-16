@@ -1,50 +1,29 @@
 services:
-  # WebRTC Signaling Service - Simple Socket.IO based signaling
+  # WebRTC Signaling Service - Real-time robot telemetry and video streaming
   webrtc-signaling:
-    image: node:18-slim
+    build:
+      context: ./webrtc
+      dockerfile: Dockerfile
+    image: robot-webrtc-signaling:latest
     container_name: webrtc-signaling
-    working_dir: /app
-    command: >
-      sh -c "
-      echo '{\"name\":\"webrtc-signaling\",\"dependencies\":{\"socket.io\":\"^4.7.2\",\"express\":\"^4.18.2\",\"cors\":\"^2.8.5\"}}' > package.json &&
-      npm install &&
-      node -e \"
-      const express = require('express');
-      const http = require('http');
-      const socketIo = require('socket.io');
-      const cors = require('cors');
-      const app = express();
-      const server = http.createServer(app);
-      const PORT = 8080;
-      const CORS_ORIGINS = ['http://localhost:3000', 'http://localhost:5173'];
-      console.log('🚀 Starting WebRTC Signaling Server on port', PORT);
-      app.use(cors({ origin: CORS_ORIGINS, credentials: true }));
-      app.get('/health', (req, res) => res.json({ status: 'healthy', service: 'webrtc-signaling' }));
-      app.get('/config', (req, res) => res.json({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }));
-      const io = socketIo(server, { cors: { origin: CORS_ORIGINS, credentials: true } });
-      const users = new Map();
-      io.on('connection', (socket) => {
-        console.log('User connected:', socket.id);
-        socket.on('register', (data) => {
-          users.set(socket.id, data);
-          socket.emit('registered', { success: true });
-        });
-        socket.on('offer', (data) => socket.broadcast.emit('offer', data));
-        socket.on('answer', (data) => socket.broadcast.emit('answer', data));
-        socket.on('ice-candidate', (data) => socket.broadcast.emit('ice-candidate', data));
-        socket.on('disconnect', () => users.delete(socket.id));
-      });
-      server.listen(PORT, '0.0.0.0', () => console.log('✅ WebRTC Signaling Server running'));
-      \"
-      "
     ports:
       - "8080:8080"   # WebRTC signaling server
+      - "3478:3478"   # STUN server port
+      - "5349:5349"   # TURN server port
     environment:
       - NODE_ENV=${ENVIRONMENT:-development}
+      - SIGNALING_PORT=${WEBRTC_SIGNALING_PORT:-8080}
+      - STUN_PORT=${WEBRTC_STUN_PORT:-3478}
+      - TURN_PORT=${WEBRTC_TURN_PORT:-5349}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
     networks:
       - robot-console-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Eclipse Theia IDE Base Service (for image building only)
   # Individual user containers are managed dynamically by the backend
@@ -58,8 +37,17 @@ services:
     # It doesn't run continuously - user containers are managed by backend API
     profiles:
       - build-only
+    environment:
+      - THEIA_BASE_PORT=${THEIA_BASE_PORT:-3001}
+      - THEIA_PROJECT_PATH=${THEIA_PROJECT_PATH:-./projects}
     networks:
       - robot-console-network
+    volumes:
+      - type: bind
+        source: ./projects
+        target: /home/project
+        bind:
+          create_host_path: true
 
 networks:
   robot-console-network:
@@ -71,6 +59,7 @@ volumes:
   # Persistent storage for user project directories
   # Projects are stored as bind mounts from ./projects to enable
   # direct file access and persistence across container restarts
+  # Each user gets their own isolated directory mounted at /home/project
   projects_data:
     driver: local
     driver_opts:
