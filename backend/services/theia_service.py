@@ -10,15 +10,32 @@ logger = logging.getLogger(__name__)
 class TheiaContainerManager:
     """Manages Eclipse Theia containers for users"""
     
-    def __init__(self, base_port: int = 3001):
-        self.base_port = base_port
+    def __init__(self, base_port: int = None):
+        # Get configuration from environment
+        self.base_port = base_port or int(os.getenv('THEIA_BASE_PORT', 3001))
+        self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
+        self.theia_image = os.getenv('THEIA_IMAGE', 'robot-console-theia:latest')
+        self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
+        
+        # Paths
+        project_path = os.getenv('THEIA_PROJECT_PATH', './projects')
         self.theia_dir = Path(__file__).parent.parent.parent / "theia"
-        self.projects_dir = Path(__file__).parent.parent.parent / "projects"
+        self.projects_dir = Path(__file__).parent.parent.parent / project_path.lstrip('./')
         self.container_prefix = "theia-user-"
         
         # Ensure directories exist
         self.projects_dir.mkdir(exist_ok=True)
         
+        # Ensure demo user directories exist
+        self._ensure_demo_user_directories()
+        
+    def _ensure_demo_user_directories(self):
+        """Ensure demo user directories exist with welcome files"""
+        demo_users = [-1, -2]  # Demo user and demo admin IDs from auth service
+        
+        for user_id in demo_users:
+            self.ensure_user_project_dir(user_id)
+    
     def get_user_port(self, user_id: int) -> int:
         """Get unique port for user's Theia container"""
         return self.base_port + (user_id % 1000)
@@ -183,7 +200,7 @@ int main() {
             
             # Create network if it doesn't exist
             subprocess.run(
-                ["docker", "network", "create", "robot-console-network"],
+                ["docker", "network", "create", self.docker_network],
                 capture_output=True,
                 timeout=10
             )
@@ -192,11 +209,11 @@ int main() {
             cmd = [
                 "docker", "run", "-d",
                 "--name", container_name,
-                "--network", "robot-console-network",
+                "--network", self.docker_network,
                 "-p", f"{port}:3000",
                 "-v", f"{project_dir.absolute()}:/home/project",
                 "--restart", "unless-stopped",
-                "robot-console-theia:latest"
+                self.theia_image
             ]
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
