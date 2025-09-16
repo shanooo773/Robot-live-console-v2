@@ -24,12 +24,29 @@ from auth import auth_manager, get_current_user, require_admin
 from services.service_manager import AdminServiceManager
 from services.theia_service import TheiaContainerManager
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure logging based on environment
+def setup_logging():
+    log_level = logging.DEBUG if ENVIRONMENT == 'development' else logging.INFO
+    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    
+    # Create logs directory if it doesn't exist
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    
+    # Configure logging
+    logging.basicConfig(
+        level=log_level,
+        format=log_format,
+        handlers=[
+            logging.StreamHandler(),  # Console output
+            logging.FileHandler(log_dir / "backend.log", mode='a')  # File output
+        ]
+    )
+    return logging.getLogger(__name__)
 
 # Environment-based configuration
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+logger = setup_logging()
 
 # CORS configuration based on environment
 def get_cors_origins():
@@ -75,6 +92,17 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app with lifespan
 app = FastAPI(title="Robot Admin Backend API", version="1.0.0", lifespan=lifespan)
+
+# Global exception handler for better error logging
+@app.exception_handler(500)
+async def internal_server_error_handler(request, exc):
+    logger.error(f"Internal server error: {str(exc)}", exc_info=True)
+    return {"error": "Internal server error", "detail": "Please check server logs"}
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    logger.warning(f"HTTP exception: {exc.status_code} - {exc.detail}")
+    return {"error": "Request failed", "detail": exc.detail}
 
 # Configure CORS
 app.add_middleware(
