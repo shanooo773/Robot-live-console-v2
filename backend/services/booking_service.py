@@ -134,3 +134,36 @@ class BookingService:
             return True
         except ValueError:
             return False
+    
+    def has_active_session(self, user_id: int, robot_type: str) -> bool:
+        """Check if user has an active booking session for the robot type"""
+        try:
+            # Get current time
+            now = datetime.now()
+            current_date = now.strftime("%Y-%m-%d")
+            current_time = now.strftime("%H:%M")
+            
+            # Get user's bookings for today
+            bookings = self.get_user_bookings(user_id)
+            
+            # Check for active booking that matches current time
+            for booking in bookings:
+                if (booking["robot_type"] == robot_type and 
+                    booking["date"] == current_date and
+                    booking["status"] == "active"):
+                    
+                    # Parse booking times
+                    start_time = booking["start_time"]
+                    end_time = booking["end_time"]
+                    
+                    # Check if current time is within booking window
+                    if start_time <= current_time <= end_time:
+                        logger.info(f"Active session found for user {user_id}, robot {robot_type} from {start_time} to {end_time}")
+                        return True
+            
+            logger.debug(f"No active session for user {user_id}, robot {robot_type} at {current_time}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking active session: {e}")
+            return False

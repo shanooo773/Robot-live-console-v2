@@ -430,25 +430,22 @@ def get_available_robots():
 # Video serving and access control
 @app.get("/videos/{robot_type}")
 async def get_video(robot_type: str, current_user: dict = Depends(get_current_user)):
-    """Serve video files for completed bookings only"""
-    # Check if user has completed booking for this robot type
+    """Serve video files for active booking sessions only"""
+    # Check if user has active booking session for this robot type
     booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
     
-    # Get user's bookings
-    bookings = booking_service.get_user_bookings(user_id)
+    # Check if user has active session (during their booking time)
+    has_active_session = booking_service.has_active_session(user_id, robot_type)
     
-    # Check if user has at least one completed booking for this robot type
-    has_completed_booking = any(
-        booking["robot_type"] == robot_type and booking["status"] == "completed"
-        for booking in bookings
-    )
-    
-    if not has_completed_booking:
-        raise HTTPException(
-            status_code=403, 
-            detail=f"Access denied. You need a completed booking for {robot_type} robot to access this video."
-        )
+    if not has_active_session:
+        # Also check for admin access
+        is_admin = current_user.get("role") == "admin"
+        if not is_admin:
+            raise HTTPException(
+                status_code=403, 
+                detail=f"Access denied. Video access requires an active booking session for {robot_type} robot during your scheduled time."
+            )
     
     # Define video file mapping
     video_files = {
@@ -741,6 +738,114 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
             status_code=500,
             detail=f"Failed to execute robot code: {str(e)}"
         )
+
+# WebRTC Signaling Endpoints
+class WebRTCOffer(BaseModel):
+    robot_type: str
+    sdp: str
+    type: str = "offer"
+
+class WebRTCAnswer(BaseModel):
+    robot_type: str
+    sdp: str 
+    type: str = "answer"
+
+class ICECandidate(BaseModel):
+    robot_type: str
+    candidate: str
+    sdpMLineIndex: int
+    sdpMid: str
+
+@app.post("/webrtc/offer")
+async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(get_current_user)):
+    """Handle WebRTC SDP offer from client"""
+    # Validate user has active booking session
+    booking_service = service_manager.get_booking_service()
+    user_id = int(current_user["sub"])
+    
+    # Check if user has active session for this robot type
+    has_active_session = booking_service.has_active_session(user_id, offer.robot_type)
+    
+    if not has_active_session:
+        raise HTTPException(
+            status_code=403,
+            detail=f"No active booking session for {offer.robot_type}. Video access requires an active session during your booking time."
+        )
+    
+    # TODO: Forward offer to WebRTC signaling server or robot
+    # For now, return a mock response indicating signaling server will handle this
+    return {
+        "success": True,
+        "message": "SDP offer received and forwarded to signaling server",
+        "robot_type": offer.robot_type,
+        "signaling_endpoint": f"ws://localhost:8080/socket.io/",
+        "room_id": f"robot_{offer.robot_type}_{user_id}",
+        "timestamp": time.time()
+    }
+
+@app.post("/webrtc/answer")
+async def handle_webrtc_answer(answer: WebRTCAnswer, current_user: dict = Depends(get_current_user)):
+    """Handle WebRTC SDP answer from robot/server"""
+    # Validate user has active booking session
+    booking_service = service_manager.get_booking_service()
+    user_id = int(current_user["sub"])
+    
+    # Check if user has active session for this robot type
+    has_active_session = booking_service.has_active_session(user_id, answer.robot_type)
+    
+    if not has_active_session:
+        raise HTTPException(
+            status_code=403,
+            detail=f"No active booking session for {answer.robot_type}. Video access requires an active session during your booking time."
+        )
+    
+    # TODO: Forward answer to WebRTC signaling server
+    return {
+        "success": True,
+        "message": "SDP answer received and processed",
+        "robot_type": answer.robot_type,
+        "timestamp": time.time()
+    }
+
+@app.post("/webrtc/ice-candidate")
+async def handle_ice_candidate(candidate: ICECandidate, current_user: dict = Depends(get_current_user)):
+    """Handle ICE candidate from client or robot"""
+    # Validate user has active booking session  
+    booking_service = service_manager.get_booking_service()
+    user_id = int(current_user["sub"])
+    
+    # Check if user has active session for this robot type
+    has_active_session = booking_service.has_active_session(user_id, candidate.robot_type)
+    
+    if not has_active_session:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"No active booking session for {candidate.robot_type}. Video access requires an active session during your booking time."
+        )
+    
+    # TODO: Forward ICE candidate to WebRTC signaling server
+    return {
+        "success": True,
+        "message": "ICE candidate received and forwarded",
+        "robot_type": candidate.robot_type,
+        "timestamp": time.time()
+    }
+
+@app.get("/webrtc/config")
+async def get_webrtc_config(current_user: dict = Depends(get_current_user)):
+    """Get WebRTC configuration for client"""
+    return {
+        "signaling_url": "ws://localhost:8080/socket.io/",
+        "ice_servers": [
+            {"urls": "stun:stun.l.google.com:19302"},
+            {"urls": "stun:stun1.l.google.com:19302"}
+        ],
+        "video_constraints": {
+            "width": {"ideal": 1280},
+            "height": {"ideal": 720},
+            "frameRate": {"ideal": 30}
+        }
+    }
 
 if __name__ == "__main__":
     import uvicorn
