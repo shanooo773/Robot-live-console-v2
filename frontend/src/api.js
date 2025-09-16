@@ -297,9 +297,3 @@ export const deleteRobot = async (robotId, token) => {
   });
   return response.data;
 };
-
-// Get public robot list (includes registry data)
-export const getAvailableRobots = async () => {
-  const response = await API.get("/robots");
-  return response.data;
-};
