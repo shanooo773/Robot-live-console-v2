@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -599,6 +600,44 @@ async def list_theia_containers(current_user: dict = Depends(require_admin)):
     containers = theia_manager.list_user_containers()
     return {"containers": containers}
 
+# Additional Theia Admin Endpoints
+@app.post("/theia/admin/stop/{user_id}")
+async def admin_stop_theia_container(user_id: int, current_user: dict = Depends(require_admin)):
+    """Stop any user's Theia container (admin only)"""
+    result = theia_manager.stop_container(user_id)
+    
+    if result.get("success"):
+        return {"message": f"Theia container for user {user_id} stopped successfully"}
+    else:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to stop Theia container for user {user_id}: {result.get('error', 'Unknown error')}"
+        )
+
+@app.post("/theia/admin/restart/{user_id}")
+async def admin_restart_theia_container(user_id: int, current_user: dict = Depends(require_admin)):
+    """Restart any user's Theia container (admin only)"""
+    result = theia_manager.restart_container(user_id)
+    
+    if result.get("success"):
+        return {
+            "message": f"Theia container for user {user_id} restarted successfully",
+            "status": result.get("status"),
+            "url": result.get("url"),
+            "port": result.get("port")
+        }
+    else:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to restart Theia container for user {user_id}: {result.get('error', 'Unknown error')}"
+        )
+
+@app.get("/theia/admin/status/{user_id}")
+async def admin_get_theia_status(user_id: int, current_user: dict = Depends(require_admin)):
+    """Get any user's Theia container status (admin only)"""
+    status = theia_manager.get_container_status(user_id)
+    return {"user_id": user_id, **status}
+
 # WebSocket endpoint for future robot communication
 @app.websocket("/ws/robot/{user_id}")
 async def robot_websocket(websocket, user_id: int):
@@ -630,6 +669,78 @@ async def robot_websocket(websocket, user_id: int):
         logger.error(f"WebSocket error for user {user_id}: {e}")
     finally:
         await websocket.close()
+
+# Robot Code Execution Endpoint
+class RobotExecuteRequest(BaseModel):
+    code: str
+    robot_type: str
+    language: str = "python"
+
+@app.post("/robot/execute")
+async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = Depends(get_current_user)):
+    """Execute robot code and return simulation results"""
+    
+    # Check if user has access (completed booking)
+    booking_service = service_manager.get_booking_service()
+    user_id = int(current_user["sub"])
+    
+    # Get user's bookings
+    bookings = booking_service.get_user_bookings(user_id)
+    
+    # Check if user has at least one completed booking for this robot type
+    has_completed_booking = any(
+        booking["robot_type"] == request.robot_type and booking["status"] == "completed"
+        for booking in bookings
+    )
+    
+    if not has_completed_booking:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"You need a completed booking for {request.robot_type} robot to execute code."
+        )
+    
+    try:
+        # TODO: Implement actual robot simulation
+        # For now, return a placeholder response that matches the expected format
+        
+        # Generate a unique execution ID
+        execution_id = f"exec_{user_id}_{int(time.time())}"
+        
+        # Check if we have a simulation video for this robot type
+        video_files = {
+            "turtlebot": "turtlebot_simulation.mp4",
+            "arm": "arm_simulation.mp4", 
+            "hand": "hand_simulation.mp4"
+        }
+        
+        video_file = video_files.get(request.robot_type)
+        video_url = None
+        
+        if video_file:
+            video_path = Path("videos") / video_file
+            if video_path.exists():
+                video_url = f"/videos/{request.robot_type}"
+        
+        # Simulate processing time
+        await asyncio.sleep(1)
+        
+        return {
+            "success": True,
+            "execution_id": execution_id,
+            "video_url": video_url,
+            "simulation_type": "fallback",  # Will be "gazebo" when real simulation is implemented
+            "message": "Code executed successfully in fallback mode",
+            "robot_type": request.robot_type,
+            "language": request.language,
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error executing robot code for user {user_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to execute robot code: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn

@@ -204,3 +204,31 @@ export const deleteAnnouncement = async (announcementId, token) => {
   });
   return response.data;
 };
+
+// Robot Code Execution API (to be implemented in backend)
+export const executeRobotCode = async (sourceCode, robotType) => {
+  // Get token from localStorage if available
+  const token = localStorage.getItem('authToken');
+  
+  try {
+    const response = await API.post("/robot/execute", {
+      code: sourceCode,
+      robot_type: robotType,
+      language: "python" // Default to Python, could be dynamic
+    }, {
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    return response.data;
+  } catch (error) {
+    // Fallback for when endpoint doesn't exist yet
+    console.warn("Robot execution endpoint not implemented yet, using fallback");
+    return {
+      success: false,
+      error: "Robot simulation service is not available yet. The backend endpoint /robot/execute needs to be implemented.",
+      simulation_type: "fallback"
+    };
+  }
+};
