@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+other-docs/
+
+# Environment files
+.env*
+!.env.template
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Dependencies and build artifacts (will be handled by respective Dockerfiles)
+node_modules/
+dist/
+build/
+__pycache__/
+*.pyc
+*.pyo
+.coverage
+
+# Database and data
+*.db
+*.sqlite
+data/
+projects/
+
+# Temporary files
+tmp/
+*.tmp
+*.swp
+*.swo
+
+# Service files
+*.service
+
+# Scripts not needed in containers
+setup_*.sh
+deploy_*.sh
+build.sh

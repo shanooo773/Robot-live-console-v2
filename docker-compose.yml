@@ -1,0 +1,171 @@
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: robot-console-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-robot_console}
+      MYSQL_USER: ${MYSQL_USER:-robot_console}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-robot_console_pass}
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "3306:3306"
+    networks:
+      - robot-console-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: robot-console-backend
+    restart: unless-stopped
+    environment:
+      # Database Configuration
+      DATABASE_TYPE: mysql
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-robot_console}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-robot_console_pass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-robot_console}
+      
+      # App Configuration
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-here}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      HOST: 0.0.0.0
+      PORT: 8000
+      
+      # CORS Configuration
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      PRODUCTION_CORS_ORIGINS: ${PRODUCTION_CORS_ORIGINS:-http://localhost}
+      
+      # Video Configuration
+      VIDEO_STORAGE_PATH: /app/videos
+      MAX_VIDEO_SIZE_MB: ${MAX_VIDEO_SIZE_MB:-100}
+      
+      # Admin Configuration
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+    volumes:
+      - video_data:/app/videos
+      - ./projects:/app/projects
+    ports:
+      - "8000:8000"
+    networks:
+      - robot-console-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Frontend Web Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: robot-console-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: /api
+    ports:
+      - "80:80"
+    networks:
+      - robot-console-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Eclipse Theia IDE Service  
+  theia:
+    build:
+      context: ./theia
+      dockerfile: Dockerfile
+    container_name: robot-console-theia-base
+    restart: unless-stopped
+    environment:
+      - THEIA_DEFAULT_PLUGINS=local-dir:/home/theia/plugins
+    volumes:
+      - theia_data:/home/project
+      - ./projects:/home/project/shared:rw
+    ports:
+      - "3001:3000"
+    networks:
+      - robot-console-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # WebRTC Service (Placeholder for future implementation)
+  # This service will handle real-time video streaming from robot cameras
+  webrtc:
+    image: alpine:latest
+    container_name: robot-console-webrtc
+    restart: "no"  # Disabled until implementation is ready
+    environment:
+      - WEBRTC_ENABLED=false
+    command: ["sleep", "infinity"]
+    volumes:
+      - ./webrtc-config:/etc/webrtc:ro
+    ports:
+      - "8081:8081"  # Reserved for WebRTC service
+    networks:
+      - robot-console-network
+    profiles:
+      - webrtc  # Only start when explicitly requested
+
+# Persistent Volumes
+volumes:
+  mysql_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./data}/mysql
+  
+  video_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./data}/videos
+  
+  theia_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./data}/theia
+
+# Networks
+networks:
+  robot-console-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

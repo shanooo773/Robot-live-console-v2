@@ -1,21 +1,30 @@
-version: '3.8'
+# Standalone Theia IDE Service
+# This file is for running Theia independently
+# For full application stack, use the main docker-compose.yml in the root directory
 
 services:
-  theia-base:
+  theia-standalone:
     build:
       context: .
       dockerfile: Dockerfile
     image: robot-console-theia:latest
-    # This is a base service, not meant to run directly
-    profiles:
-      - base
+    container_name: theia-standalone
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - theia_data:/home/project
+      - ../projects:/home/project/shared:rw
+    environment:
+      - THEIA_DEFAULT_PLUGINS=local-dir:/home/theia/plugins
+    networks:
+      - theia-network
 
 networks:
-  default:
-    name: robot-console-network
-    external: false
+  theia-network:
+    driver: bridge
 
-# Volume for shared project data
+# Volume for Theia workspace data
 volumes:
   theia_data:
     driver: local
