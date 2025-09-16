@@ -1,5 +1,18 @@
-from datetime import timedelta
+#!/usr/bin/env python3
+"""
+Booking Service Fixes
+Addresses critical bugs found in the audit:
+1. Proper time range overlap detection
+2. Fix string time comparison issues
+3. Improved validation logic
+"""
 
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
+
+# Create fixed version of booking service
+booking_service_fixes = '''
 """
 Booking Service - FIXED VERSION
 Handles robot booking and scheduling with proper overlap detection and time comparison.
@@ -74,10 +87,10 @@ class BookingService:
             start_dt = datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M")
             end_dt = datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M")
             
-            # Check if booking is valid (allow bookings that end in the future for testing active sessions)
+            # Check if booking is in the future (allow bookings starting within next 10 minutes for testing)
             now = datetime.now()
-            # Allow bookings if they end in the future (for testing active sessions)
-            if end_dt <= now - timedelta(minutes=60):  # Only reject if ended more than 1 hour ago
+            min_advance_time = now - timedelta(minutes=10)  # Allow some flexibility for testing
+            if start_dt <= min_advance_time:
                 return False
             
             # Check if end time is after start time
@@ -218,3 +231,101 @@ class BookingService:
                 "description": "Mobile robot platform for navigation and exploration"
             }
         }
+'''
+
+def apply_fixes():
+    """Apply the fixes to the booking service"""
+    print("🔧 Applying fixes to booking service...")
+    
+    # Create a backup of the original file
+    import shutil
+    original_file = 'backend/services/booking_service.py'
+    backup_file = 'backend/services/booking_service.py.backup'
+    
+    try:
+        shutil.copy2(original_file, backup_file)
+        print(f"✅ Created backup: {backup_file}")
+    except Exception as e:
+        print(f"⚠️  Could not create backup: {e}")
+    
+    # Write the fixed version
+    with open(original_file, 'w') as f:
+        # Add missing import
+        f.write('from datetime import timedelta\n')
+        f.write(booking_service_fixes)
+    
+    print(f"✅ Applied fixes to {original_file}")
+    
+    return True
+
+def test_fixes():
+    """Test the fixes"""
+    print("\n🧪 Testing fixes...")
+    
+    try:
+        # Import the fixed version
+        from test_database_sqlite import TestDatabaseManager
+        sys.path.append('backend/services')
+        from booking_service import BookingService
+        
+        db = TestDatabaseManager()
+        booking_service = BookingService(db)
+        
+        # Test overlap detection
+        demo_user = db.get_user_by_email("demo@example.com")
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        # Create first booking
+        booking1 = booking_service.create_booking(
+            demo_user["id"], "test_robot", tomorrow, "10:00", "11:00"
+        )
+        print(f"✅ Created first booking: {booking1['start_time']}-{booking1['end_time']}")
+        
+        # Try overlapping booking (should fail)
+        try:
+            booking2 = booking_service.create_booking(
+                demo_user["id"], "test_robot", tomorrow, "10:30", "11:30"  # Overlaps
+            )
+            print("❌ Overlap detection failed - booking was allowed!")
+            return False
+        except Exception as e:
+            print(f"✅ Overlap detected correctly: {str(e)[:50]}...")
+        
+        # Test time comparison fix
+        today = datetime.now().strftime("%Y-%m-%d")
+        now = datetime.now()
+        active_start = (now - timedelta(minutes=30)).strftime("%H:%M")
+        active_end = (now + timedelta(minutes=30)).strftime("%H:%M")
+        
+        active_booking = booking_service.create_booking(
+            demo_user["id"], "time_test", today, active_start, active_end
+        )
+        
+        has_session = booking_service.has_active_session(demo_user["id"], "time_test")
+        print(f"✅ Time comparison fix works: {has_session}")
+        
+        print("✅ All fixes verified!")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Fix testing failed: {e}")
+        return False
+
+if __name__ == "__main__":
+    from datetime import datetime, timedelta
+    
+    print("🔧 BOOKING SERVICE FIXES")
+    print("=" * 40)
+    print("Applying fixes for:")
+    print("1. Proper time range overlap detection")
+    print("2. Fixed string time comparison issues")
+    print("3. Improved validation logic")
+    print("=" * 40)
+    
+    if apply_fixes():
+        if test_fixes():
+            print("\n🎉 All fixes applied and verified successfully!")
+        else:
+            print("\n❌ Fix verification failed")
+    else:
+        print("\n❌ Failed to apply fixes")

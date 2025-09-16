@@ -74,10 +74,10 @@ class BookingService:
             start_dt = datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M")
             end_dt = datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M")
             
-            # Check if booking is valid (allow bookings that end in the future for testing active sessions)
+            # Check if booking is in the future (allow bookings starting within next 10 minutes for testing)
             now = datetime.now()
-            # Allow bookings if they end in the future (for testing active sessions)
-            if end_dt <= now - timedelta(minutes=60):  # Only reject if ended more than 1 hour ago
+            min_advance_time = now - timedelta(minutes=10)  # Allow some flexibility for testing
+            if start_dt <= min_advance_time:
                 return False
             
             # Check if end time is after start time
