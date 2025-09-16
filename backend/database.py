@@ -1,4 +1,3 @@
-import sqlite3
 import pymysql
 import os
 import hashlib
@@ -12,51 +11,43 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class DatabaseManager:
-    def __init__(self, db_path: str = "robot_console.db"):
-        self.db_path = db_path
-        self.db_type = os.getenv('DATABASE_TYPE', 'sqlite').lower()
+    def __init__(self):
+        self.db_type = os.getenv('DATABASE_TYPE', 'mysql').lower()
+        
+        if self.db_type != 'mysql':
+            raise ValueError(f"Only MySQL is supported. Found DATABASE_TYPE={self.db_type}")
         
         # MySQL configuration
-        if self.db_type == 'mysql':
-            self.mysql_config = {
-                'host': os.getenv('MYSQL_HOST', 'localhost'),
-                'port': int(os.getenv('MYSQL_PORT', 3306)),
-                'user': os.getenv('MYSQL_USER', 'robot_console'),
-                'password': os.getenv('MYSQL_PASSWORD', ''),
-                'database': os.getenv('MYSQL_DATABASE', 'robot_console'),
-                'charset': 'utf8mb4',
-                'autocommit': True
-            }
+        self.mysql_config = {
+            'host': os.getenv('MYSQL_HOST', 'localhost'),
+            'port': int(os.getenv('MYSQL_PORT', 3306)),
+            'user': os.getenv('MYSQL_USER', 'robot_console'),
+            'password': os.getenv('MYSQL_PASSWORD', ''),
+            'database': os.getenv('MYSQL_DATABASE', 'robot_console'),
+            'charset': 'utf8mb4',
+            'autocommit': True
+        }
         
         self.init_database()
     
     def get_connection(self):
-        """Get database connection based on database type"""
-        if self.db_type == 'mysql':
-            return pymysql.connect(**self.mysql_config)
-        else:
-            return sqlite3.connect(self.db_path)
+        """Get MySQL database connection"""
+        return pymysql.connect(**self.mysql_config)
     
     def _get_placeholder(self):
-        """Get the correct parameter placeholder for the database type"""
-        return "%s" if self.db_type == 'mysql' else "?"
+        """Get the MySQL parameter placeholder"""
+        return "%s"
     
     def init_database(self):
-        """Initialize the database with required tables"""
+        """Initialize the MySQL database with required tables"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # SQL syntax differences between SQLite and MySQL
-        if self.db_type == 'mysql':
-            auto_increment = "AUTO_INCREMENT"
-            text_type = "TEXT"
-            timestamp_default = "DEFAULT CURRENT_TIMESTAMP"
-            primary_key = "PRIMARY KEY AUTO_INCREMENT"
-        else:
-            auto_increment = "AUTOINCREMENT"
-            text_type = "TEXT"
-            timestamp_default = "DEFAULT CURRENT_TIMESTAMP"
-            primary_key = "PRIMARY KEY AUTOINCREMENT"
+        # MySQL syntax
+        auto_increment = "AUTO_INCREMENT"
+        text_type = "TEXT"
+        timestamp_default = "DEFAULT CURRENT_TIMESTAMP"
+        primary_key = "PRIMARY KEY AUTO_INCREMENT"
         
         # Users table
         cursor.execute(f"""
@@ -110,37 +101,19 @@ class DatabaseManager:
         """)
         
         # Announcements table for admin announcements
-        if self.db_type == 'mysql':
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS announcements (
-                    id INTEGER {primary_key},
-                    title VARCHAR(255) NOT NULL,
-                    content {text_type} NOT NULL,
-                    priority VARCHAR(50) DEFAULT 'normal',
-                    is_active BOOLEAN DEFAULT 1,
-                    created_by INTEGER NOT NULL,
-                    created_at TIMESTAMP {timestamp_default},
-                    updated_at TIMESTAMP {timestamp_default} ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (created_by) REFERENCES users (id)
-                )
-            """)
-        else:
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS announcements (
-                    id INTEGER {primary_key},
-                    title VARCHAR(255) NOT NULL,
-                    content {text_type} NOT NULL,
-                    priority VARCHAR(50) DEFAULT 'normal',
-                    is_active BOOLEAN DEFAULT 1,
-                    created_by INTEGER NOT NULL,
-                    created_at TIMESTAMP {timestamp_default},
-                    updated_at TIMESTAMP {timestamp_default},
-                    FOREIGN KEY (created_by) REFERENCES users (id)
-                )
-            """)
-        
-        if self.db_type == 'sqlite':
-            conn.commit()
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS announcements (
+                id INTEGER {primary_key},
+                title VARCHAR(255) NOT NULL,
+                content {text_type} NOT NULL,
+                priority VARCHAR(50) DEFAULT 'normal',
+                is_active BOOLEAN DEFAULT 1,
+                created_by INTEGER NOT NULL,
+                created_at TIMESTAMP {timestamp_default},
+                updated_at TIMESTAMP {timestamp_default} ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users (id)
+            )
+        """)
         
         # Create default admin user if none exists
         self._create_default_admin(cursor, conn)
@@ -160,8 +133,6 @@ class DatabaseManager:
                 INSERT INTO users (name, email, password_hash, role)
                 VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
             """, ("Admin User", "admin@robot-console.com", password_hash, "admin"))
-            if self.db_type == 'sqlite':
-                conn.commit()
             print(f"Created default admin user: admin@robot-console.com / {admin_password}")
     
     def _hash_password(self, password: str) -> str:
@@ -192,8 +163,6 @@ class DatabaseManager:
             """, (name, email, password_hash, role))
             
             user_id = cursor.lastrowid
-            if self.db_type == 'sqlite':
-                conn.commit()
             
             # Return user without password
             return {
@@ -203,7 +172,7 @@ class DatabaseManager:
                 "role": role,
                 "created_at": datetime.now().isoformat()
             }
-        except (sqlite3.IntegrityError, pymysql.IntegrityError):
+        except pymysql.IntegrityError:
             raise ValueError("Email already exists")
         finally:
             conn.close()
@@ -275,8 +244,6 @@ class DatabaseManager:
             """, (user_id, robot_type, date, start_time, end_time))
             
             booking_id = cursor.lastrowid
-            if self.db_type == "sqlite":
-                conn.commit()
             
             return {
                 "id": booking_id,
@@ -384,8 +351,6 @@ class DatabaseManager:
         """, (status, booking_id))
         
         updated = cursor.rowcount > 0
-        if self.db_type == "sqlite":
-            conn.commit()
         conn.close()
         
         return updated
@@ -398,8 +363,6 @@ class DatabaseManager:
         cursor.execute(f"DELETE FROM bookings WHERE id = {self._get_placeholder()}", (booking_id,))
         
         deleted = cursor.rowcount > 0
-        if self.db_type == "sqlite":
-            conn.commit()
         conn.close()
         
         return deleted
@@ -448,8 +411,6 @@ class DatabaseManager:
             """, (name, email, message))
             
             message_id = cursor.lastrowid
-            if self.db_type == "sqlite":
-                conn.commit()
             
             return {
                 "id": message_id,
@@ -497,8 +458,6 @@ class DatabaseManager:
         """, (status, message_id))
         
         updated = cursor.rowcount > 0
-        if self.db_type == "sqlite":
-            conn.commit()
         conn.close()
         
         return updated
@@ -511,8 +470,6 @@ class DatabaseManager:
         cursor.execute(f"DELETE FROM messages WHERE id = {self._get_placeholder()}", (message_id,))
         
         deleted = cursor.rowcount > 0
-        if self.db_type == "sqlite":
-            conn.commit()
         conn.close()
         
         return deleted
@@ -530,8 +487,6 @@ class DatabaseManager:
             """, (title, content, priority, created_by))
             
             announcement_id = cursor.lastrowid
-            if self.db_type == "sqlite":
-                conn.commit()
             
             return {
                 "id": announcement_id,
@@ -621,8 +576,6 @@ class DatabaseManager:
         """, (title, content, priority, is_active, announcement_id))
         
         updated = cursor.rowcount > 0
-        if self.db_type == "sqlite":
-            conn.commit()
         conn.close()
         
         return updated
@@ -635,8 +588,6 @@ class DatabaseManager:
         cursor.execute(f"DELETE FROM announcements WHERE id = {self._get_placeholder()}", (announcement_id,))
         
         deleted = cursor.rowcount > 0
-        if self.db_type == "sqlite":
-            conn.commit()
         conn.close()
         
         return deleted
