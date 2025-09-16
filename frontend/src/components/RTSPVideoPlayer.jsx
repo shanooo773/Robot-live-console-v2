@@ -11,21 +11,139 @@ import {
   HStack,
   Select
 } from "@chakra-ui/react";
+import io from 'socket.io-client';
 
-const RTSPVideoPlayer = ({ user, authToken, onError }) => {
+const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) => {
   const videoRef = useRef();
+  const peerConnectionRef = useRef();
+  const socketRef = useRef();
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [streamType, setStreamType] = useState("test"); // test, rtsp, webrtc
+  const [webrtcStatus, setWebrtcStatus] = useState("disconnected"); // disconnected, connecting, connected
   
   // Test streams for different modes
   const testStreams = {
     test: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
     // Future: RTSP stream will be configured here
     rtsp: "rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov",
-    // Future: WebRTC stream configuration
+    // WebRTC will be handled by peer connection
     webrtc: null
+  };
+
+  // WebRTC Configuration
+  const rtcConfig = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  };
+
+  // Initialize WebRTC connection
+  const initWebRTC = async () => {
+    try {
+      setWebrtcStatus("connecting");
+      
+      // Create peer connection
+      const peerConnection = new RTCPeerConnection(rtcConfig);
+      peerConnectionRef.current = peerConnection;
+
+      // Set up video element to receive remote stream
+      peerConnection.ontrack = (event) => {
+        console.log('Received remote stream');
+        if (videoRef.current && event.streams[0]) {
+          videoRef.current.srcObject = event.streams[0];
+          setIsConnected(true);
+          setWebrtcStatus("connected");
+        }
+      };
+
+      // Handle ICE candidates
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate && socketRef.current) {
+          console.log('Sending ICE candidate');
+          socketRef.current.emit('ice-candidate', {
+            to: `robot_${robotType}`,
+            candidate: event.candidate
+          });
+        }
+      };
+
+      // Connect to signaling server
+      const socket = io('ws://localhost:8080', {
+        transports: ['websocket'],
+        auth: {
+          token: authToken
+        }
+      });
+      socketRef.current = socket;
+
+      socket.on('connect', () => {
+        console.log('Connected to signaling server');
+        // Register as viewer
+        socket.emit('register', {
+          userId: user?.id || 'anonymous',
+          userType: 'viewer'
+        });
+        
+        // Join robot room
+        socket.emit('join-room', {
+          roomId: `robot_${robotType}_${user?.id || 'anonymous'}`
+        });
+      });
+
+      socket.on('offer', async (data) => {
+        console.log('Received offer from robot');
+        try {
+          await peerConnection.setRemoteDescription(data.offer);
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          
+          socket.emit('answer', {
+            to: data.from,
+            answer: answer
+          });
+        } catch (err) {
+          console.error('Error handling offer:', err);
+          setError(`Failed to process video offer: ${err.message}`);
+        }
+      });
+
+      socket.on('ice-candidate', async (data) => {
+        console.log('Received ICE candidate');
+        try {
+          await peerConnection.addIceCandidate(data.candidate);
+        } catch (err) {
+          console.error('Error adding ICE candidate:', err);
+        }
+      });
+
+      socket.on('robot-available', (data) => {
+        console.log('Robot available:', data.userId);
+        // Robot is ready to stream
+      });
+
+      socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+        setError(`Failed to connect to signaling server: ${error.message}`);
+        setWebrtcStatus("disconnected");
+      });
+
+      // Create offer to start connection
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      
+      socket.emit('offer', {
+        to: `robot_${robotType}`,
+        offer: offer
+      });
+
+    } catch (err) {
+      console.error('WebRTC initialization error:', err);
+      setError(`WebRTC connection failed: ${err.message}`);
+      setWebrtcStatus("disconnected");
+    }
   };
 
   const handleConnect = async () => {
@@ -44,8 +162,8 @@ const RTSPVideoPlayer = ({ user, authToken, onError }) => {
         // For now, show placeholder
         setError("RTSP streaming is not yet implemented. This will connect to the Raspberry Pi robot camera.");
       } else if (streamType === "webrtc") {
-        // TODO: Implement WebRTC connection
-        setError("WebRTC streaming is not yet implemented. This will provide real-time robot camera feed.");
+        // Initialize WebRTC connection
+        await initWebRTC();
       }
     } catch (err) {
       setError(`Failed to connect to video stream: ${err.message}`);
@@ -56,12 +174,33 @@ const RTSPVideoPlayer = ({ user, authToken, onError }) => {
   };
 
   const handleDisconnect = () => {
+    // Clean up WebRTC connection
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+    
     if (videoRef.current) {
       videoRef.current.src = "";
+      videoRef.current.srcObject = null;
     }
+    
     setIsConnected(false);
+    setWebrtcStatus("disconnected");
     setError(null);
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      handleDisconnect();
+    };
+  }, []);
 
   const handleVideoError = (e) => {
     console.error("Video error:", e);
@@ -119,13 +258,22 @@ const RTSPVideoPlayer = ({ user, authToken, onError }) => {
               LIVE
             </Badge>
           )}
+          
+          {streamType === "webrtc" && webrtcStatus !== "disconnected" && (
+            <Badge 
+              colorScheme={webrtcStatus === "connected" ? "green" : "yellow"} 
+              fontSize="xs"
+            >
+              WebRTC: {webrtcStatus.toUpperCase()}
+            </Badge>
+          )}
         </HStack>
 
         {/* Stream Info */}
         <Text fontSize="xs" color="gray.400" textAlign="center">
           {streamType === "test" && "Test video stream for development"}
-          {streamType === "rtsp" && "🤖 Future: Raspberry Pi robot camera (RTSP)"}
-          {streamType === "webrtc" && "🚀 Future: Real-time robot video feed (WebRTC)"}
+          {streamType === "rtsp" && "🤖 Raspberry Pi robot camera (RTSP) - Not yet implemented"}
+          {streamType === "webrtc" && `🚀 Real-time robot video feed (WebRTC) - Robot: ${robotType}`}
         </Text>
       </VStack>
 
