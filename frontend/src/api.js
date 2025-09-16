@@ -232,3 +232,41 @@ export const executeRobotCode = async (sourceCode, robotType) => {
     };
   }
 };
+
+// WebRTC API - for real-time video streaming
+export const getWebRTCConfig = async (token) => {
+  const response = await API.get("/webrtc/config", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const sendWebRTCOffer = async (robotType, sdp, token) => {
+  const response = await API.post("/webrtc/offer", {
+    robot_type: robotType,
+    sdp: sdp,
+    type: "offer"
+  }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const getWebRTCAnswer = async (robotType, token) => {
+  const response = await API.get(`/webrtc/answer?robot_type=${robotType}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const sendICECandidate = async (robotType, candidate, token) => {
+  const response = await API.post("/webrtc/ice-candidate", {
+    robot_type: robotType,
+    candidate: candidate.candidate,
+    sdpMLineIndex: candidate.sdpMLineIndex,
+    sdpMid: candidate.sdpMid
+  }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};

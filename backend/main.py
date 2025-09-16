@@ -807,6 +807,32 @@ async def handle_webrtc_answer(answer: WebRTCAnswer, current_user: dict = Depend
         "timestamp": time.time()
     }
 
+@app.get("/webrtc/answer")
+async def get_webrtc_answer(robot_type: str, current_user: dict = Depends(get_current_user)):
+    """Get WebRTC SDP answer from robot/server for a specific robot type"""
+    # Validate user has active booking session
+    booking_service = service_manager.get_booking_service()
+    user_id = int(current_user["sub"])
+    
+    # Check if user has active session for this robot type
+    has_active_session = booking_service.has_active_session(user_id, robot_type)
+    
+    if not has_active_session:
+        raise HTTPException(
+            status_code=403,
+            detail=f"No active booking session for {robot_type}. Video access requires an active session during your booking time."
+        )
+    
+    # TODO: Retrieve answer from WebRTC signaling server or robot
+    # For now, return a mock response indicating no answer is available yet
+    return {
+        "success": False,
+        "message": "No SDP answer available yet. The robot may not be online or hasn't responded to the offer.",
+        "robot_type": robot_type,
+        "answer": None,
+        "timestamp": time.time()
+    }
+
 @app.post("/webrtc/ice-candidate")
 async def handle_ice_candidate(candidate: ICECandidate, current_user: dict = Depends(get_current_user)):
     """Handle ICE candidate from client or robot"""

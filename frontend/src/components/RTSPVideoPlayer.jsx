@@ -12,6 +12,7 @@ import {
   Select
 } from "@chakra-ui/react";
 import io from 'socket.io-client';
+import { getWebRTCConfig, sendWebRTCOffer, sendICECandidate } from '../api';
 
 const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) => {
   const videoRef = useRef();
@@ -32,24 +33,35 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
     webrtc: null
   };
 
-  // WebRTC Configuration
-  const rtcConfig = {
+  // WebRTC Configuration - will be fetched from backend
+  const [rtcConfig, setRtcConfig] = useState({
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' }
     ]
-  };
+  });
 
-  // Initialize WebRTC connection
+  // Initialize WebRTC connection with proper backend integration
   const initWebRTC = async () => {
     try {
       setWebrtcStatus("connecting");
       
-      // Create peer connection
+      // Step 1: Fetch WebRTC configuration from backend
+      try {
+        const config = await getWebRTCConfig(authToken);
+        if (config.ice_servers) {
+          setRtcConfig({ iceServers: config.ice_servers });
+          console.log('Fetched WebRTC config from backend:', config);
+        }
+      } catch (configError) {
+        console.warn('Failed to fetch WebRTC config from backend, using defaults:', configError);
+      }
+      
+      // Step 2: Create peer connection with fetched configuration
       const peerConnection = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = peerConnection;
 
-      // Set up video element to receive remote stream
+      // Step 3: Set up video element to receive remote stream
       peerConnection.ontrack = (event) => {
         console.log('Received remote stream');
         if (videoRef.current && event.streams[0]) {
@@ -59,18 +71,26 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         }
       };
 
-      // Handle ICE candidates
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate && socketRef.current) {
-          console.log('Sending ICE candidate');
-          socketRef.current.emit('ice-candidate', {
-            to: `robot_${robotType}`,
-            candidate: event.candidate
-          });
+      // Step 4: Handle ICE candidates - send through backend API
+      peerConnection.onicecandidate = async (event) => {
+        if (event.candidate && authToken) {
+          console.log('Sending ICE candidate through backend API');
+          try {
+            await sendICECandidate(robotType, event.candidate, authToken);
+          } catch (iceError) {
+            console.error('Failed to send ICE candidate through backend:', iceError);
+            // Fallback to direct signaling server for development
+            if (socketRef.current) {
+              socketRef.current.emit('ice-candidate', {
+                to: `robot_${robotType}`,
+                candidate: event.candidate
+              });
+            }
+          }
         }
       };
 
-      // Connect to signaling server
+      // Step 5: Connect to signaling server (with auth token)
       const socket = io('ws://localhost:8080', {
         transports: ['websocket'],
         auth: {
@@ -130,14 +150,29 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         setWebrtcStatus("disconnected");
       });
 
-      // Create offer to start connection
-      const offer = await peerConnection.createOffer();
+      // Step 6: Create offer and send through backend API (with booking validation)
+      const offer = await peerConnection.createOffer({
+        offerToReceiveVideo: true,  // Ensure we request video from robot
+        offerToReceiveAudio: false  // We only need video for robot cameras
+      });
       await peerConnection.setLocalDescription(offer);
       
-      socket.emit('offer', {
-        to: `robot_${robotType}`,
-        offer: offer
-      });
+      try {
+        console.log('Sending SDP offer through backend API');
+        const offerResponse = await sendWebRTCOffer(robotType, offer.sdp, authToken);
+        console.log('Offer sent successfully:', offerResponse);
+        
+        // If backend validation successful, also send through signaling server for now
+        socket.emit('offer', {
+          to: `robot_${robotType}`,
+          offer: offer
+        });
+      } catch (offerError) {
+        console.error('Failed to send offer through backend:', offerError);
+        setError(`WebRTC offer failed: ${offerError.message || 'Booking validation failed'}`);
+        setWebrtcStatus("disconnected");
+        return;
+      }
 
     } catch (err) {
       console.error('WebRTC initialization error:', err);
@@ -330,6 +365,7 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
             height="100%"
             controls
             autoPlay
+            playsInline
             muted
             style={{ 
               objectFit: "contain",
