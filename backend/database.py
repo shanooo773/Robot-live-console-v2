@@ -51,7 +51,7 @@ class DatabaseManager:
             auto_increment = "AUTO_INCREMENT"
             text_type = "TEXT"
             timestamp_default = "DEFAULT CURRENT_TIMESTAMP"
-            primary_key = "PRIMARY KEY"
+            primary_key = "PRIMARY KEY AUTO_INCREMENT"
         else:
             auto_increment = "AUTOINCREMENT"
             text_type = "TEXT"
@@ -161,9 +161,7 @@ class DatabaseManager:
                 VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
             """, ("Admin User", "admin@robot-console.com", password_hash, "admin"))
             if self.db_type == 'sqlite':
-                if self.db_type == "sqlite":
-
-                    conn.commit()
+                conn.commit()
             print(f"Created default admin user: admin@robot-console.com / {admin_password}")
     
     def _hash_password(self, password: str) -> str:
@@ -298,9 +296,9 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT id, user_id, robot_type, date, start_time, end_time, status, created_at
-            FROM bookings WHERE user_id = ? ORDER BY date DESC, start_time DESC
+            FROM bookings WHERE user_id = {self._get_placeholder()} ORDER BY date DESC, start_time DESC
         """, (user_id,))
         
         bookings = cursor.fetchall()
@@ -381,13 +379,12 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-            UPDATE bookings SET status = ? WHERE id = ?
+        cursor.execute(f"""
+            UPDATE bookings SET status = {self._get_placeholder()} WHERE id = {self._get_placeholder()}
         """, (status, booking_id))
         
         updated = cursor.rowcount > 0
         if self.db_type == "sqlite":
-
             conn.commit()
         conn.close()
         
@@ -398,11 +395,10 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("DELETE FROM bookings WHERE id = ?", (booking_id,))
+        cursor.execute(f"DELETE FROM bookings WHERE id = {self._get_placeholder()}", (booking_id,))
         
         deleted = cursor.rowcount > 0
         if self.db_type == "sqlite":
-
             conn.commit()
         conn.close()
         
@@ -413,12 +409,12 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT b.id, b.user_id, u.name, b.robot_type, b.date, 
                    b.start_time, b.end_time, b.status
             FROM bookings b
             JOIN users u ON b.user_id = u.id
-            WHERE b.date >= ? AND b.date <= ? AND b.status = 'active'
+            WHERE b.date >= {self._get_placeholder()} AND b.date <= {self._get_placeholder()} AND b.status = 'active'
             ORDER BY b.date, b.start_time
         """, (start_date, end_date))
         
@@ -446,14 +442,13 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 INSERT INTO messages (name, email, message)
-                VALUES (?, ?, ?)
+                VALUES ({self._get_placeholder()}, {self._get_placeholder()}, {self._get_placeholder()})
             """, (name, email, message))
             
             message_id = cursor.lastrowid
             if self.db_type == "sqlite":
-
                 conn.commit()
             
             return {
@@ -497,13 +492,12 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-            UPDATE messages SET status = ? WHERE id = ?
+        cursor.execute(f"""
+            UPDATE messages SET status = {self._get_placeholder()} WHERE id = {self._get_placeholder()}
         """, (status, message_id))
         
         updated = cursor.rowcount > 0
         if self.db_type == "sqlite":
-
             conn.commit()
         conn.close()
         
@@ -514,11 +508,10 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+        cursor.execute(f"DELETE FROM messages WHERE id = {self._get_placeholder()}", (message_id,))
         
         deleted = cursor.rowcount > 0
         if self.db_type == "sqlite":
-
             conn.commit()
         conn.close()
         
@@ -531,14 +524,13 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 INSERT INTO announcements (title, content, priority, created_by)
-                VALUES (?, ?, ?, ?)
+                VALUES ({self._get_placeholder()}, {self._get_placeholder()}, {self._get_placeholder()}, {self._get_placeholder()})
             """, (title, content, priority, created_by))
             
             announcement_id = cursor.lastrowid
             if self.db_type == "sqlite":
-
                 conn.commit()
             
             return {
@@ -622,15 +614,14 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             UPDATE announcements 
-            SET title = ?, content = ?, priority = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            SET title = {self._get_placeholder()}, content = {self._get_placeholder()}, priority = {self._get_placeholder()}, is_active = {self._get_placeholder()}, updated_at = CURRENT_TIMESTAMP
+            WHERE id = {self._get_placeholder()}
         """, (title, content, priority, is_active, announcement_id))
         
         updated = cursor.rowcount > 0
         if self.db_type == "sqlite":
-
             conn.commit()
         conn.close()
         
@@ -641,11 +632,10 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("DELETE FROM announcements WHERE id = ?", (announcement_id,))
+        cursor.execute(f"DELETE FROM announcements WHERE id = {self._get_placeholder()}", (announcement_id,))
         
         deleted = cursor.rowcount > 0
         if self.db_type == "sqlite":
-
             conn.commit()
         conn.close()
         
