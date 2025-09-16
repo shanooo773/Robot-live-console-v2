@@ -6,11 +6,27 @@ This directory contains individual project folders for each user of the Robot Co
 
 ```
 projects/
+├── -1/              # Demo user project folder (demo@user.com)
+├── -2/              # Demo admin project folder (admin@demo.com)
 ├── user_1/          # Project folder for user ID 1
 ├── user_2/          # Project folder for user ID 2
 ├── user_123/        # Project folder for user ID 123
 └── ...
 ```
+
+## Demo Users
+
+The system includes two demo users with pre-configured workspaces:
+
+- **Demo User** (ID: -1)
+  - Email: demo@user.com
+  - Password: password
+  - Workspace: `projects/-1/`
+
+- **Demo Admin** (ID: -2)  
+  - Email: admin@demo.com
+  - Password: password
+  - Workspace: `projects/-2/`
 
 ## Features
 

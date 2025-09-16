@@ -1,0 +1,79 @@
+services:
+  # WebRTC Signaling Service - Simple Socket.IO based signaling
+  webrtc-signaling:
+    image: node:18-slim
+    container_name: webrtc-signaling
+    working_dir: /app
+    command: >
+      sh -c "
+      echo '{\"name\":\"webrtc-signaling\",\"dependencies\":{\"socket.io\":\"^4.7.2\",\"express\":\"^4.18.2\",\"cors\":\"^2.8.5\"}}' > package.json &&
+      npm install &&
+      node -e \"
+      const express = require('express');
+      const http = require('http');
+      const socketIo = require('socket.io');
+      const cors = require('cors');
+      const app = express();
+      const server = http.createServer(app);
+      const PORT = 8080;
+      const CORS_ORIGINS = ['http://localhost:3000', 'http://localhost:5173'];
+      console.log('🚀 Starting WebRTC Signaling Server on port', PORT);
+      app.use(cors({ origin: CORS_ORIGINS, credentials: true }));
+      app.get('/health', (req, res) => res.json({ status: 'healthy', service: 'webrtc-signaling' }));
+      app.get('/config', (req, res) => res.json({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }));
+      const io = socketIo(server, { cors: { origin: CORS_ORIGINS, credentials: true } });
+      const users = new Map();
+      io.on('connection', (socket) => {
+        console.log('User connected:', socket.id);
+        socket.on('register', (data) => {
+          users.set(socket.id, data);
+          socket.emit('registered', { success: true });
+        });
+        socket.on('offer', (data) => socket.broadcast.emit('offer', data));
+        socket.on('answer', (data) => socket.broadcast.emit('answer', data));
+        socket.on('ice-candidate', (data) => socket.broadcast.emit('ice-candidate', data));
+        socket.on('disconnect', () => users.delete(socket.id));
+      });
+      server.listen(PORT, '0.0.0.0', () => console.log('✅ WebRTC Signaling Server running'));
+      \"
+      "
+    ports:
+      - "8080:8080"   # WebRTC signaling server
+    environment:
+      - NODE_ENV=${ENVIRONMENT:-development}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+    networks:
+      - robot-console-network
+    restart: unless-stopped
+
+  # Eclipse Theia IDE Base Service (for image building only)
+  # Individual user containers are managed dynamically by the backend
+  theia-base:
+    build:
+      context: ./theia
+      dockerfile: Dockerfile
+    image: robot-console-theia:latest
+    container_name: theia-base
+    # This service is only used for building the base image
+    # It doesn't run continuously - user containers are managed by backend API
+    profiles:
+      - build-only
+    networks:
+      - robot-console-network
+
+networks:
+  robot-console-network:
+    driver: bridge
+    name: robot-console-network
+    external: true
+
+volumes:
+  # Persistent storage for user project directories
+  # Projects are stored as bind mounts from ./projects to enable
+  # direct file access and persistence across container restarts
+  projects_data:
+    driver: local
+    driver_opts:
+      type: bind
+      o: bind
+      device: ./projects
