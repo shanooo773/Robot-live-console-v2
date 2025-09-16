@@ -1,7 +1,17 @@
 FROM node:20-alpine
 
 # Install necessary dependencies
-RUN apk add --no-cache git python3 py3-pip g++ make curl bash openssh-client
+RUN apk update && \
+    apk add --no-cache \
+    git \
+    python3 \
+    py3-pip \
+    g++ \
+    make \
+    curl \
+    bash \
+    openssh-client \
+    && rm -rf /var/cache/apk/*
 
 # Create theia user
 RUN addgroup -g 1001 theia && \
@@ -43,7 +53,6 @@ RUN echo '{\
     "vscode-builtin-extensions-pack": "https://github.com/theia-ide/vscode-builtin-extensions/releases/download/v1.64.0/vscode-builtin-extensions-pack-v1.64.0.vsix",\
     "ms-python.python": "https://ms-python.gallery.vsassets.io/_apis/public/gallery/publisher/ms-python/extension/python/latest/assetbyname/Microsoft.VisualStudio.Code.Extension.vsix",\
     "ms-vscode.cpptools": "https://open-vsx.org/api/ms-vscode/cpptools/latest/file/ms-vscode.cpptools-latest.vsix"\
-
   }\
 }' > package.json
 

@@ -1,0 +1,193 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: robot-console-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-robot_console}
+      MYSQL_USER: ${MYSQL_USER:-robot_console}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-1122root}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./robot_console.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - robot-console-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      timeout: 20s
+      retries: 10
+      interval: 30s
+      start_period: 60s
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: robot-console-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_TYPE=mysql
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${MYSQL_USER:-robot_console}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-1122root}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-robot_console}
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      - PRODUCTION_CORS_ORIGINS=${PRODUCTION_CORS_ORIGINS:-http://localhost}
+      - VIDEO_STORAGE_PATH=/app/videos
+      - MAX_VIDEO_SIZE_MB=${MAX_VIDEO_SIZE_MB:-100}
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_logs:/app/logs
+      - backend_videos:/app/videos
+      - backend_temp:/app/temp
+      - /var/run/docker.sock:/var/run/docker.sock  # For Docker container management
+    networks:
+      - robot-console-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: robot-console-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - robot-console-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Eclipse Theia IDE Base Image
+  theia-base:
+    build:
+      context: ./theia
+      dockerfile: Dockerfile
+    image: robot-console-theia:latest
+    container_name: robot-console-theia-base
+    restart: "no"  # This is just a base image, not meant to run
+    profiles:
+      - base
+    networks:
+      - robot-console-network
+
+  # WebRTC/RTSP Video Streaming Service
+  video-server:
+    image: kurento/kurento-media-server:latest
+    container_name: robot-console-video-server
+    restart: unless-stopped
+    ports:
+      - "8888:8888"  # WebSocket port for Kurento
+      - "5000-5050:5000-5050/udp"  # RTP port range
+    environment:
+      - GST_DEBUG=2
+    networks:
+      - robot-console-network
+    volumes:
+      - video_recordings:/tmp/kurento
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/kurento"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Nginx Reverse Proxy (Optional - for production with SSL)
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: robot-console-nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "8080:80"  # Alternative HTTP port to avoid conflicts
+    volumes:
+      - ./nginx-proxy.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro  # SSL certificates (if available)
+    networks:
+      - robot-console-network
+    depends_on:
+      - frontend
+      - backend
+    profiles:
+      - production  # Only start in production profile
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis (for session management and caching)
+  redis:
+    image: redis:7-alpine
+    container_name: robot-console-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - robot-console-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - production  # Optional service for enhanced caching
+
+networks:
+  robot-console-network:
+    driver: bridge
+    name: robot-console-network
+
+volumes:
+  mysql_data:
+    driver: local
+    name: robot-console-mysql-data
+  backend_logs:
+    driver: local
+    name: robot-console-backend-logs
+  backend_videos:
+    driver: local
+    name: robot-console-backend-videos
+  backend_temp:
+    driver: local
+    name: robot-console-backend-temp
+  theia_data:
+    driver: local
+    name: robot-console-theia-data
+  video_recordings:
+    driver: local
+    name: robot-console-video-recordings
+  redis_data:
+    driver: local
+    name: robot-console-redis-data

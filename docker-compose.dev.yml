@@ -1,0 +1,82 @@
+version: '3.8'
+
+# Development override for docker-compose
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+services:
+  # MySQL with development settings
+  mysql:
+    ports:
+      - "3306:3306"  # Expose for direct access
+    environment:
+      MYSQL_ROOT_PASSWORD: devroot
+      MYSQL_PASSWORD: devpass
+    volumes:
+      - ./backend/robot_console.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  # Backend with development settings
+  backend:
+    build:
+      target: development  # If multi-stage build is used
+    environment:
+      - ENVIRONMENT=development
+      - SECRET_KEY=dev-secret-key-not-for-production
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost
+    volumes:
+      - ./backend:/app  # Mount source for hot reloading
+      - /app/__pycache__  # Exclude cache
+    ports:
+      - "8000:8000"  # Direct access for debugging
+
+  # Frontend with development settings
+  frontend:
+    build:
+      target: development  # If multi-stage build is used
+    command: npm run dev
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Preserve node_modules
+    ports:
+      - "5173:5173"  # Vite dev server
+
+  # Video server for development
+  video-server:
+    ports:
+      - "8888:8888"  # Direct access
+
+  # Development tools
+  adminer:
+    image: adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+    networks:
+      - robot-console-network
+    profiles:
+      - development
+
+volumes:
+  # Use local directories for development
+  mysql_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/mysql
+  backend_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/logs
+  backend_videos:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/videos

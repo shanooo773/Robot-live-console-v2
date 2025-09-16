@@ -1,0 +1,108 @@
+version: '3.8'
+
+# Production override for docker-compose
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  # MySQL with production settings
+  mysql:
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command: 
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO
+      - --max-connections=1000
+      - --innodb-buffer-pool-size=1G
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-logs:/var/log/mysql
+    # Don't expose port in production (internal access only)
+    ports: []
+
+  # Backend with production settings
+  backend:
+    restart: always
+    environment:
+      - ENVIRONMENT=production
+      - SECRET_KEY=${SECRET_KEY}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    # Don't expose port in production (behind nginx)
+    ports: []
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Frontend with production settings
+  frontend:
+    restart: always
+    # Don't expose port in production (behind nginx)
+    ports: []
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx reverse proxy
+  nginx-proxy:
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Video server with production settings
+  video-server:
+    restart: always
+    # Don't expose port in production (behind nginx)
+    ports: []
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis for session management and caching
+  redis:
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Log aggregation (optional)
+  logrotate:
+    image: linkyard/docker-logrotate
+    restart: unless-stopped
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - LOGROTATE_CONF=docker-containers
+    profiles:
+      - production
+
+  # Monitoring (optional)
+  watchtower:
+    image: containrrr/watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_SCHEDULE=0 0 4 * * *  # Check daily at 4 AM
+    profiles:
+      - monitoring
+
+volumes:
+  mysql_data:
+    driver: local
+  mysql_logs:
+    driver: local
