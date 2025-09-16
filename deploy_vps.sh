@@ -155,14 +155,36 @@ setup_nginx() {
     
     # Create nginx configuration
     cat > /tmp/robot-console.nginx.conf << 'EOF'
+# HTTP server - redirect to HTTPS in production
 server {
     listen 80;
     server_name _;  # Replace with your domain
+    
+    # Allow Let's Encrypt challenges
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+    
+    # Redirect all other traffic to HTTPS (uncomment for production)
+    # return 301 https://$server_name$request_uri;
+    
+    # Temporary HTTP access for development/testing
+    # Security headers
+    add_header X-Content-Type-Options nosniff;
+    add_header X-Frame-Options DENY;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Referrer-Policy strict-origin-when-cross-origin;
     
     # Serve React frontend
     location / {
         root /opt/robot-console/frontend/dist;
         try_files $uri $uri/ /index.html;
+        
+        # Cache static assets
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
     }
     
     # API proxy to backend
@@ -177,14 +199,43 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 86400;
     }
     
     # Health check endpoint
     location /health {
         proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
+        access_log off;
     }
 }
+
+# HTTPS server configuration (for production with SSL certificate)
+# server {
+#     listen 443 ssl http2;
+#     server_name your-domain.com;  # Replace with your actual domain
+#     
+#     # SSL certificate paths (update with your certificate paths)
+#     ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+#     
+#     # SSL configuration
+#     ssl_protocols TLSv1.2 TLSv1.3;
+#     ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
+#     ssl_prefer_server_ciphers off;
+#     ssl_session_cache shared:SSL:10m;
+#     
+#     # Security headers
+#     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload";
+#     add_header X-Content-Type-Options nosniff;
+#     add_header X-Frame-Options DENY;
+#     add_header X-XSS-Protection "1; mode=block";
+#     add_header Referrer-Policy strict-origin-when-cross-origin;
+#     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; frame-src 'self';";
+#     
+#     # Same location blocks as HTTP server above
+#     # ... (copy location blocks from HTTP server)
+# }
 EOF
     
     # Move configuration to nginx sites-available
