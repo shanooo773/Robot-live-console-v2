@@ -12,7 +12,7 @@ import {
   Select
 } from "@chakra-ui/react";
 import io from 'socket.io-client';
-import { getWebRTCConfig, sendWebRTCOffer, sendICECandidate } from '../api';
+import { getWebRTCConfig, sendWebRTCOffer, sendICECandidate, getServerICECandidates } from '../api';
 
 const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) => {
   const videoRef = useRef();
@@ -23,6 +23,7 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
   const [error, setError] = useState(null);
   const [streamType, setStreamType] = useState("test"); // test, rtsp, webrtc
   const [webrtcStatus, setWebrtcStatus] = useState("disconnected"); // disconnected, connecting, connected
+  const [peerId, setPeerId] = useState(null); // Store peer ID for ICE candidate polling
   
   // Test streams for different modes
   const testStreams = {
@@ -40,6 +41,42 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
       { urls: 'stun:stun1.l.google.com:19302' }
     ]
   });
+
+  // ICE candidate polling function
+  const startICECandidatePolling = (peer_id) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const candidatesResponse = await getServerICECandidates(peer_id, authToken);
+        
+        if (candidatesResponse.candidates && candidatesResponse.candidates.length > 0) {
+          console.log(`Received ${candidatesResponse.candidates.length} server ICE candidates`);
+          
+          for (const candidateData of candidatesResponse.candidates) {
+            if (peerConnectionRef.current && candidateData.candidate) {
+              const iceCandidate = new RTCIceCandidate({
+                candidate: candidateData.candidate,
+                sdpMLineIndex: candidateData.sdpMLineIndex,
+                sdpMid: candidateData.sdpMid
+              });
+              
+              await peerConnectionRef.current.addIceCandidate(iceCandidate);
+              console.log('Added server ICE candidate:', candidateData.candidate.substring(0, 50) + '...');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error polling for ICE candidates:', error);
+        // Stop polling on error (peer might be disconnected)
+        clearInterval(pollInterval);
+      }
+    }, 2000); // Poll every 2 seconds
+    
+    // Stop polling after 30 seconds (ICE gathering should be complete)
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      console.log('Stopped ICE candidate polling');
+    }, 30000);
+  };
 
   // Initialize WebRTC connection with proper backend integration
   const initWebRTC = async () => {
@@ -73,10 +110,10 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
 
       // Step 4: Handle ICE candidates - send through backend API
       peerConnection.onicecandidate = async (event) => {
-        if (event.candidate && authToken) {
+        if (event.candidate && authToken && peerId) {
           console.log('Sending ICE candidate through backend API');
           try {
-            await sendICECandidate(robotType, event.candidate, authToken);
+            await sendICECandidate(peerId, event.candidate, authToken);
           } catch (iceError) {
             console.error('Failed to send ICE candidate through backend:', iceError);
             // Fallback to direct signaling server for development
@@ -162,7 +199,24 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         const offerResponse = await sendWebRTCOffer(robotType, offer.sdp, authToken);
         console.log('Offer sent successfully:', offerResponse);
         
-        // If backend validation successful, also send through signaling server for now
+        // Store peer ID for ICE candidate polling
+        if (offerResponse.peer_id) {
+          setPeerId(offerResponse.peer_id);
+          
+          // Apply the answer from backend
+          if (offerResponse.sdp && offerResponse.type) {
+            await peerConnection.setRemoteDescription({
+              sdp: offerResponse.sdp,
+              type: offerResponse.type
+            });
+            console.log('Applied remote description from backend');
+            
+            // Start polling for server ICE candidates
+            startICECandidatePolling(offerResponse.peer_id);
+          }
+        }
+        
+        // Still send through signaling server for backward compatibility/fallback
         socket.emit('offer', {
           to: `robot_${robotType}`,
           offer: offer
@@ -228,6 +282,7 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
     setIsConnected(false);
     setWebrtcStatus("disconnected");
     setError(null);
+    setPeerId(null); // Reset peer ID
   };
 
   // Cleanup on unmount
