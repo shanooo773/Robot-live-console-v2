@@ -63,7 +63,11 @@ import {
   getAllAnnouncements,
   createAnnouncement,
   updateAnnouncement,
-  deleteAnnouncement
+  deleteAnnouncement,
+  getAllRobots,
+  createRobot,
+  updateRobot,
+  deleteRobot
 } from "../api";
 import { ChevronDownIcon, DeleteIcon, EditIcon, AddIcon, ViewIcon } from "@chakra-ui/icons";
 
@@ -73,19 +77,28 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const [bookings, setBookings] = useState([]);
   const [messages, setMessages] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [robots, setRobots] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+  const [selectedRobot, setSelectedRobot] = useState(null);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
+  const [isRobotModalOpen, setIsRobotModalOpen] = useState(false);
   const [announcementForm, setAnnouncementForm] = useState({
     title: "",
     content: "",
     priority: "normal",
     is_active: true
   });
+  const [robotForm, setRobotForm] = useState({
+    name: "",
+    type: "",
+    rtsp_url: ""
+  });
   const [isEditingAnnouncement, setIsEditingAnnouncement] = useState(false);
+  const [isEditingRobot, setIsEditingRobot] = useState(false);
   const toast = useToast();
   
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -108,12 +121,13 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     setHasError(false);
     
     try {
-      const [statsData, usersData, bookingsData, messagesData, announcementsData] = await Promise.all([
+      const [statsData, usersData, bookingsData, messagesData, announcementsData, robotsData] = await Promise.all([
         getAdminStats(authToken),
         getAllUsers(authToken),
         getAllBookings(authToken),
         getAllMessages(authToken),
-        getAllAnnouncements(authToken)
+        getAllAnnouncements(authToken),
+        getAllRobots(authToken)
       ]);
       
       setStats(statsData);
@@ -121,6 +135,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       setBookings(bookingsData);
       setMessages(messagesData);
       setAnnouncements(announcementsData);
+      setRobots(robotsData);
       setHasError(false);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -327,6 +342,100 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     }
   };
 
+  // Robot CRUD Functions
+  const handleCreateRobot = async () => {
+    try {
+      await createRobot(robotForm, authToken);
+      await loadDashboardData();
+      setIsRobotModalOpen(false);
+      setRobotForm({ name: "", type: "", rtsp_url: "" });
+      setIsEditingRobot(false);
+      toast({
+        title: "Robot created",
+        description: "Robot has been successfully created",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Error creating robot:', error);
+      toast({
+        title: "Create failed",
+        description: "Failed to create robot",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const handleUpdateRobot = async () => {
+    try {
+      await updateRobot(selectedRobot.id, robotForm, authToken);
+      await loadDashboardData();
+      setIsRobotModalOpen(false);
+      setRobotForm({ name: "", type: "", rtsp_url: "" });
+      setSelectedRobot(null);
+      setIsEditingRobot(false);
+      toast({
+        title: "Robot updated",
+        description: "Robot has been successfully updated",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Error updating robot:', error);
+      toast({
+        title: "Update failed",
+        description: "Failed to update robot",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const handleDeleteRobot = async (robotId) => {
+    try {
+      await deleteRobot(robotId, authToken);
+      await loadDashboardData();
+      toast({
+        title: "Robot deleted",
+        description: "Robot has been successfully deleted",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Error deleting robot:', error);
+      toast({
+        title: "Delete failed",
+        description: "Failed to delete robot",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const openRobotModal = (robot = null) => {
+    if (robot) {
+      setSelectedRobot(robot);
+      setRobotForm({
+        name: robot.name,
+        type: robot.type,
+        rtsp_url: robot.rtsp_url || ""
+      });
+      setIsEditingRobot(true);
+    } else {
+      setSelectedRobot(null);
+      setRobotForm({ name: "", type: "", rtsp_url: "" });
+      setIsEditingRobot(false);
+    }
+    setIsRobotModalOpen(true);
+  };
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -457,6 +566,16 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                     <StatLabel color="teal.100">Announcements</StatLabel>
                     <StatNumber color="white" fontSize="3xl">{stats.total_announcements || 0}</StatNumber>
                     <StatHelpText color="teal.200">{stats.active_announcements || 0} active</StatHelpText>
+                  </Stat>
+                </CardBody>
+              </Card>
+
+              <Card bg="pink.900" border="1px solid" borderColor="pink.600">
+                <CardBody>
+                  <Stat>
+                    <StatLabel color="pink.100">Robots</StatLabel>
+                    <StatNumber color="white" fontSize="3xl">{stats.total_robots || 0}</StatNumber>
+                    <StatHelpText color="pink.200">In registry</StatHelpText>
                   </Stat>
                 </CardBody>
               </Card>
@@ -818,6 +937,94 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             </TableContainer>
           </CardBody>
         </Card>
+
+        {/* Robot Registry */}
+        <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
+          <CardHeader>
+            <HStack justify="space-between">
+              <Text fontSize="lg" fontWeight="bold" color="white">
+                Robot Registry
+              </Text>
+              <Button
+                size="sm"
+                colorScheme="green"
+                leftIcon={<AddIcon />}
+                onClick={() => openRobotModal()}
+              >
+                Add Robot
+              </Button>
+            </HStack>
+          </CardHeader>
+          <CardBody>
+            <TableContainer>
+              <Table variant="simple" size="sm">
+                <Thead>
+                  <Tr>
+                    <Th color="gray.300">Name</Th>
+                    <Th color="gray.300">Type</Th>
+                    <Th color="gray.300">RTSP URL</Th>
+                    <Th color="gray.300">Created</Th>
+                    <Th color="gray.300">Actions</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {isLoading ? (
+                    <Tr>
+                      <Td colSpan={5} textAlign="center" color="gray.400" py={8}>
+                        Loading robots...
+                      </Td>
+                    </Tr>
+                  ) : hasError ? (
+                    <Tr>
+                      <Td colSpan={5} textAlign="center" color="red.400" py={8}>
+                        ❌ Failed to load robots data
+                      </Td>
+                    </Tr>
+                  ) : robots.length > 0 ? (
+                    robots.map((robot) => (
+                      <Tr key={robot.id}>
+                        <Td color="white">{robot.name}</Td>
+                        <Td>
+                          <Badge colorScheme="purple">
+                            {robot.type}
+                          </Badge>
+                        </Td>
+                        <Td color="gray.300" maxW="200px" overflow="hidden" textOverflow="ellipsis">
+                          {robot.rtsp_url || 'Not configured'}
+                        </Td>
+                        <Td color="gray.300">{formatDate(robot.created_at)}</Td>
+                        <Td>
+                          <HStack spacing={2}>
+                            <IconButton
+                              size="xs"
+                              colorScheme="blue"
+                              icon={<EditIcon />}
+                              onClick={() => openRobotModal(robot)}
+                              aria-label="Edit robot"
+                            />
+                            <IconButton
+                              size="xs"
+                              colorScheme="red"
+                              icon={<DeleteIcon />}
+                              onClick={() => handleDeleteRobot(robot.id)}
+                              aria-label="Delete robot"
+                            />
+                          </HStack>
+                        </Td>
+                      </Tr>
+                    ))
+                  ) : (
+                    <Tr>
+                      <Td colSpan={5} textAlign="center" color="gray.400" py={8}>
+                        No robots found
+                      </Td>
+                    </Tr>
+                  )}
+                </Tbody>
+              </Table>
+            </TableContainer>
+          </CardBody>
+        </Card>
       </VStack>
 
       {/* Delete Confirmation Dialog */}
@@ -957,6 +1164,81 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             </Button>
             <Button colorScheme="blue" onClick={handleAnnouncementSubmit}>
               {isEditingAnnouncement ? 'Update' : 'Create'}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Robot Modal */}
+      <Modal isOpen={isRobotModalOpen} onClose={() => setIsRobotModalOpen(false)}>
+        <ModalOverlay />
+        <ModalContent bg="gray.800" border="1px solid" borderColor="gray.600">
+          <ModalHeader color="white">
+            {isEditingRobot ? 'Edit Robot' : 'Add New Robot'}
+          </ModalHeader>
+          <ModalCloseButton color="white" />
+          <ModalBody>
+            <VStack spacing={4}>
+              <FormControl isRequired>
+                <FormLabel color="gray.200">Robot Name</FormLabel>
+                <Input
+                  placeholder="Enter robot name"
+                  value={robotForm.name}
+                  onChange={(e) => setRobotForm({...robotForm, name: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                  _placeholder={{ color: "gray.400" }}
+                />
+              </FormControl>
+
+              <FormControl isRequired>
+                <FormLabel color="gray.200">Robot Type</FormLabel>
+                <Select
+                  placeholder="Select robot type"
+                  value={robotForm.type}
+                  onChange={(e) => setRobotForm({...robotForm, type: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                >
+                  <option value="turtlebot">TurtleBot</option>
+                  <option value="arm">Robot Arm</option>
+                  <option value="hand">Robot Hand</option>
+                  <option value="quadruped">Quadruped</option>
+                  <option value="humanoid">Humanoid</option>
+                  <option value="drone">Drone</option>
+                  <option value="other">Other</option>
+                </Select>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel color="gray.200">RTSP URL</FormLabel>
+                <Input
+                  placeholder="rtsp://192.168.1.100:554/stream"
+                  value={robotForm.rtsp_url}
+                  onChange={(e) => setRobotForm({...robotForm, rtsp_url: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                  _placeholder={{ color: "gray.400" }}
+                />
+              </FormControl>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={() => setIsRobotModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              colorScheme="green" 
+              onClick={isEditingRobot ? handleUpdateRobot : handleCreateRobot}
+              isDisabled={!robotForm.name || !robotForm.type}
+            >
+              {isEditingRobot ? 'Update' : 'Create'}
             </Button>
           </ModalFooter>
         </ModalContent>
