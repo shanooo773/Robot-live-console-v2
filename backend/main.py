@@ -231,12 +231,17 @@ class RobotCreate(BaseModel):
     type: str
     rtsp_url: Optional[str] = None
     code_api_url: Optional[str] = None
+    status: str = 'active'
 
 class RobotUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
     rtsp_url: Optional[str] = None
     code_api_url: Optional[str] = None
+    status: Optional[str] = None
+
+class RobotStatusUpdate(BaseModel):
+    status: str
 
 class RobotResponse(BaseModel):
     id: int
@@ -244,6 +249,7 @@ class RobotResponse(BaseModel):
     type: str
     rtsp_url: Optional[str] = None
     code_api_url: Optional[str] = None
+    status: str
     created_at: str
     updated_at: Optional[str] = None
 
@@ -383,7 +389,8 @@ async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(req
         name=robot_data.name,
         robot_type=robot_data.type,
         rtsp_url=robot_data.rtsp_url,
-        code_api_url=robot_data.code_api_url
+        code_api_url=robot_data.code_api_url,
+        status=robot_data.status
     )
     return RobotResponse(**robot)
 
@@ -401,7 +408,8 @@ async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dic
         name=robot_data.name,
         robot_type=robot_data.type,
         rtsp_url=robot_data.rtsp_url,
-        code_api_url=robot_data.code_api_url
+        code_api_url=robot_data.code_api_url,
+        status=robot_data.status
     )
     
     if not success:
@@ -422,6 +430,24 @@ async def delete_robot(robot_id: int, current_user: dict = Depends(require_admin
         raise HTTPException(status_code=404, detail="Robot not found")
     
     return {"message": "Robot deleted successfully"}
+
+@app.patch("/admin/robots/{robot_id}/status")
+async def update_robot_status(robot_id: int, status_data: RobotStatusUpdate, current_user: dict = Depends(require_admin)):
+    """Update robot status (admin only)"""
+    if status_data.status not in ['active', 'inactive']:
+        raise HTTPException(status_code=400, detail="Status must be 'active' or 'inactive'")
+    
+    success = db.update_robot(robot_id=robot_id, status=status_data.status)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Robot not found")
+    
+    updated_robot = db.get_robot_by_id(robot_id)
+    if not updated_robot:
+        raise HTTPException(status_code=404, detail="Robot not found after update")
+    
+    logger.info(f"Robot status updated - Robot: {updated_robot.get('name')} (ID: {robot_id}), Status: {status_data.status}")
+    return {"message": f"Robot status updated to {status_data.status}", "robot": RobotResponse(**updated_robot)}
 
 # Message Endpoints
 @app.post("/messages", response_model=MessageResponse)
@@ -532,8 +558,8 @@ async def available_features():
 def get_available_robots():
     """Get list of available robot types from registry"""
     try:
-        # Get robots from registry
-        robots = db.get_all_robots()
+        # Get only active robots from registry
+        robots = db.get_active_robots()
         
         # Extract just the types for backward compatibility
         robot_types = list(set(robot["type"] for robot in robots))
@@ -840,18 +866,24 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
         # Use the first active booking
         robot_type = active_bookings[0]["robot_type"]
     
-    # Get robot details from database
-    robot = db.get_robot_by_type(robot_type)
+    # Get active robot details from database
+    robot = db.get_active_robot_by_type(robot_type)
     if not robot:
         raise HTTPException(
             status_code=404,
-            detail=f"Robot of type {robot_type} not found in registry."
+            detail=f"Active robot of type {robot_type} not found in registry or robot is inactive."
         )
     
     code_api_url = robot.get("code_api_url")
+    robot_id = robot.get("id")
+    robot_name = robot.get("name")
+    
+    # Enhanced logging with robot details
+    logger.info(f"Robot code execution request - User: {user_id}, Robot: {robot_name} (ID: {robot_id}, Type: {robot_type}), Code API: {code_api_url}")
+    
     if not code_api_url:
         # Fallback to simulation mode if no code API URL is configured
-        logger.warning(f"No code_api_url configured for robot {robot_type}, using fallback simulation")
+        logger.warning(f"No code_api_url configured for robot {robot_name} (ID: {robot_id}, Type: {robot_type}), using fallback simulation")
         return await _fallback_simulation(request, user_id, robot_type)
     
     try:
@@ -878,20 +910,20 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
                 async with session.post(f"{code_api_url}/upload", json=upload_payload) as upload_response:
                     if upload_response.status != 200:
                         upload_text = await upload_response.text()
-                        logger.error(f"Failed to upload code to {code_api_url}/upload: {upload_response.status} - {upload_text}")
+                        logger.error(f"Failed to upload code to robot {robot_name} (ID: {robot_id}) at {code_api_url}/upload: {upload_response.status} - {upload_text}")
                         raise HTTPException(
                             status_code=502,
                             detail=f"Failed to upload code to robot: HTTP {upload_response.status}"
                         )
                     upload_result = await upload_response.json()
             except aiohttp.ClientConnectorError:
-                logger.error(f"Failed to connect to robot API at {code_api_url}")
+                logger.error(f"Failed to connect to robot API for {robot_name} (ID: {robot_id}) at {code_api_url}")
                 raise HTTPException(
                     status_code=503,
                     detail="Robot API is unreachable. Please try again later."
                 )
             except asyncio.TimeoutError:
-                logger.error(f"Timeout connecting to robot API at {code_api_url}")
+                logger.error(f"Timeout connecting to robot API for {robot_name} (ID: {robot_id}) at {code_api_url}")
                 raise HTTPException(
                     status_code=504,
                     detail="Robot API timeout. Please try again later."
@@ -1035,7 +1067,10 @@ async def get_or_create_rtsp_player(robot_id: int) -> MediaPlayer:
     """Get cached RTSP player or create new one for robot"""
     if robot_id not in rtsp_players:
         rtsp_url = await get_robot_rtsp_url(robot_id)
-        logger.info(f"Creating new RTSP player for robot {robot_id}: {rtsp_url}")
+        robot = db.get_robot_by_id(robot_id)
+        robot_name = robot.get("name", "Unknown") if robot else "Unknown"
+        robot_type = robot.get("type", "Unknown") if robot else "Unknown"
+        logger.info(f"Creating new RTSP player for robot {robot_name} (ID: {robot_id}, Type: {robot_type}): {rtsp_url}")
         rtsp_players[robot_id] = MediaPlayer(rtsp_url)
     return rtsp_players[robot_id]
 
@@ -1119,7 +1154,12 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
         # ICE candidates are handled internally during the setLocalDescription process
         # Server-side ICE candidates will be collected from the localDescription
         
-        logger.info(f"Created WebRTC offer answer for robot {robot_id}, peer {peer_id}")
+        robot = db.get_robot_by_id(robot_id)
+        robot_name = robot.get("name", "Unknown") if robot else "Unknown"
+        robot_type = robot.get("type", "Unknown") if robot else "Unknown"
+        rtsp_url = robot.get("rtsp_url", "Unknown") if robot else "Unknown"
+        
+        logger.info(f"Created WebRTC offer answer for robot {robot_name} (ID: {robot_id}, Type: {robot_type}), RTSP: {rtsp_url}, peer {peer_id}")
         
         # Extract server ICE candidates from the SDP for later retrieval
         if pc.localDescription:
