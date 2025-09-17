@@ -84,6 +84,7 @@ theia_manager = TheiaContainerManager()
 peer_connections: Dict[str, RTCPeerConnection] = {}
 media_relay = MediaRelay()
 rtsp_players: Dict[str, MediaPlayer] = {}  # Cache RTSP players by robot_id
+peer_ice_candidates: Dict[str, List[Dict]] = {}  # Store server ICE candidates per peer
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle application lifespan events"""
@@ -855,7 +856,8 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
 
 # WebRTC Signaling Endpoints
 class WebRTCOffer(BaseModel):
-    robot_id: int
+    robot_id: Optional[int] = None
+    robot_type: Optional[str] = None  # Support both robot_id and robot_type for backward compatibility
     sdp: str
     type: str = "offer"
 
@@ -876,6 +878,27 @@ async def get_robot_rtsp_url(robot_id: int) -> str:
     
     return rtsp_url
 
+async def resolve_robot_id(offer: WebRTCOffer) -> int:
+    """Resolve robot_id from either robot_id or robot_type in the offer"""
+    if offer.robot_id is not None:
+        return offer.robot_id
+    
+    if offer.robot_type is not None:
+        # Find robot by type - get the first robot of this type
+        robots = db.get_all_robots()
+        for robot in robots:
+            if robot.get('type') == offer.robot_type:
+                return robot['id']
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No robot found with type '{offer.robot_type}'"
+        )
+    
+    raise HTTPException(
+        status_code=400, 
+        detail="Either robot_id or robot_type must be provided"
+    )
+
 async def get_or_create_rtsp_player(robot_id: int) -> MediaPlayer:
     """Get cached RTSP player or create new one for robot"""
     if robot_id not in rtsp_players:
@@ -891,6 +914,11 @@ async def cleanup_peer_connection(peer_id: str):
         await pc.close()
         del peer_connections[peer_id]
         logger.info(f"Cleaned up peer connection: {peer_id}")
+    
+    # Clean up ICE candidates
+    if peer_id in peer_ice_candidates:
+        del peer_ice_candidates[peer_id]
+        logger.debug(f"Cleaned up ICE candidates for peer: {peer_id}")
 
 async def has_booking_for_robot(user_id: int, robot_id: int) -> bool:
     """Check if user has active booking for the robot"""
@@ -912,13 +940,16 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
     """Handle WebRTC SDP offer from client"""
     user_id = int(current_user["sub"])
     
+    # Resolve robot_id from offer (supports both robot_id and robot_type)
+    robot_id = await resolve_robot_id(offer)
+    
     # Validate user has active booking session for this robot
-    if not await has_booking_for_robot(user_id, offer.robot_id):
-        robot = db.get_robot_by_id(offer.robot_id)
+    if not await has_booking_for_robot(user_id, robot_id):
+        robot = db.get_robot_by_id(robot_id)
         robot_type = robot.get('type', 'unknown') if robot else 'unknown'
         raise HTTPException(
             status_code=403,
-            detail=f"No active booking session for robot {offer.robot_id} ({robot_type}). Video access requires an active session during your booking time."
+            detail=f"No active booking session for robot {robot_id} ({robot_type}). Video access requires an active session during your booking time."
         )
     
     try:
@@ -928,9 +959,10 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
         # Create RTCPeerConnection
         pc = RTCPeerConnection()
         peer_connections[peer_id] = pc
+        peer_ice_candidates[peer_id] = []  # Initialize ICE candidates list
         
         # Get RTSP stream from robot and set up media relay
-        rtsp_player = await get_or_create_rtsp_player(offer.robot_id)
+        rtsp_player = await get_or_create_rtsp_player(robot_id)
         
         # Add video track from RTSP stream via media relay
         if rtsp_player.video:
@@ -951,7 +983,26 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
             if pc.connectionState in ["failed", "closed"]:
                 await cleanup_peer_connection(peer_id)
         
-        logger.info(f"Created WebRTC offer answer for robot {offer.robot_id}, peer {peer_id}")
+        # Note: aiortc doesn't emit icecandidate events in the same way as browser WebRTC
+        # ICE candidates are handled internally during the setLocalDescription process
+        # Server-side ICE candidates will be collected from the localDescription
+        
+        logger.info(f"Created WebRTC offer answer for robot {robot_id}, peer {peer_id}")
+        
+        # Extract server ICE candidates from the SDP for later retrieval
+        if pc.localDescription:
+            # Parse SDP to extract ICE candidates
+            sdp_lines = pc.localDescription.sdp.split('\n')
+            for line in sdp_lines:
+                if line.startswith('a=candidate:'):
+                    candidate_dict = {
+                        "candidate": line.strip(),
+                        "sdpMLineIndex": 0,  # This would need proper parsing for multiple media lines
+                        "sdpMid": "0",  # This would need proper parsing
+                        "timestamp": time.time()
+                    }
+                    peer_ice_candidates[peer_id].append(candidate_dict)
+                    logger.debug(f"Extracted ICE candidate for peer {peer_id}: {line[:50]}...")
         
         return {
             "peer_id": peer_id,
@@ -963,7 +1014,7 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
         # Clean up on error
         if peer_id in peer_connections:
             await cleanup_peer_connection(peer_id)
-        logger.error(f"Error handling WebRTC offer for robot {offer.robot_id}: {str(e)}")
+        logger.error(f"Error handling WebRTC offer for robot {robot_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to process WebRTC offer: {str(e)}")
 
 @app.post("/webrtc/ice-candidate")
@@ -1006,6 +1057,20 @@ async def get_webrtc_config(current_user: dict = Depends(get_current_user)):
             {"urls": "stun:stun.l.google.com:19302"},
             {"urls": "stun:stun1.l.google.com:19302"}
         ]
+    }
+
+@app.get("/webrtc/candidates/{peer_id}")
+async def get_peer_ice_candidates(peer_id: str, current_user: dict = Depends(get_current_user)):
+    """Get server ICE candidates for a specific peer connection"""
+    if peer_id not in peer_connections:
+        raise HTTPException(status_code=404, detail=f"Peer connection {peer_id} not found")
+    
+    candidates = peer_ice_candidates.get(peer_id, [])
+    return {
+        "peer_id": peer_id,
+        "candidates": candidates,
+        "count": len(candidates),
+        "timestamp": time.time()
     }
 
 @app.delete("/webrtc/peer/{peer_id}")
