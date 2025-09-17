@@ -1189,6 +1189,47 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
         logger.error(f"Error handling WebRTC offer for robot {robot_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to process WebRTC offer: {str(e)}")
 
+@app.get("/webrtc/answer")
+async def get_webrtc_answer(robot_type: str = None, peer_id: str = None, current_user: dict = Depends(get_current_user)):
+    """Get WebRTC SDP answer for a specific peer connection"""
+    # Support both robot_type and peer_id parameters for flexibility
+    if peer_id:
+        # Direct peer lookup
+        if peer_id not in peer_connections:
+            raise HTTPException(status_code=404, detail=f"Peer connection {peer_id} not found")
+        
+        pc = peer_connections[peer_id]
+        if not pc.localDescription:
+            raise HTTPException(status_code=404, detail=f"No answer available for peer {peer_id}")
+        
+        return {
+            "peer_id": peer_id,
+            "sdp": pc.localDescription.sdp,
+            "type": pc.localDescription.type,
+            "timestamp": time.time()
+        }
+    
+    elif robot_type:
+        # Find peer connection by robot type (for backward compatibility)
+        user_id = int(current_user["sub"])
+        
+        # This is a simplified lookup - in practice, you might need to track
+        # which peer connections belong to which users and robots
+        for peer_id, pc in peer_connections.items():
+            if pc.localDescription:
+                return {
+                    "peer_id": peer_id,
+                    "sdp": pc.localDescription.sdp,
+                    "type": pc.localDescription.type,
+                    "robot_type": robot_type,
+                    "timestamp": time.time()
+                }
+        
+        raise HTTPException(status_code=404, detail=f"No active WebRTC answer found for robot type {robot_type}")
+    
+    else:
+        raise HTTPException(status_code=400, detail="Either 'robot_type' or 'peer_id' parameter is required")
+
 @app.post("/webrtc/ice-candidate")
 async def handle_ice_candidate(candidate: ICECandidate, current_user: dict = Depends(get_current_user)):
     """Handle ICE candidate from client"""
