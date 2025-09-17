@@ -12,5 +12,7 @@ PyMySQL==1.1.0
 aiomysql==0.2.0
 # WebSocket support
 websockets==11.0.2
+# WebRTC support
+aiortc==1.6.0
 # Docker container management
 docker==6.1.3

@@ -2,15 +2,20 @@ import os
 import time
 import json
 import asyncio
+import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import logging
 from pathlib import Path
+
+# WebRTC imports
+from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
+from aiortc.contrib.media import MediaPlayer, MediaRelay
 
 # Import environment support
 import os
@@ -74,6 +79,11 @@ db = DatabaseManager()
 # Initialize service manager
 service_manager = AdminServiceManager(db)
 theia_manager = TheiaContainerManager()
+
+# Global WebRTC state management
+peer_connections: Dict[str, RTCPeerConnection] = {}
+media_relay = MediaRelay()
+rtsp_players: Dict[str, MediaPlayer] = {}  # Cache RTSP players by robot_id
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle application lifespan events"""
@@ -89,6 +99,22 @@ async def lifespan(app: FastAPI):
         logger.error("❌ Critical: Core services not available!")
     
     yield
+    
+    # Cleanup WebRTC connections on shutdown
+    logger.info("🧹 Cleaning up WebRTC connections...")
+    for peer_id in list(peer_connections.keys()):
+        await cleanup_peer_connection(peer_id)
+    
+    # Cleanup RTSP players
+    for robot_id, player in rtsp_players.items():
+        try:
+            player.audio = None
+            player.video = None
+            logger.info(f"Cleaned up RTSP player for robot {robot_id}")
+        except Exception as e:
+            logger.error(f"Error cleaning up RTSP player for robot {robot_id}: {e}")
+    rtsp_players.clear()
+    
     logger.info("🛑 Admin Backend API shutting down...")
 
 # Create FastAPI app with lifespan
@@ -829,134 +855,187 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
 
 # WebRTC Signaling Endpoints
 class WebRTCOffer(BaseModel):
-    robot_type: str
+    robot_id: int
     sdp: str
     type: str = "offer"
 
-class WebRTCAnswer(BaseModel):
-    robot_type: str
-    sdp: str 
-    type: str = "answer"
-
 class ICECandidate(BaseModel):
-    robot_type: str
-    candidate: dict  # Full RTCIceCandidate object with candidate, sdpMLineIndex, sdpMid fields
+    peer_id: str
+    candidate: Dict[str, Any]  # Full RTCIceCandidate object with candidate, sdpMLineIndex, sdpMid fields
+
+# Helper functions for WebRTC management
+async def get_robot_rtsp_url(robot_id: int) -> str:
+    """Get RTSP URL for a robot from the database registry"""
+    robot = db.get_robot_by_id(robot_id)
+    if not robot:
+        raise HTTPException(status_code=404, detail=f"Robot with ID {robot_id} not found")
+    
+    rtsp_url = robot.get('rtsp_url')
+    if not rtsp_url:
+        raise HTTPException(status_code=404, detail=f"Robot {robot_id} does not have an RTSP URL configured")
+    
+    return rtsp_url
+
+async def get_or_create_rtsp_player(robot_id: int) -> MediaPlayer:
+    """Get cached RTSP player or create new one for robot"""
+    if robot_id not in rtsp_players:
+        rtsp_url = await get_robot_rtsp_url(robot_id)
+        logger.info(f"Creating new RTSP player for robot {robot_id}: {rtsp_url}")
+        rtsp_players[robot_id] = MediaPlayer(rtsp_url)
+    return rtsp_players[robot_id]
+
+async def cleanup_peer_connection(peer_id: str):
+    """Clean up a peer connection and remove from tracking"""
+    if peer_id in peer_connections:
+        pc = peer_connections[peer_id]
+        await pc.close()
+        del peer_connections[peer_id]
+        logger.info(f"Cleaned up peer connection: {peer_id}")
+
+async def has_booking_for_robot(user_id: int, robot_id: int) -> bool:
+    """Check if user has active booking for the robot"""
+    booking_service = service_manager.get_booking_service()
+    
+    # Get robot info to determine robot type
+    robot = db.get_robot_by_id(robot_id)
+    if not robot:
+        return False
+    
+    robot_type = robot.get('type')
+    if not robot_type:
+        return False
+    
+    return booking_service.has_active_session(user_id, robot_type)
 
 @app.post("/webrtc/offer")
 async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(get_current_user)):
     """Handle WebRTC SDP offer from client"""
-    # Validate user has active booking session
-    booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
     
-    # Check if user has active session for this robot type
-    has_active_session = booking_service.has_active_session(user_id, offer.robot_type)
-    
-    if not has_active_session:
+    # Validate user has active booking session for this robot
+    if not await has_booking_for_robot(user_id, offer.robot_id):
+        robot = db.get_robot_by_id(offer.robot_id)
+        robot_type = robot.get('type', 'unknown') if robot else 'unknown'
         raise HTTPException(
             status_code=403,
-            detail=f"No active booking session for {offer.robot_type}. Video access requires an active session during your booking time."
+            detail=f"No active booking session for robot {offer.robot_id} ({robot_type}). Video access requires an active session during your booking time."
         )
     
-    # TODO: Forward offer to WebRTC signaling server or robot
-    # For now, return a mock response indicating signaling server will handle this
-    return {
-        "success": True,
-        "message": "SDP offer received and forwarded to signaling server",
-        "robot_type": offer.robot_type,
-        "signaling_endpoint": f"ws://localhost:8080/socket.io/",
-        "room_id": f"robot_{offer.robot_type}_{user_id}",
-        "timestamp": time.time()
-    }
-
-@app.post("/webrtc/answer")
-async def handle_webrtc_answer(answer: WebRTCAnswer, current_user: dict = Depends(get_current_user)):
-    """Handle WebRTC SDP answer from robot/server"""
-    # Validate user has active booking session
-    booking_service = service_manager.get_booking_service()
-    user_id = int(current_user["sub"])
-    
-    # Check if user has active session for this robot type
-    has_active_session = booking_service.has_active_session(user_id, answer.robot_type)
-    
-    if not has_active_session:
-        raise HTTPException(
-            status_code=403,
-            detail=f"No active booking session for {answer.robot_type}. Video access requires an active session during your booking time."
-        )
-    
-    # TODO: Forward answer to WebRTC signaling server
-    return {
-        "success": True,
-        "message": "SDP answer received and processed",
-        "robot_type": answer.robot_type,
-        "timestamp": time.time()
-    }
-
-@app.get("/webrtc/answer")
-async def get_webrtc_answer(robot_type: str, current_user: dict = Depends(get_current_user)):
-    """Get WebRTC SDP answer from robot/server for a specific robot type"""
-    # Validate user has active booking session
-    booking_service = service_manager.get_booking_service()
-    user_id = int(current_user["sub"])
-    
-    # Check if user has active session for this robot type
-    has_active_session = booking_service.has_active_session(user_id, robot_type)
-    
-    if not has_active_session:
-        raise HTTPException(
-            status_code=403,
-            detail=f"No active booking session for {robot_type}. Video access requires an active session during your booking time."
-        )
-    
-    # TODO: Retrieve answer from WebRTC signaling server or robot
-    # For now, return a mock response indicating no answer is available yet
-    return {
-        "success": False,
-        "message": "No SDP answer available yet. The robot may not be online or hasn't responded to the offer.",
-        "robot_type": robot_type,
-        "answer": None,
-        "timestamp": time.time()
-    }
+    try:
+        # Create unique peer ID for this connection
+        peer_id = str(uuid.uuid4())
+        
+        # Create RTCPeerConnection
+        pc = RTCPeerConnection()
+        peer_connections[peer_id] = pc
+        
+        # Get RTSP stream from robot and set up media relay
+        rtsp_player = await get_or_create_rtsp_player(offer.robot_id)
+        
+        # Add video track from RTSP stream via media relay
+        if rtsp_player.video:
+            video_track = media_relay.subscribe(rtsp_player.video)
+            pc.addTrack(video_track)
+        
+        # Set remote description from client offer
+        await pc.setRemoteDescription(RTCSessionDescription(sdp=offer.sdp, type=offer.type))
+        
+        # Create answer
+        answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        
+        # Set up connection state monitoring
+        @pc.on("connectionstatechange")
+        async def on_connectionstatechange():
+            logger.info(f"Connection state for {peer_id}: {pc.connectionState}")
+            if pc.connectionState in ["failed", "closed"]:
+                await cleanup_peer_connection(peer_id)
+        
+        logger.info(f"Created WebRTC offer answer for robot {offer.robot_id}, peer {peer_id}")
+        
+        return {
+            "peer_id": peer_id,
+            "sdp": pc.localDescription.sdp,
+            "type": pc.localDescription.type
+        }
+        
+    except Exception as e:
+        # Clean up on error
+        if peer_id in peer_connections:
+            await cleanup_peer_connection(peer_id)
+        logger.error(f"Error handling WebRTC offer for robot {offer.robot_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process WebRTC offer: {str(e)}")
 
 @app.post("/webrtc/ice-candidate")
 async def handle_ice_candidate(candidate: ICECandidate, current_user: dict = Depends(get_current_user)):
-    """Handle ICE candidate from client or robot"""
-    # Validate user has active booking session  
-    booking_service = service_manager.get_booking_service()
-    user_id = int(current_user["sub"])
+    """Handle ICE candidate from client"""
+    # Get the peer connection
+    if candidate.peer_id not in peer_connections:
+        raise HTTPException(status_code=404, detail=f"Peer connection {candidate.peer_id} not found")
     
-    # Check if user has active session for this robot type
-    has_active_session = booking_service.has_active_session(user_id, candidate.robot_type)
+    pc = peer_connections[candidate.peer_id]
     
-    if not has_active_session:
-        raise HTTPException(
-            status_code=403, 
-            detail=f"No active booking session for {candidate.robot_type}. Video access requires an active session during your booking time."
+    try:
+        # Add ICE candidate to peer connection
+        from aiortc import RTCIceCandidate
+        ice_candidate = RTCIceCandidate(
+            candidate=candidate.candidate.get("candidate"),
+            sdpMLineIndex=candidate.candidate.get("sdpMLineIndex"),
+            sdpMid=candidate.candidate.get("sdpMid")
         )
-    
-    # TODO: Forward ICE candidate to WebRTC signaling server
-    return {
-        "success": True,
-        "message": "ICE candidate received and forwarded",
-        "robot_type": candidate.robot_type,
-        "timestamp": time.time()
-    }
+        await pc.addIceCandidate(ice_candidate)
+        
+        logger.debug(f"Added ICE candidate for peer {candidate.peer_id}")
+        
+        return {
+            "success": True,
+            "message": "ICE candidate added successfully",
+            "peer_id": candidate.peer_id,
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error adding ICE candidate for peer {candidate.peer_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to add ICE candidate: {str(e)}")
 
 @app.get("/webrtc/config")
 async def get_webrtc_config(current_user: dict = Depends(get_current_user)):
     """Get WebRTC configuration for client"""
     return {
-        "signaling_url": "ws://localhost:8080/socket.io/",
         "ice_servers": [
             {"urls": "stun:stun.l.google.com:19302"},
             {"urls": "stun:stun1.l.google.com:19302"}
-        ],
-        "video_constraints": {
-            "width": {"ideal": 1280},
-            "height": {"ideal": 720},
-            "frameRate": {"ideal": 30}
-        }
+        ]
+    }
+
+@app.delete("/webrtc/peer/{peer_id}")
+async def cleanup_peer(peer_id: str, current_user: dict = Depends(get_current_user)):
+    """Clean up a specific peer connection"""
+    if peer_id not in peer_connections:
+        raise HTTPException(status_code=404, detail=f"Peer connection {peer_id} not found")
+    
+    await cleanup_peer_connection(peer_id)
+    return {"success": True, "message": f"Peer connection {peer_id} cleaned up"}
+
+@app.get("/webrtc/health")
+async def webrtc_health(current_user: dict = Depends(get_current_user)):
+    """Get WebRTC service health and active connections"""
+    active_connections = len(peer_connections)
+    active_rtsp_players = len(rtsp_players)
+    
+    # Clean up any failed connections
+    failed_peers = []
+    for peer_id, pc in list(peer_connections.items()):
+        if pc.connectionState in ["failed", "closed"]:
+            failed_peers.append(peer_id)
+            await cleanup_peer_connection(peer_id)
+    
+    return {
+        "status": "healthy",
+        "active_peer_connections": active_connections - len(failed_peers),
+        "active_rtsp_players": active_rtsp_players,
+        "cleaned_up_peers": failed_peers,
+        "timestamp": time.time()
     }
 
 if __name__ == "__main__":
