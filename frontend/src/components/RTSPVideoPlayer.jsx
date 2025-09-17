@@ -98,9 +98,22 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
       const peerConnection = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = peerConnection;
 
+      // Set up connection timeout (30 seconds)
+      const connectionTimeout = setTimeout(() => {
+        if (webrtcStatus === "connecting") {
+          console.warn('WebRTC connection timed out');
+          setError('Connection timed out. The robot may not be available or not pushing video.');
+          setWebrtcStatus("disconnected");
+          if (peerConnection) {
+            peerConnection.close();
+          }
+        }
+      }, 30000);
+
       // Step 3: Set up video element to receive remote stream
       peerConnection.ontrack = (event) => {
         console.log('Received remote stream');
+        clearTimeout(connectionTimeout); // Clear timeout on successful connection
         if (videoRef.current && event.streams[0]) {
           videoRef.current.srcObject = event.streams[0];
           setIsConnected(true);
@@ -187,6 +200,20 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         setWebrtcStatus("disconnected");
       });
 
+      socket.on('disconnect', (reason) => {
+        console.log('Signaling server disconnected:', reason);
+        if (reason === 'io server disconnect') {
+          setError('Signaling server disconnected unexpectedly. Please try reconnecting.');
+        }
+        setWebrtcStatus("disconnected");
+      });
+
+      socket.on('error', (error) => {
+        console.error('Socket error:', error);
+        setError(`Signaling server error: ${error.message || 'Unknown error'}`);
+        setWebrtcStatus("disconnected");
+      });
+
       // Step 6: Create offer and send through backend API (with booking validation)
       const offer = await peerConnection.createOffer({
         offerToReceiveVideo: true,  // Ensure we request video from robot
@@ -223,7 +250,25 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         });
       } catch (offerError) {
         console.error('Failed to send offer through backend:', offerError);
-        setError(`WebRTC offer failed: ${offerError.message || 'Booking validation failed'}`);
+        
+        // Handle specific error types
+        if (offerError.response) {
+          const status = offerError.response.status;
+          const detail = offerError.response.data?.detail || offerError.message;
+          
+          if (status === 403) {
+            setError(`Access denied: ${detail}`);
+          } else if (status === 404) {
+            setError(`Robot not found or not available: ${detail}`);
+          } else if (status === 500) {
+            setError(`Server error: ${detail}. The robot may not be pushing video to Nginx.`);
+          } else {
+            setError(`WebRTC offer failed: ${detail}`);
+          }
+        } else {
+          setError(`WebRTC offer failed: ${offerError.message || 'Booking validation failed or robot unavailable'}`);
+        }
+        
         setWebrtcStatus("disconnected");
         return;
       }
