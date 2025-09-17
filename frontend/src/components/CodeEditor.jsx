@@ -306,6 +306,8 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
                         height="100%" 
                         controls 
                         autoPlay
+                        playsInline
+                        muted
                         style={{ background: "#000" }}
                       >
                         <source src={videoUrl} type="video/mp4" />
@@ -315,6 +317,7 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
                       <RTSPVideoPlayer 
                         user={user}
                         authToken={authToken}
+                        robotType={robot}
                         onError={(error) => {
                           toast({
                             title: "Video Stream Error",
