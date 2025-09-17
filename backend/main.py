@@ -488,30 +488,56 @@ async def available_features():
 
 @app.get("/robots")
 def get_available_robots():
-    """Get list of available robot types from registry"""
+    """Get list of available robots from registry"""
     try:
         # Get robots from registry
         robots = db.get_all_robots()
         
-        # Extract just the types for backward compatibility
-        robot_types = list(set(robot["type"] for robot in robots))
-        
-        # Fall back to hardcoded list if no robots in registry
-        if not robot_types:
-            robot_types = ["turtlebot", "arm", "hand"]
-        
-        booking_service = service_manager.get_booking_service()
-        return {
-            "robots": robot_types,
-            "details": booking_service.get_available_robots(),
-            "registry": robots  # Include full registry data for admin use
-        }
+        # Return robot list with id, name, type for frontend selection
+        if robots:
+            robot_list = [
+                {
+                    "id": robot["id"],
+                    "name": robot["name"],
+                    "type": robot["type"]
+                }
+                for robot in robots
+            ]
+            
+            # Extract just the types for backward compatibility
+            robot_types = list(set(robot["type"] for robot in robots))
+            
+            booking_service = service_manager.get_booking_service()
+            return {
+                "robots": robot_list,  # New: full robot list with id, name, type
+                "robot_types": robot_types,  # Backward compatibility
+                "details": booking_service.get_available_robots()
+            }
+        else:
+            # Fall back to hardcoded list if no robots in registry
+            fallback_robots = [
+                {"id": 1, "name": "TurtleBot3", "type": "turtlebot"},
+                {"id": 2, "name": "Robot Arm", "type": "arm"},
+                {"id": 3, "name": "Robot Hand", "type": "hand"}
+            ]
+            booking_service = service_manager.get_booking_service()
+            return {
+                "robots": fallback_robots,
+                "robot_types": ["turtlebot", "arm", "hand"],
+                "details": booking_service.get_available_robots()
+            }
     except Exception as e:
         # Fallback to original hardcoded response if registry fails
         logger.error(f"Error accessing robot registry: {e}")
+        fallback_robots = [
+            {"id": 1, "name": "TurtleBot3", "type": "turtlebot"},
+            {"id": 2, "name": "Robot Arm", "type": "arm"},
+            {"id": 3, "name": "Robot Hand", "type": "hand"}
+        ]
         booking_service = service_manager.get_booking_service()
         return {
-            "robots": ["turtlebot", "arm", "hand"],
+            "robots": fallback_robots,
+            "robot_types": ["turtlebot", "arm", "hand"],
             "details": booking_service.get_available_robots()
         }
 
@@ -829,45 +855,89 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
 
 # WebRTC Signaling Endpoints
 class WebRTCOffer(BaseModel):
-    robot_type: str
+    robot_type: Optional[str] = None  # Backward compatibility
+    robot_id: Optional[int] = None    # New: robot ID for lookup
     sdp: str
     type: str = "offer"
 
 class WebRTCAnswer(BaseModel):
-    robot_type: str
+    robot_type: Optional[str] = None  # Backward compatibility
+    robot_id: Optional[int] = None    # New: robot ID for lookup
     sdp: str 
     type: str = "answer"
 
 class ICECandidate(BaseModel):
-    robot_type: str
+    robot_type: Optional[str] = None  # Backward compatibility
+    robot_id: Optional[int] = None    # New: robot ID for lookup
     candidate: dict  # Full RTCIceCandidate object with candidate, sdpMLineIndex, sdpMid fields
 
 @app.post("/webrtc/offer")
 async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(get_current_user)):
     """Handle WebRTC SDP offer from client"""
+    # Determine robot details from either robot_id or robot_type
+    robot_data = None
+    robot_type = None
+    rtsp_url = None
+    
+    if offer.robot_id:
+        # Lookup robot by ID
+        robot_data = db.get_robot_by_id(offer.robot_id)
+        if not robot_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Robot with ID {offer.robot_id} not found"
+            )
+        robot_type = robot_data["type"]
+        rtsp_url = robot_data.get("rtsp_url")
+    elif offer.robot_type:
+        # Backward compatibility: use robot_type directly
+        robot_type = offer.robot_type
+        # Try to find a robot of this type to get RTSP URL
+        robots = db.get_all_robots()
+        matching_robot = next((r for r in robots if r["type"] == robot_type), None)
+        if matching_robot:
+            rtsp_url = matching_robot.get("rtsp_url")
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Either robot_id or robot_type must be provided"
+        )
+    
     # Validate user has active booking session
     booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
     
     # Check if user has active session for this robot type
-    has_active_session = booking_service.has_active_session(user_id, offer.robot_type)
+    has_active_session = booking_service.has_active_session(user_id, robot_type)
     
     if not has_active_session:
         raise HTTPException(
             status_code=403,
-            detail=f"No active booking session for {offer.robot_type}. Video access requires an active session during your booking time."
+            detail=f"No active booking session for {robot_type}. Video access requires an active session during your booking time."
         )
     
-    # TODO: Forward offer to WebRTC signaling server or robot
-    # For now, return a mock response indicating signaling server will handle this
-    return {
+    # TODO: Start RTSP → WebRTC pipeline here
+    # For now, log the RTSP URL but don't expose it to frontend
+    if rtsp_url:
+        logger.info(f"Starting RTSP → WebRTC pipeline for robot {robot_type} with RTSP URL: {rtsp_url}")
+    else:
+        logger.warning(f"No RTSP URL configured for robot {robot_type}")
+    
+    # Return response with robot information
+    response = {
         "success": True,
         "message": "SDP offer received and forwarded to signaling server",
-        "robot_type": offer.robot_type,
+        "robot_type": robot_type,
         "signaling_endpoint": f"ws://localhost:8080/socket.io/",
-        "room_id": f"robot_{offer.robot_type}_{user_id}",
+        "room_id": f"robot_{robot_type}_{user_id}",
         "timestamp": time.time()
     }
+    
+    # Include robot ID if provided
+    if offer.robot_id:
+        response["robot_id"] = offer.robot_id
+        
+    return response
 
 @app.post("/webrtc/answer")
 async def handle_webrtc_answer(answer: WebRTCAnswer, current_user: dict = Depends(get_current_user)):
@@ -894,8 +964,27 @@ async def handle_webrtc_answer(answer: WebRTCAnswer, current_user: dict = Depend
     }
 
 @app.get("/webrtc/answer")
-async def get_webrtc_answer(robot_type: str, current_user: dict = Depends(get_current_user)):
-    """Get WebRTC SDP answer from robot/server for a specific robot type"""
+async def get_webrtc_answer(
+    robot_type: Optional[str] = None, 
+    robot_id: Optional[int] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get WebRTC SDP answer from robot/server"""
+    # Determine robot type from either robot_id or robot_type
+    if robot_id:
+        robot_data = db.get_robot_by_id(robot_id)
+        if not robot_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Robot with ID {robot_id} not found"
+            )
+        robot_type = robot_data["type"]
+    elif not robot_type:
+        raise HTTPException(
+            status_code=400,
+            detail="Either robot_id or robot_type must be provided"
+        )
+    
     # Validate user has active booking session
     booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
@@ -911,37 +1000,66 @@ async def get_webrtc_answer(robot_type: str, current_user: dict = Depends(get_cu
     
     # TODO: Retrieve answer from WebRTC signaling server or robot
     # For now, return a mock response indicating no answer is available yet
-    return {
+    response = {
         "success": False,
         "message": "No SDP answer available yet. The robot may not be online or hasn't responded to the offer.",
         "robot_type": robot_type,
         "answer": None,
         "timestamp": time.time()
     }
+    
+    if robot_id:
+        response["robot_id"] = robot_id
+        
+    return response
 
 @app.post("/webrtc/ice-candidate")
 async def handle_ice_candidate(candidate: ICECandidate, current_user: dict = Depends(get_current_user)):
     """Handle ICE candidate from client or robot"""
+    # Determine robot type from either robot_id or robot_type
+    robot_type = None
+    
+    if candidate.robot_id:
+        robot_data = db.get_robot_by_id(candidate.robot_id)
+        if not robot_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Robot with ID {candidate.robot_id} not found"
+            )
+        robot_type = robot_data["type"]
+    elif candidate.robot_type:
+        robot_type = candidate.robot_type
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Either robot_id or robot_type must be provided"
+        )
+    
     # Validate user has active booking session  
     booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
     
     # Check if user has active session for this robot type
-    has_active_session = booking_service.has_active_session(user_id, candidate.robot_type)
+    has_active_session = booking_service.has_active_session(user_id, robot_type)
     
     if not has_active_session:
         raise HTTPException(
             status_code=403, 
-            detail=f"No active booking session for {candidate.robot_type}. Video access requires an active session during your booking time."
+            detail=f"No active booking session for {robot_type}. Video access requires an active session during your booking time."
         )
     
     # TODO: Forward ICE candidate to WebRTC signaling server
-    return {
+    response = {
         "success": True,
         "message": "ICE candidate received and forwarded",
-        "robot_type": candidate.robot_type,
+        "robot_type": robot_type,
         "timestamp": time.time()
     }
+    
+    if candidate.robot_id:
+        response["robot_id"] = candidate.robot_id
+        
+    return response
 
 @app.get("/webrtc/config")
 async def get_webrtc_config(current_user: dict = Depends(get_current_user)):

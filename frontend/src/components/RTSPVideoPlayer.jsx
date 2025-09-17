@@ -14,7 +14,7 @@ import {
 import io from 'socket.io-client';
 import { getWebRTCConfig, sendWebRTCOffer, sendICECandidate } from '../api';
 
-const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) => {
+const RTSPVideoPlayer = ({ user, authToken, onError, robot = "turtlebot" }) => {
   const videoRef = useRef();
   const peerConnectionRef = useRef();
   const socketRef = useRef();
@@ -23,6 +23,27 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
   const [error, setError] = useState(null);
   const [streamType, setStreamType] = useState("test"); // test, rtsp, webrtc
   const [webrtcStatus, setWebrtcStatus] = useState("disconnected"); // disconnected, connecting, connected
+  
+  // Extract robot information - support both robot objects and robot types
+  const getRobotInfo = () => {
+    if (typeof robot === 'object' && robot !== null) {
+      return {
+        id: robot.id,
+        type: robot.type,
+        name: robot.name
+      };
+    } else {
+      // Backward compatibility: robot is a type string
+      return {
+        id: null,
+        type: robot,
+        name: robot
+      };
+    }
+  };
+  
+  const robotInfo = getRobotInfo();
+  const robotParam = robotInfo.id || robotInfo.type; // Use ID if available, otherwise type
   
   // Test streams for different modes
   const testStreams = {
@@ -76,13 +97,13 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         if (event.candidate && authToken) {
           console.log('Sending ICE candidate through backend API');
           try {
-            await sendICECandidate(robotType, event.candidate, authToken);
+            await sendICECandidate(robotParam, event.candidate, authToken);
           } catch (iceError) {
             console.error('Failed to send ICE candidate through backend:', iceError);
             // Fallback to direct signaling server for development
             if (socketRef.current) {
               socketRef.current.emit('ice-candidate', {
-                to: `robot_${robotType}`,
+                to: `robot_${robotInfo.type}`,
                 candidate: event.candidate
               });
             }
@@ -109,7 +130,7 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         
         // Join robot room
         socket.emit('join-room', {
-          roomId: `robot_${robotType}_${user?.id || 'anonymous'}`
+          roomId: `robot_${robotInfo.type}_${user?.id || 'anonymous'}`
         });
       });
 
@@ -159,12 +180,12 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
       
       try {
         console.log('Sending SDP offer through backend API');
-        const offerResponse = await sendWebRTCOffer(robotType, offer.sdp, authToken);
+        const offerResponse = await sendWebRTCOffer(robotParam, offer.sdp, authToken);
         console.log('Offer sent successfully:', offerResponse);
         
         // If backend validation successful, also send through signaling server for now
         socket.emit('offer', {
-          to: `robot_${robotType}`,
+          to: `robot_${robotInfo.type}`,
           offer: offer
         });
       } catch (offerError) {
@@ -308,7 +329,7 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         <Text fontSize="xs" color="gray.400" textAlign="center">
           {streamType === "test" && "Test video stream for development"}
           {streamType === "rtsp" && "🤖 Raspberry Pi robot camera (RTSP) - Not yet implemented"}
-          {streamType === "webrtc" && `🚀 Real-time robot video feed (WebRTC) - Robot: ${robotType}`}
+          {streamType === "webrtc" && `🚀 Real-time robot video feed (WebRTC) - Robot: ${robotInfo.name}`}
         </Text>
       </VStack>
 

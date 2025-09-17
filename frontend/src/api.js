@@ -241,29 +241,47 @@ export const getWebRTCConfig = async (token) => {
   return response.data;
 };
 
-export const sendWebRTCOffer = async (robotType, sdp, token) => {
-  const response = await API.post("/webrtc/offer", {
-    robot_type: robotType,
+export const sendWebRTCOffer = async (robotParam, sdp, token) => {
+  // Support both robot_id (number) and robot_type (string) for backward compatibility
+  const payload = {
     sdp: sdp,
     type: "offer"
-  }, {
+  };
+  
+  if (typeof robotParam === 'number') {
+    payload.robot_id = robotParam;
+  } else {
+    payload.robot_type = robotParam;
+  }
+  
+  const response = await API.post("/webrtc/offer", payload, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;
 };
 
-export const getWebRTCAnswer = async (robotType, token) => {
-  const response = await API.get(`/webrtc/answer?robot_type=${robotType}`, {
+export const getWebRTCAnswer = async (robotParam, token) => {
+  // Support both robot_id (number) and robot_type (string) for backward compatibility
+  const queryParam = typeof robotParam === 'number' ? `robot_id=${robotParam}` : `robot_type=${robotParam}`;
+  const response = await API.get(`/webrtc/answer?${queryParam}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;
 };
 
-export const sendICECandidate = async (robotType, candidate, token) => {
-  const response = await API.post("/webrtc/ice-candidate", {
-    robot_type: robotType,
+export const sendICECandidate = async (robotParam, candidate, token) => {
+  // Support both robot_id (number) and robot_type (string) for backward compatibility
+  const payload = {
     candidate: candidate  // Send the full RTCIceCandidate object
-  }, {
+  };
+  
+  if (typeof robotParam === 'number') {
+    payload.robot_id = robotParam;
+  } else {
+    payload.robot_type = robotParam;
+  }
+  
+  const response = await API.post("/webrtc/ice-candidate", payload, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;
