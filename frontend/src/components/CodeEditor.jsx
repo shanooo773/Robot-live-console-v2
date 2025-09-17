@@ -20,7 +20,7 @@ import {
 import TheiaIDE from "./TheiaIDE";
 import RTSPVideoPlayer from "./RTSPVideoPlayer";
 import RobotSelector from "./RobotSelector";
-import { checkAccess, getVideo } from "../api";
+import { checkAccess, getVideo, getMyActiveBookings } from "../api";
 
 const robotNames = {
   turtlebot: { name: "TurtleBot3", emoji: "🤖" },
@@ -35,10 +35,12 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
   const [videoUrl, setVideoUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [videoLoading, setVideoLoading] = useState(false);
+  const [activeBookings, setActiveBookings] = useState([]);
+  const [availableRobots, setAvailableRobots] = useState([]);
   const toast = useToast();
 
   useEffect(() => {
-    // Check if user has access to Monaco Editor
+    // Check if user has access to Monaco Editor and fetch active bookings
     const checkUserAccess = async () => {
       try {
         // Check for demo user access
@@ -48,21 +50,48 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
         const isDemoMode = localStorage.getItem('isDemoMode');
         
         if (isDemoUser || isDemoAdmin || isDummy || isDemoMode || user?.isDemoUser || user?.isDemoAdmin || user?.isDemoMode) {
-          // Demo users get immediate access
+          // Demo users get immediate access with all robot types
           setHasAccess(true);
+          setAvailableRobots(['turtlebot', 'arm', 'hand']);
           setLoading(false);
           return;
         }
         
         // Regular access check for non-demo users
         if (authToken) {
-          const accessData = await checkAccess(authToken);
-          setHasAccess(accessData.has_access);
-          if (!accessData.has_access) {
+          // Fetch user's active bookings
+          try {
+            const bookings = await getMyActiveBookings(authToken);
+            setActiveBookings(bookings);
+            
+            // Extract unique robot types from active bookings
+            const robotTypes = [...new Set(bookings.map(booking => booking.robot_type))];
+            setAvailableRobots(robotTypes);
+            
+            // Set access based on having active bookings
+            setHasAccess(robotTypes.length > 0);
+            
+            // If user has bookings but current robot is not available, switch to first available
+            if (robotTypes.length > 0 && !robotTypes.includes(robot)) {
+              setRobot(robotTypes[0]);
+            }
+            
+            if (robotTypes.length === 0) {
+              toast({
+                title: "No Active Bookings",
+                description: "You need an active booking to access the development console.",
+                status: "warning",
+                duration: 5000,
+                isClosable: true,
+              });
+            }
+          } catch (error) {
+            console.error("Failed to fetch active bookings:", error);
+            setHasAccess(false);
             toast({
-              title: "Access Denied",
-              description: "You need to complete a booking before accessing the development console.",
-              status: "warning",
+              title: "Error",
+              description: "Failed to load your active bookings.",
+              status: "error",
               duration: 5000,
               isClosable: true,
             });
@@ -85,7 +114,7 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
     };
 
     checkUserAccess();
-  }, [authToken, user, toast]);
+  }, [authToken, user, toast, robot]);
 
   const onSelect = (robotType) => {
     setRobot(robotType);
@@ -228,7 +257,7 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
                   Development Console - Robot Control Interface
                 </Text>
                 <HStack spacing={4}>
-                  <RobotSelector robot={robot} onSelect={onSelect} />
+                  <RobotSelector robot={robot} onSelect={onSelect} availableRobots={availableRobots} />
                   <Badge colorScheme="blue" fontSize="xs">
                     Eclipse Theia IDE + Robot Video Feed
                   </Badge>

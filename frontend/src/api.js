@@ -58,6 +58,13 @@ export const getUserBookings = async (token) => {
   return response.data;
 };
 
+export const getMyActiveBookings = async (token) => {
+  const response = await API.get("/my-bookings", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
 export const getBookingSchedule = async (startDate, endDate) => {
   const response = await API.get(`/bookings/schedule?start_date=${startDate}&end_date=${endDate}`);
   return response.data;
@@ -206,15 +213,16 @@ export const deleteAnnouncement = async (announcementId, token) => {
 };
 
 // Robot Code Execution API (to be implemented in backend)
-export const executeRobotCode = async (sourceCode, robotType) => {
+export const executeRobotCode = async (sourceCode, robotType = null, filename = null) => {
   // Get token from localStorage if available
   const token = localStorage.getItem('authToken');
   
   try {
     const response = await API.post("/robot/execute", {
       code: sourceCode,
-      robot_type: robotType,
-      language: "python" // Default to Python, could be dynamic
+      robot_type: robotType, // Can be null to use first active booking
+      language: "python", // Default to Python, could be dynamic
+      filename: filename
     }, {
       headers: { 
         Authorization: `Bearer ${token}`,
@@ -223,13 +231,12 @@ export const executeRobotCode = async (sourceCode, robotType) => {
     });
     return response.data;
   } catch (error) {
-    // Fallback for when endpoint doesn't exist yet
-    console.warn("Robot execution endpoint not implemented yet, using fallback");
-    return {
-      success: false,
-      error: "Robot simulation service is not available yet. The backend endpoint /robot/execute needs to be implemented.",
-      simulation_type: "fallback"
-    };
+    // Handle API errors properly
+    if (error.response) {
+      throw new Error(error.response.data.detail || 'Robot execution failed');
+    } else {
+      throw new Error('Network error: Unable to connect to robot API');
+    }
   }
 };
 

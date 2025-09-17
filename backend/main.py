@@ -230,17 +230,20 @@ class RobotCreate(BaseModel):
     name: str
     type: str
     rtsp_url: Optional[str] = None
+    code_api_url: Optional[str] = None
 
 class RobotUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
     rtsp_url: Optional[str] = None
+    code_api_url: Optional[str] = None
 
 class RobotResponse(BaseModel):
     id: int
     name: str
     type: str
     rtsp_url: Optional[str] = None
+    code_api_url: Optional[str] = None
     created_at: str
     updated_at: Optional[str] = None
 
@@ -294,6 +297,16 @@ async def get_user_bookings(current_user: dict = Depends(get_current_user)):
     user_id = int(current_user["sub"])
     bookings = booking_service.get_user_bookings(user_id)
     return [BookingResponse(**booking) for booking in bookings]
+
+@app.get("/my-bookings", response_model=List[BookingResponse])
+async def get_my_active_bookings(current_user: dict = Depends(get_current_user)):
+    """Get current user's active bookings"""
+    booking_service = service_manager.get_booking_service()
+    user_id = int(current_user["sub"])
+    bookings = booking_service.get_user_bookings(user_id)
+    # Filter for active bookings only
+    active_bookings = [booking for booking in bookings if booking["status"] == "active"]
+    return [BookingResponse(**booking) for booking in active_bookings]
 
 @app.get("/bookings/all", response_model=List[dict])
 async def get_all_bookings(current_user: dict = Depends(require_admin)):
@@ -369,7 +382,8 @@ async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(req
     robot = db.create_robot(
         name=robot_data.name,
         robot_type=robot_data.type,
-        rtsp_url=robot_data.rtsp_url
+        rtsp_url=robot_data.rtsp_url,
+        code_api_url=robot_data.code_api_url
     )
     return RobotResponse(**robot)
 
@@ -386,7 +400,8 @@ async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dic
         robot_id=robot_id,
         name=robot_data.name,
         robot_type=robot_data.type,
-        rtsp_url=robot_data.rtsp_url
+        rtsp_url=robot_data.rtsp_url,
+        code_api_url=robot_data.code_api_url
     )
     
     if not success:
@@ -785,74 +800,191 @@ async def robot_websocket(websocket, user_id: int):
 # Robot Code Execution Endpoint
 class RobotExecuteRequest(BaseModel):
     code: str
-    robot_type: str
+    robot_type: Optional[str] = None  # Optional, will be resolved from active booking
     language: str = "python"
+    filename: Optional[str] = None  # Optional filename for the code
 
 @app.post("/robot/execute")
 async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = Depends(get_current_user)):
     """Execute robot code and return simulation results"""
+    import aiohttp
+    import re
     
-    # Check if user has access (completed booking)
     booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
     
-    # Get user's bookings
+    # Get user's active bookings
     bookings = booking_service.get_user_bookings(user_id)
+    active_bookings = [booking for booking in bookings if booking["status"] == "active"]
     
-    # Check if user has at least one completed booking for this robot type
-    has_completed_booking = any(
-        booking["robot_type"] == request.robot_type and booking["status"] == "completed"
-        for booking in bookings
-    )
-    
-    if not has_completed_booking:
+    if not active_bookings:
         raise HTTPException(
             status_code=403, 
-            detail=f"You need a completed booking for {request.robot_type} robot to execute code."
+            detail="You need an active booking to execute robot code."
         )
     
+    # If robot_type is provided, verify user has booking for it
+    # If not provided, use the first active booking
+    if request.robot_type:
+        has_active_booking = any(
+            booking["robot_type"] == request.robot_type
+            for booking in active_bookings
+        )
+        if not has_active_booking:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You don't have an active booking for {request.robot_type} robot."
+            )
+        robot_type = request.robot_type
+    else:
+        # Use the first active booking
+        robot_type = active_bookings[0]["robot_type"]
+    
+    # Get robot details from database
+    robot = db.get_robot_by_type(robot_type)
+    if not robot:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Robot of type {robot_type} not found in registry."
+        )
+    
+    code_api_url = robot.get("code_api_url")
+    if not code_api_url:
+        # Fallback to simulation mode if no code API URL is configured
+        logger.warning(f"No code_api_url configured for robot {robot_type}, using fallback simulation")
+        return await _fallback_simulation(request, user_id, robot_type)
+    
     try:
-        # TODO: Implement actual robot simulation
-        # For now, return a placeholder response that matches the expected format
+        # Sanitize filename if provided
+        filename = request.filename or "main.py"
+        filename = re.sub(r'[^a-zA-Z0-9._-]', '', filename)  # Remove potentially dangerous characters
+        if not filename.endswith(('.py', '.cpp', '.c', '.h')):
+            filename += '.py'  # Default to Python extension
         
-        # Generate a unique execution ID
+        # Sanitize code content (basic validation)
+        if len(request.code) > 100000:  # 100KB limit
+            raise HTTPException(status_code=413, detail="Code too large (max 100KB)")
+        
+        # Execute code via external robot API
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+            # Upload code
+            upload_payload = {
+                "filename": filename,
+                "content": request.code,
+                "language": request.language
+            }
+            
+            try:
+                async with session.post(f"{code_api_url}/upload", json=upload_payload) as upload_response:
+                    if upload_response.status != 200:
+                        upload_text = await upload_response.text()
+                        logger.error(f"Failed to upload code to {code_api_url}/upload: {upload_response.status} - {upload_text}")
+                        raise HTTPException(
+                            status_code=502,
+                            detail=f"Failed to upload code to robot: HTTP {upload_response.status}"
+                        )
+                    upload_result = await upload_response.json()
+            except aiohttp.ClientConnectorError:
+                logger.error(f"Failed to connect to robot API at {code_api_url}")
+                raise HTTPException(
+                    status_code=503,
+                    detail="Robot API is unreachable. Please try again later."
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout connecting to robot API at {code_api_url}")
+                raise HTTPException(
+                    status_code=504,
+                    detail="Robot API timeout. Please try again later."
+                )
+            
+            # Execute code
+            execute_payload = {
+                "filename": filename,
+                "language": request.language
+            }
+            
+            try:
+                async with session.post(f"{code_api_url}/run", json=execute_payload) as execute_response:
+                    if execute_response.status != 200:
+                        execute_text = await execute_response.text()
+                        logger.error(f"Failed to execute code on {code_api_url}/run: {execute_response.status} - {execute_text}")
+                        raise HTTPException(
+                            status_code=502,
+                            detail=f"Failed to execute code on robot: HTTP {execute_response.status}"
+                        )
+                    execute_result = await execute_response.json()
+            except aiohttp.ClientConnectorError:
+                logger.error(f"Failed to connect to robot API at {code_api_url}")
+                raise HTTPException(
+                    status_code=503,
+                    detail="Robot API is unreachable. Please try again later."
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout executing code on robot API at {code_api_url}")
+                raise HTTPException(
+                    status_code=504,
+                    detail="Robot execution timeout. Please try again later."
+                )
+        
+        # Generate execution ID
         execution_id = f"exec_{user_id}_{int(time.time())}"
         
-        # Check if we have a simulation video for this robot type
-        video_files = {
-            "turtlebot": "turtlebot_simulation.mp4",
-            "arm": "arm_simulation.mp4", 
-            "hand": "hand_simulation.mp4"
-        }
-        
-        video_file = video_files.get(request.robot_type)
-        video_url = None
-        
-        if video_file:
-            video_path = Path("videos") / video_file
-            if video_path.exists():
-                video_url = f"/videos/{request.robot_type}"
-        
-        # Simulate processing time
-        await asyncio.sleep(1)
-        
+        # Return successful execution result
         return {
             "success": True,
             "execution_id": execution_id,
-            "video_url": video_url,
-            "simulation_type": "fallback",  # Will be "gazebo" when real simulation is implemented
-            "message": "Code executed successfully in fallback mode",
-            "robot_type": request.robot_type,
+            "robot_type": robot_type,
+            "robot_name": robot["name"],
             "language": request.language,
-            "timestamp": time.time()
+            "timestamp": time.time(),
+            "upload_result": upload_result,
+            "execute_result": execute_result,
+            "simulation_type": "external_api"
         }
         
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         logger.error(f"Error executing robot code for user {user_id}: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to execute robot code: {str(e)}"
         )
+
+async def _fallback_simulation(request: RobotExecuteRequest, user_id: int, robot_type: str):
+    """Fallback simulation when no external robot API is configured"""
+    # Generate a unique execution ID
+    execution_id = f"exec_{user_id}_{int(time.time())}"
+    
+    # Check if we have a simulation video for this robot type
+    video_files = {
+        "turtlebot": "turtlebot_simulation.mp4",
+        "arm": "arm_simulation.mp4", 
+        "hand": "hand_simulation.mp4"
+    }
+    
+    video_file = video_files.get(robot_type)
+    video_url = None
+    
+    if video_file:
+        video_path = Path("videos") / video_file
+        if video_path.exists():
+            video_url = f"/videos/{robot_type}"
+    
+    # Simulate processing time
+    await asyncio.sleep(1)
+    
+    return {
+        "success": True,
+        "execution_id": execution_id,
+        "video_url": video_url,
+        "simulation_type": "fallback",
+        "message": "Code executed successfully in fallback mode",
+        "robot_type": robot_type,
+        "language": request.language,
+        "timestamp": time.time()
+    }
 
 # WebRTC Signaling Endpoints
 class WebRTCOffer(BaseModel):

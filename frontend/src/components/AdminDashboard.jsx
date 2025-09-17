@@ -95,7 +95,8 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const [robotForm, setRobotForm] = useState({
     name: "",
     type: "",
-    rtsp_url: ""
+    rtsp_url: "",
+    code_api_url: ""
   });
   const [isEditingAnnouncement, setIsEditingAnnouncement] = useState(false);
   const [isEditingRobot, setIsEditingRobot] = useState(false);
@@ -348,7 +349,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       await createRobot(robotForm, authToken);
       await loadDashboardData();
       setIsRobotModalOpen(false);
-      setRobotForm({ name: "", type: "", rtsp_url: "" });
+      setRobotForm({ name: "", type: "", rtsp_url: "", code_api_url: "" });
       setIsEditingRobot(false);
       toast({
         title: "Robot created",
@@ -374,7 +375,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       await updateRobot(selectedRobot.id, robotForm, authToken);
       await loadDashboardData();
       setIsRobotModalOpen(false);
-      setRobotForm({ name: "", type: "", rtsp_url: "" });
+      setRobotForm({ name: "", type: "", rtsp_url: "", code_api_url: "" });
       setSelectedRobot(null);
       setIsEditingRobot(false);
       toast({
@@ -425,12 +426,13 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       setRobotForm({
         name: robot.name,
         type: robot.type,
-        rtsp_url: robot.rtsp_url || ""
+        rtsp_url: robot.rtsp_url || "",
+        code_api_url: robot.code_api_url || ""
       });
       setIsEditingRobot(true);
     } else {
       setSelectedRobot(null);
-      setRobotForm({ name: "", type: "", rtsp_url: "" });
+      setRobotForm({ name: "", type: "", rtsp_url: "", code_api_url: "" });
       setIsEditingRobot(false);
     }
     setIsRobotModalOpen(true);
@@ -963,6 +965,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                     <Th color="gray.300">Name</Th>
                     <Th color="gray.300">Type</Th>
                     <Th color="gray.300">RTSP URL</Th>
+                    <Th color="gray.300">Code API URL</Th>
                     <Th color="gray.300">Created</Th>
                     <Th color="gray.300">Actions</Th>
                   </Tr>
@@ -970,13 +973,13 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                 <Tbody>
                   {isLoading ? (
                     <Tr>
-                      <Td colSpan={5} textAlign="center" color="gray.400" py={8}>
+                      <Td colSpan={6} textAlign="center" color="gray.400" py={8}>
                         Loading robots...
                       </Td>
                     </Tr>
                   ) : hasError ? (
                     <Tr>
-                      <Td colSpan={5} textAlign="center" color="red.400" py={8}>
+                      <Td colSpan={6} textAlign="center" color="red.400" py={8}>
                         ❌ Failed to load robots data
                       </Td>
                     </Tr>
@@ -991,6 +994,9 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                         </Td>
                         <Td color="gray.300" maxW="200px" overflow="hidden" textOverflow="ellipsis">
                           {robot.rtsp_url || 'Not configured'}
+                        </Td>
+                        <Td color="gray.300" maxW="200px" overflow="hidden" textOverflow="ellipsis">
+                          {robot.code_api_url || 'Not configured'}
                         </Td>
                         <Td color="gray.300">{formatDate(robot.created_at)}</Td>
                         <Td>
@@ -1015,7 +1021,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                     ))
                   ) : (
                     <Tr>
-                      <Td colSpan={5} textAlign="center" color="gray.400" py={8}>
+                      <Td colSpan={6} textAlign="center" color="gray.400" py={8}>
                         No robots found
                       </Td>
                     </Tr>
@@ -1220,6 +1226,20 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                   placeholder="rtsp://192.168.1.100:554/stream"
                   value={robotForm.rtsp_url}
                   onChange={(e) => setRobotForm({...robotForm, rtsp_url: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                  _placeholder={{ color: "gray.400" }}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel color="gray.200">Code API URL</FormLabel>
+                <Input
+                  placeholder="http://robot-api:8080"
+                  value={robotForm.code_api_url}
+                  onChange={(e) => setRobotForm({...robotForm, code_api_url: e.target.value})}
                   bg="gray.700"
                   border="1px solid"
                   borderColor="gray.600"
