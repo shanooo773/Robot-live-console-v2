@@ -7,12 +7,17 @@ dist/
 build/
 
 # Environment files
+.env
+.env.local
+.env.production
+
 # Logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
+logs/
 
 # Runtime data
 pids
@@ -71,3 +76,17 @@ turtlebot_test.mp4
 backend/test_theia.py
 projects/123/
 playwright-logs/
+
+# Database files (MySQL only - no SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Additional cleanup
+test_*.py.bak
+demo_*.py.bak
