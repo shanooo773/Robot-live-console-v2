@@ -30,6 +30,7 @@ const robotNames = {
 
 const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
   const [robot, setRobot] = useState(slot?.robotType || "turtlebot");
+  const [selectedRobotData, setSelectedRobotData] = useState(null); // Store full robot object
   const [hasAccess, setHasAccess] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const [videoUrl, setVideoUrl] = useState(null);
@@ -87,8 +88,17 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
     checkUserAccess();
   }, [authToken, user, toast]);
 
-  const onSelect = (robotType) => {
-    setRobot(robotType);
+  const onSelect = (robotId, robotData) => {
+    // Handle both new robot selection (with ID and data) and backward compatibility
+    if (robotData) {
+      // New format: robot object with id, name, type
+      setRobot(robotId);  // Store robot ID
+      setSelectedRobotData(robotData);  // Store full robot data
+    } else {
+      // Backward compatibility: robotId is actually robotType
+      setRobot(robotId);
+      setSelectedRobotData({ type: robotId, name: robotNames[robotId]?.name || robotId });
+    }
     setShowVideo(false); // Reset video when robot changes
     setVideoUrl(null);
   };
@@ -97,8 +107,10 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
     setVideoLoading(true);
     try {
       if (authToken) {
+        // Get robot type for video API (backward compatibility)
+        const robotType = selectedRobotData ? selectedRobotData.type : robot;
         // Regular video loading with authentication
-        const videoBlob = await getVideo(robot, authToken);
+        const videoBlob = await getVideo(robotType, authToken);
         const url = URL.createObjectURL(videoBlob);
         setVideoUrl(url);
         setShowVideo(true);
@@ -286,6 +298,7 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
                       <RTSPVideoPlayer 
                         user={user}
                         authToken={authToken}
+                        robot={selectedRobotData || robot}  // Pass robot data or fallback to robot type
                         onError={(error) => {
                           toast({
                             title: "Video Stream Error",
