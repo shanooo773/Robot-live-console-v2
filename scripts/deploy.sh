@@ -210,7 +210,15 @@ install_production_deps() {
     print_status "Installing production dependencies..."
     
     # Install gunicorn for production backend
-    cd ../backend
+    if [ -d "backend" ]; then
+        cd backend
+    elif [ -d "../backend" ]; then
+        cd ../backend
+    else
+        print_warning "Backend directory not found, skipping gunicorn install"
+        return
+    fi
+    
     if [ -f "venv/bin/activate" ]; then
         source venv/bin/activate
         pip install gunicorn

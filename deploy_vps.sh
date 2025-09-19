@@ -344,6 +344,34 @@ check_service_health() {
     print_success "All health checks passed!"
 }
 
+# Function to validate VPS configuration before deployment
+validate_vps_config() {
+    print_status "Validating VPS configuration..."
+    
+    # Check if frontend has correct API URL
+    if grep -q "http://$VPS_IP:8000" frontend/src/api.js; then
+        print_success "Frontend API configuration is correct"
+    else
+        print_warning "Frontend API configuration may need updating"
+    fi
+    
+    # Check if backend .env exists and has VPS IP
+    if [ -f "backend/.env" ]; then
+        if grep -q "VPS_URL=http://$VPS_IP" backend/.env; then
+            print_success "Backend VPS configuration is correct"
+        else
+            print_warning "Backend VPS configuration will be updated"
+        fi
+    fi
+    
+    # Test if VPS IP is reachable (ping test)
+    if ping -c 1 -W 5 $VPS_IP >/dev/null 2>&1; then
+        print_success "VPS IP $VPS_IP is reachable"
+    else
+        print_warning "VPS IP $VPS_IP may not be reachable (this might be normal if ping is disabled)"
+    fi
+}
+
 # Main deployment function
 main() {
     echo "🚀 VPS Deployment Script for Robot Console"
@@ -384,13 +412,11 @@ main() {
         print_status "Using provided VPS IP: $VPS_IP"
     fi
     
-    # Check if running as root or with sudo
-    if [ "$EUID" -ne 0 ]; then
-        print_error "This script must be run as root or with sudo"
-        exit 1
-    fi
+    # Validate VPS configuration
+    validate_vps_config
     
     # Check required ports
+    print_status "Checking port availability..."
     print_status "Checking port availability..."
     if ! check_port 8000; then
         NEW_PORT=$(find_available_port 8001)
