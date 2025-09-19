@@ -13,8 +13,8 @@ const getApiUrl = () => {
     return `${window.location.origin}/api`;
   }
   
-  // Development fallback
-  return "http://172.104.207.139:8000";
+  // Development fallback - use current VPS IP
+  return "http://172.232.105.47:8000";
 };
 
 // Backend API (authentication, booking, and video serving)
