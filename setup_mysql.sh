@@ -73,7 +73,7 @@ secure_mysql_installation() {
     print_status "Securing MySQL installation..."
     
     # Check MySQL version to determine security approach
-    MYSQL_VERSION=$(mysql --version | grep -oP 'Distrib \K[0-9]+\.[0-9]+' | head -1)
+    MYSQL_VERSION=$(mysql --version | grep -oP 'Ver \K[0-9]+\.[0-9]+' | head -1)
     MAJOR_VERSION=$(echo $MYSQL_VERSION | cut -d. -f1)
     MINOR_VERSION=$(echo $MYSQL_VERSION | cut -d. -f2)
     
@@ -163,7 +163,7 @@ check_mysql() {
     else
         print_success "MySQL is already installed"
         # Check MySQL version
-        MYSQL_VERSION=$(mysql --version | grep -oP 'Distrib \K[0-9]+\.[0-9]+')
+        MYSQL_VERSION=$(mysql --version | grep -oP 'Ver \K[0-9]+\.[0-9]+')
         print_status "MySQL version: $MYSQL_VERSION"
         
         # Check if MySQL service is running
