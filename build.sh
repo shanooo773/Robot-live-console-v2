@@ -75,7 +75,7 @@ fi
 cd ..
 
 # Create projects directory if it doesn't exist
-mkdir -p projects
+
 
 echo ""
 echo "🎉 Build completed successfully!"

@@ -47,7 +47,7 @@ RUN npm install
 RUN npx theia build || echo "Build completed with warnings"
 
 # Create project directory
-RUN mkdir -p /home/project
+
 
 EXPOSE 3000
 

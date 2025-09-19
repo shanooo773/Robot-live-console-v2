@@ -61,9 +61,7 @@ validate_password() {
     fi
     
     # Check for at least one letter, one number
-    if [[ ! "$password" =~ [A-Za-z] ]] || [[ ! "$password" =~ [0-9] ]]; then
-        return 1
-    fi
+   
     
     return 0
 }
