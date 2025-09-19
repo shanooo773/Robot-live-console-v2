@@ -62,7 +62,7 @@ def get_cors_origins():
             return production_origins.split(',')
         else:
             # Fallback to VPS IP if no production origins specified
-            vps_url = os.getenv('VPS_URL', 'http://172.104.207.139')
+            vps_url = os.getenv('VPS_URL', 'http://172.232.105.47')
             return [vps_url, f"{vps_url}:3000", f"{vps_url}:5173"]
     else:
         # Development origins

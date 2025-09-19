@@ -2,6 +2,17 @@
 
 # Enhanced Deployment Script for VPS
 # Handles port conflicts, file permissions, and systemd service setup
+# 
+# Usage:
+#   sudo ./deploy_vps.sh                    # Auto-detect VPS IP
+#   sudo ./deploy_vps.sh --vps-ip 172.232.105.47  # Specify VPS IP
+#
+# This script will:
+# - Auto-detect or use provided VPS IP address
+# - Update all configuration files with the correct IP
+# - Set up systemd services for production
+# - Configure nginx as reverse proxy
+# - Validate external access to the application
 
 set -e  # Exit on any error
 
@@ -107,6 +118,21 @@ setup_python_environment() {
     
     # Install dependencies
     sudo -u robot-console bash -c "source venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
+    
+    # Create/update .env file with VPS configuration
+    print_status "Creating/updating .env file with VPS configuration..."
+    if [ ! -f ".env" ]; then
+        # Copy from template
+        cp ../.env.template .env
+    fi
+    
+    # Update VPS-specific settings
+    sudo -u robot-console bash -c "
+    sed -i 's|VPS_URL=.*|VPS_URL=http://$VPS_IP|g' .env
+    sed -i 's|CORS_ORIGINS=.*|CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://$VPS_IP,http://$VPS_IP:3000,http://$VPS_IP:5173,http://$VPS_IP:80,http://$VPS_IP:443|g' .env
+    sed -i 's|PRODUCTION_CORS_ORIGINS=.*|PRODUCTION_CORS_ORIGINS=http://$VPS_IP,http://$VPS_IP:3000,http://$VPS_IP:5173,http://$VPS_IP:80,http://$VPS_IP:443,https://your-domain.com|g' .env
+    sed -i 's|ENVIRONMENT=.*|ENVIRONMENT=production|g' .env
+    "
     
     print_success "Python environment setup completed"
 }
@@ -266,8 +292,16 @@ build_frontend() {
     
     # Create production environment file
     cat > .env.production << EOF
-VITE_API_URL=/api
+VITE_API_URL=http://$VPS_IP:8000
 EOF
+    
+    # Update backend .env with VPS IP if it exists
+    if [ -f "/opt/robot-console/backend/.env" ]; then
+        print_status "Updating backend .env with VPS IP: $VPS_IP"
+        sed -i "s|VPS_URL=.*|VPS_URL=http://$VPS_IP|g" /opt/robot-console/backend/.env
+        sed -i "s|CORS_ORIGINS=.*|CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://$VPS_IP,http://$VPS_IP:3000,http://$VPS_IP:5173,http://$VPS_IP:80,http://$VPS_IP:443|g" /opt/robot-console/backend/.env
+        sed -i "s|PRODUCTION_CORS_ORIGINS=.*|PRODUCTION_CORS_ORIGINS=http://$VPS_IP,http://$VPS_IP:3000,http://$VPS_IP:5173,http://$VPS_IP:80,http://$VPS_IP:443,https://your-domain.com|g" /opt/robot-console/backend/.env
+    fi
     
     # Install dependencies and build
     npm install
@@ -299,6 +333,14 @@ check_service_health() {
         return 1
     fi
     
+    # Test external access with VPS IP
+    print_status "Testing external access with VPS IP: $VPS_IP"
+    if curl -s -m 10 http://$VPS_IP/ >/dev/null 2>&1; then
+        print_success "External access test passed"
+    else
+        print_warning "External access test failed - check firewall settings"
+    fi
+    
     print_success "All health checks passed!"
 }
 
@@ -307,6 +349,40 @@ main() {
     echo "🚀 VPS Deployment Script for Robot Console"
     echo "=========================================="
     echo
+    
+    # Check if running as root or with sudo
+    if [ "$EUID" -ne 0 ]; then
+        print_error "This script must be run as root or with sudo"
+        exit 1
+    fi
+    
+    # Parse command line arguments for VPS IP
+    VPS_IP=""
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --vps-ip)
+                VPS_IP="$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+    
+    # Auto-detect VPS IP if not provided
+    if [ -z "$VPS_IP" ]; then
+        print_status "Auto-detecting VPS IP address..."
+        VPS_IP=$(hostname -I | awk '{print $1}')
+        if [ ! -z "$VPS_IP" ]; then
+            print_success "Detected VPS IP: $VPS_IP"
+        else
+            print_warning "Could not auto-detect VPS IP. Using localhost."
+            VPS_IP="localhost"
+        fi
+    else
+        print_status "Using provided VPS IP: $VPS_IP"
+    fi
     
     # Check if running as root or with sudo
     if [ "$EUID" -ne 0 ]; then
@@ -347,9 +423,9 @@ main() {
         print_success "🎉 Deployment completed successfully!"
         echo
         print_status "Service Status:"
-        echo "  Backend: http://localhost:8000/health"
-        echo "  Frontend: http://localhost/"
-        echo "  API Docs: http://localhost:8000/docs"
+        echo "  Backend: http://$VPS_IP:8000/health"
+        echo "  Frontend: http://$VPS_IP/"
+        echo "  API Docs: http://$VPS_IP:8000/docs"
         echo
         print_status "Management Commands:"
         echo "  sudo systemctl status robot-console-backend"

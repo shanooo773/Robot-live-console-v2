@@ -16,6 +16,7 @@ NC='\033[0m' # No Color
 BACKEND_PORT=8000
 FRONTEND_PORT=3000
 PRODUCTION_MODE=False
+VPS_IP=""
 
 
 # Function to print colored output
@@ -74,6 +75,15 @@ deploy_backend() {
     if [ ! -f ".env" ] && [ -f "../.env.template" ]; then
         print_status "Creating .env file from template..."
         cp ../.env.template .env
+        
+        # Update VPS IP if provided
+        if [ ! -z "$VPS_IP" ]; then
+            print_status "Updating VPS IP to $VPS_IP in .env..."
+            sed -i "s|VPS_URL=.*|VPS_URL=http://$VPS_IP|g" .env
+            sed -i "s|CORS_ORIGINS=.*|CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://$VPS_IP,http://$VPS_IP:3000,http://$VPS_IP:5173|g" .env
+            sed -i "s|PRODUCTION_CORS_ORIGINS=.*|PRODUCTION_CORS_ORIGINS=http://$VPS_IP,http://$VPS_IP:3000,http://$VPS_IP:5173,http://$VPS_IP:80,http://$VPS_IP:443,https://your-domain.com|g" .env
+        fi
+        
         print_warning "Please edit .env file with your production settings"
     fi
     
@@ -105,6 +115,19 @@ deploy_frontend() {
     if [ "$PRODUCTION_MODE" = true ]; then
         # Build for production
         print_status "Building frontend for production..."
+        
+        # Create production environment file
+        if [ ! -z "$VPS_IP" ]; then
+            print_status "Setting up production environment with VPS IP: $VPS_IP"
+            cat > .env.production << EOF
+VITE_API_URL=http://$VPS_IP:$BACKEND_PORT
+EOF
+        else
+            cat > .env.production << EOF
+VITE_API_URL=/api
+EOF
+        fi
+        
         npm run build
         
         # Serve with a production server (e.g., serve)
@@ -288,6 +311,7 @@ show_usage() {
     echo "  -d, --development   Deploy in development mode (default)"
     echo "  --port-backend PORT Set backend port (default: 8000)"
     echo "  --port-frontend PORT Set frontend port (default: 3000)"
+    echo "  --vps-ip IP         Set VPS IP address for configuration"
     echo "  --nginx             Setup nginx configuration"
     echo "  --systemd           Create systemd service files"
     echo "  -h, --help          Show this help message"
@@ -295,6 +319,7 @@ show_usage() {
     echo "Examples:"
     echo "  $0                  # Deploy in development mode"
     echo "  $0 --production     # Deploy in production mode"
+    echo "  $0 --production --vps-ip 172.232.105.47 # Deploy with VPS IP"
     echo "  $0 --nginx --systemd # Deploy with nginx and systemd configs"
 }
 
@@ -316,6 +341,10 @@ parse_args() {
                 ;;
             --port-frontend)
                 FRONTEND_PORT="$2"
+                shift 2
+                ;;
+            --vps-ip)
+                VPS_IP="$2"
                 shift 2
                 ;;
             --nginx)
