@@ -48,16 +48,36 @@ SECRET_KEY=your-super-secret-jwt-key-here
 ### 3. Setup MySQL Database
 
 ```bash
-# Run MySQL setup script
+# Run enhanced MySQL setup script with options
 sudo ./setup_mysql.sh
+
+# OR test first with dry-run mode
+./setup_mysql.sh --dry-run
+
+# OR create backup only
+./setup_mysql.sh --backup-only
+
+# OR skip data migration if not needed
+./setup_mysql.sh --skip-migration
 ```
 
-This script will:
-- Install MySQL if not present
-- Create database and user
-- Test connection
-- Migrate existing SQLite data (if any)
-- Update environment for production
+This enhanced script will:
+- Install MySQL 8.0+ if not present with proper systemd integration
+- Create database and user with modern security practices
+- Generate secure passwords automatically
+- Test connection with retry logic and comprehensive validation
+- Migrate existing SQLite data (if any) to MySQL
+- Update environment configuration for production
+- Create backup of existing configuration
+- Validate final setup for production readiness
+
+**New Features in v2.0:**
+- 🔒 **Enhanced Security**: MySQL 8.0+ authentication, secure password generation
+- 🚀 **Modern Compatibility**: Full support for latest MySQL versions
+- 🛠️ **Better UX**: Dry-run mode, progress indicators, improved error handling
+- ⚙️ **Systemd Integration**: Automatic service management and health checks
+- 🔍 **Validation**: Comprehensive configuration validation and retry logic
+- 📁 **Backup System**: Automatic configuration backup before changes
 
 ### 4. Deploy Application
 
