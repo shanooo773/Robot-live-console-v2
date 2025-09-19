@@ -90,3 +90,17 @@ __pycache__/
 # Additional cleanup
 test_*.py.bak
 demo_*.py.bak
+
+# Temporary validation/audit/migration files
+*_validation.py
+*_audit*.py
+*_migration*.py
+*_fix*.py
+validate_*.py
+migrate_*.py
+apply_*.py
+comprehensive_*.py
+*_REPORT.md
+*_SUMMARY.md
+*_AUDIT.md
+*_REVIEW.md
