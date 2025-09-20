@@ -1,6 +1,6 @@
 FROM node:18-slim
 
-# Install necessary build tools and libraries for native modules
+# Install necessary dependencies
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -8,15 +8,8 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     build-essential \
-    libx11-dev \
-    libxkbfile-dev \
-    libsecret-1-dev \
-    pkg-config \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-
-# Enable Yarn v1 via Corepack (no npm -g permission issues)
-RUN corepack enable && corepack prepare yarn@1.22.22 --activate
 
 # Create theia user
 RUN groupadd -g 1001 theia && \
@@ -25,19 +18,20 @@ RUN groupadd -g 1001 theia && \
 WORKDIR /home/theia
 USER theia
 
-# Copy package.json and yarn.lock
-COPY --chown=theia:theia package.json yarn.lock ./
+# Copy npm package manifests
+COPY --chown=theia:theia package.json package-lock.json ./
 
-# Install dependencies with more memory + ignore engine strictness
+# Install dependencies with npm (allow larger memory usage)
 ENV NODE_OPTIONS="--max_old_space_size=4096"
-RUN yarn install --ignore-engines
+RUN npm install
 
-# Build Theia
-RUN yarn theia build
+# Build Theia app
+RUN npm run clean && npm run build && npm run download:plugins
 
 # Create project directory
 RUN mkdir -p /home/project
 
 EXPOSE 3000
 
-CMD ["yarn", "start", "/home/project", "--hostname=0.0.0.0"]
+# Start command with plugin support
+CMD ["npm", "start"]
