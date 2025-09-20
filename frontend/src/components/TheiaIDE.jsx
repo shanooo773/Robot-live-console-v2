@@ -35,11 +35,22 @@ const TheiaIDE = ({ user, authToken, onError }) => {
       });
 
       if (response.ok) {
-        const status = await response.json();
-        setTheiaStatus(status);
-        setError(null);
+        try {
+          const status = await response.json();
+          setTheiaStatus(status);
+          setError(null);
+        } catch (jsonError) {
+          // Handle JSON parsing errors that might indicate HTML response
+          const responseText = await response.text();
+          if (responseText.includes('<!doctype') || responseText.includes('<html')) {
+            throw new Error('Theia returned HTML instead of JSON - container may not be properly started');
+          } else {
+            throw new Error(`Invalid JSON response: ${jsonError.message}`);
+          }
+        }
       } else {
-        throw new Error('Failed to check Theia status');
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
     } catch (err) {
       console.error('Error checking Theia status:', err);
@@ -66,23 +77,36 @@ const TheiaIDE = ({ user, authToken, onError }) => {
       });
 
       if (response.ok) {
-        const result = await response.json();
-        toast({
-          title: "Theia IDE Started",
-          description: "Your development environment is now ready!",
-          status: "success",
-          duration: 3000,
-          isClosable: true,
-        });
-        
-        // Refresh status
-        setTimeout(() => {
-          checkTheiaStatus();
-        }, 2000);
-        
+        try {
+          const result = await response.json();
+          toast({
+            title: "Theia IDE Started",
+            description: "Your development environment is now ready!",
+            status: "success",
+            duration: 3000,
+            isClosable: true,
+          });
+          
+          // Refresh status
+          setTimeout(() => {
+            checkTheiaStatus();
+          }, 2000);
+        } catch (jsonError) {
+          const responseText = await response.text();
+          if (responseText.includes('<!doctype') || responseText.includes('<html')) {
+            throw new Error('Server returned HTML instead of JSON - Theia configuration issue');
+          } else {
+            throw new Error(`Invalid JSON response: ${jsonError.message}`);
+          }
+        }
       } else {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to start Theia container');
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Failed to start Theia container');
+        } catch (jsonError) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
       }
     } catch (err) {
       console.error('Error starting Theia:', err);

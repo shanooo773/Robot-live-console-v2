@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     build-essential \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Create theia user
@@ -17,39 +18,21 @@ RUN groupadd -g 1001 theia && \
 WORKDIR /home/theia
 USER theia
 
-# Create a minimal Theia application
-RUN echo '{\
-  "name": "robot-console-theia",\
-  "version": "1.0.0",\
-  "scripts": {\
-    "start": "node /home/theia/src-gen/backend/main.js /home/project --hostname=0.0.0.0 --port=3000"\
-  },\
-  "dependencies": {\
-    "@theia/core": "^1.44.0",\
-    "@theia/editor": "^1.44.0",\
-    "@theia/filesystem": "^1.44.0",\
-    "@theia/workspace": "^1.44.0",\
-    "@theia/terminal": "^1.44.0",\
-    "@theia/navigator": "^1.44.0",\
-    "@theia/preferences": "^1.44.0",\
-    "@theia/monaco": "^1.44.0"\
-  },\
-  "devDependencies": {\
-    "@theia/cli": "^1.44.0"\
-  }\
-}' > package.json
+# Copy the package.json with proper configuration
+COPY --chown=theia:theia package.json ./
 
-# Install dependencies with increased memory
+# Install dependencies with increased memory and SSL workaround
 ENV NODE_OPTIONS="--max_old_space_size=4096"
-RUN npm install
+RUN npm config set strict-ssl false && \
+    npm install
 
 # Generate Theia application
-RUN npx theia build || echo "Build completed with warnings"
+RUN npm run clean && npm run build && npm run download:plugins
 
 # Create project directory
-
+RUN mkdir -p /home/project
 
 EXPOSE 3000
 
-# Simple start command that works
-CMD ["node", "/home/theia/src-gen/backend/main.js", "/home/project", "--hostname=0.0.0.0", "--port=3000"]
+# Start command with plugin support
+CMD ["npm", "start"]
