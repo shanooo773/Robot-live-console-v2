@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Yarn globally (as root)
-RUN npm install -g yarn
+RUN corepack enable && corepack prepare yarn@1.22.22 --activate
+
 
 # Create theia user (non-root)
 RUN groupadd -g 1001 theia && \
