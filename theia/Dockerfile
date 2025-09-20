@@ -17,23 +17,25 @@ RUN groupadd -g 1001 theia && \
 WORKDIR /home/theia
 USER theia
 
-# Copy your app sources if needed
-# COPY . .
+# Copy package.json and yarn.lock from your frontend project
+COPY --chown=theia:theia frontend/package.json frontend/yarn.lock ./
 
-# Copy package.json (from your project or theia minimal setup)
-COPY --chown=theia:theia package.json ./
-
-# Increase memory and install deps with npm (instead of yarn)
+# Increase memory for Node
 ENV NODE_OPTIONS="--max_old_space_size=4096"
-RUN npm install
 
-# Build Theia app (ignore warnings but don’t fail)
+# Install dependencies with Yarn
+RUN yarn install --frozen-lockfile || yarn install --ignore-engines
+
+# Copy the rest of your frontend project
+COPY --chown=theia:theia frontend/ ./
+
+# Build Theia (ignore warnings but don’t fail the build)
 RUN npx theia build || echo "Build completed with warnings"
 
-# Project directory
+# Create project directory
 RUN mkdir -p /home/project
 
 EXPOSE 3000
 
-# Start command
+# Start Theia
 CMD ["node", "/home/theia/src-gen/backend/main.js", "/home/project", "--hostname=0.0.0.0", "--port=3000"]
