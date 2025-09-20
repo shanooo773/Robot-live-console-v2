@@ -1,6 +1,6 @@
 FROM node:18-slim
 
-# Install necessary dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -11,28 +11,30 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Create theia user
+# Create theia user (non-root)
 RUN groupadd -g 1001 theia && \
     useradd -u 1001 -g theia -s /bin/bash -m theia
 
 WORKDIR /home/theia
 USER theia
 
-# Copy the package.json with proper configuration
+# Copy package.json
 COPY --chown=theia:theia package.json ./
 
-# Install dependencies with increased memory and SSL workaround
+# Use Yarn instead of npm (Theia recommends yarn)
+RUN npm install -g yarn
+
+# Install dependencies with yarn (ignore engines to avoid strict checks)
 ENV NODE_OPTIONS="--max_old_space_size=4096"
-RUN npm config set strict-ssl false && \
-    npm install
+RUN yarn install --ignore-engines
 
-# Generate Theia application
-RUN npm run clean && npm run build && npm run download:plugins
+# Build Theia app (clean + build + plugins)
+RUN yarn run clean && yarn run build && yarn run download:plugins
 
-# Create project directory
+# Workspace directory
 RUN mkdir -p /home/project
 
 EXPOSE 3000
 
-# Start command with plugin support
-CMD ["npm", "start"]
+# Start Theia
+CMD ["yarn", "start", "--hostname=0.0.0.0"]
