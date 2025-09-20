@@ -1,28 +1,14 @@
 [Unit]
 Description=Robot Console Backend
-After=network.target mysql.service
-Wants=mysql.service
+After=network.target
 
 [Service]
 Type=simple
-User=robot-console
-Group=robot-console
-WorkingDirectory=/opt/robot-console/backend
-Environment=PATH=/opt/robot-console/backend/venv/bin
-ExecStart=/opt/robot-console/backend/venv/bin/gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --access-logfile /opt/robot-console/backend/logs/access.log --error-logfile /opt/robot-console/backend/logs/error.log --log-level info
-ExecReload=/bin/kill -HUP $MAINPID
+User=${USER}
+WorkingDirectory=/home/shayan/Robot-live-console-v2/backend
+Environment=PATH=/home/shayan/Robot-live-console-v2/backend/venv/bin
+ExecStart=/home/shayan/Robot-live-console-v2/backend/venv/bin/gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=robot-console-backend
-
-# Security settings
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ReadWritePaths=/opt/robot-console/backend/logs /opt/robot-console/backend/videos /opt/robot-console/backend/temp
-ProtectHome=true
 
 [Install]
 WantedBy=multi-user.target

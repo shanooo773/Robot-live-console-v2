@@ -45,7 +45,7 @@ command_exists() {
 deploy_backend() {
     print_status "Deploying FastAPI backend..."
 	pwd    
-    cd backend
+    cd ../backend
     
     # Create production virtual environment
     if [ ! -d "venv" ]; then
