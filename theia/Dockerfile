@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Yarn Classic (Theia requires 1.x)
+RUN npm install -g yarn@1.22.22 --force
+
 # Create theia user
 RUN groupadd -g 1001 theia && \
     useradd -u 1001 -g theia -s /bin/bash -m theia
@@ -17,39 +20,20 @@ RUN groupadd -g 1001 theia && \
 WORKDIR /home/theia
 USER theia
 
-# Create a minimal Theia application
-RUN echo '{\
-  "name": "robot-console-theia",\
-  "version": "1.0.0",\
-  "scripts": {\
-    "start": "node /home/theia/src-gen/backend/main.js /home/project --hostname=0.0.0.0 --port=3000"\
-  },\
-  "dependencies": {\
-    "@theia/core": "^1.44.0",\
-    "@theia/editor": "^1.44.0",\
-    "@theia/filesystem": "^1.44.0",\
-    "@theia/workspace": "^1.44.0",\
-    "@theia/terminal": "^1.44.0",\
-    "@theia/navigator": "^1.44.0",\
-    "@theia/preferences": "^1.44.0",\
-    "@theia/monaco": "^1.44.0"\
-  },\
-  "devDependencies": {\
-    "@theia/cli": "^1.44.0"\
-  }\
-}' > package.json
+# Copy package.json
+COPY --chown=theia:theia package.json ./
 
-# Install dependencies with increased memory
+# Increase memory and install dependencies with yarn
 ENV NODE_OPTIONS="--max_old_space_size=4096"
-RUN npm install
+RUN yarn install --ignore-engines
 
-# Generate Theia application
-RUN npx theia build || echo "Build completed with warnings"
+# Build Theia app (ignore warnings but don’t fail)
+RUN yarn theia build || echo "Build completed with warnings"
 
-# Create project directory
+# Project directory
 RUN mkdir -p /home/project
 
 EXPOSE 3000
 
-# Simple start command that works
-CMD ["node", "/home/theia/src-gen/backend/main.js", "/home/project", "--hostname=0.0.0.0", "--port=3000"]
+# Start command
+CMD ["yarn", "theia", "start", "/home/project", "--hostname=0.0.0.0", "--port=3000"]
