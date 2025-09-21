@@ -294,7 +294,7 @@ class DatabaseManager:
                 "start_time": booking[4],
                 "end_time": booking[5],
                 "status": booking[6],
-                "created_at": booking[7]
+                "created_at": booking[7].isoformat() if booking[7] else None
             }
             for booking in bookings
         ]
@@ -326,7 +326,7 @@ class DatabaseManager:
                 "start_time": booking[6],
                 "end_time": booking[7],
                 "status": booking[8],
-                "created_at": booking[9]
+                "created_at": booking[9].isoformat() if booking[9] else None
             }
             for booking in bookings
         ]
@@ -350,7 +350,7 @@ class DatabaseManager:
                 "name": user[1],
                 "email": user[2],
                 "role": user[3],
-                "created_at": user[4]
+                "created_at": user[4].isoformat() if user[4] else None
             }
             for user in users
         ]

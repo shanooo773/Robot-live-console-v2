@@ -19,6 +19,10 @@ yarn-error.log*
 lerna-debug.log*
 logs/
 
+# Temporary setup files
+quick_mysql_setup.py
+backup_*/
+
 # Runtime data
 pids
 *.pid
