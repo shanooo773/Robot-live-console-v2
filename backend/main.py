@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import logging
 from pathlib import Path
+from datetime import datetime
 
 # Import environment support
 import os
@@ -104,18 +105,165 @@ try:
 except Exception as e:
     logger.warning(f"Database connection failed - using demo mode: {e}")
     DATABASE_AVAILABLE = False
-    # Create a mock database manager
+    # Create a mock database manager with authentication support
     class MockDatabaseManager:
+        def __init__(self):
+            # In-memory storage for users when database is unavailable
+            self._users = {}
+            self._user_id_counter = 1
+            self._bookings = []
+            self._booking_id_counter = 1
+            logger.info("MockDatabaseManager initialized with in-memory user storage")
+        
+        def _hash_password(self, password: str) -> str:
+            """Hash a password using SHA-256 with salt"""
+            import secrets
+            import hashlib
+            salt = secrets.token_hex(16)
+            pwd_hash = hashlib.sha256((password + salt).encode()).hexdigest()
+            return f"{salt}:{pwd_hash}"
+        
+        def _verify_password(self, password: str, password_hash: str) -> bool:
+            """Verify a password against its hash"""
+            import hashlib
+            try:
+                salt, pwd_hash = password_hash.split(':')
+                return hashlib.sha256((password + salt).encode()).hexdigest() == pwd_hash
+            except ValueError:
+                return False
+        
+        def create_user(self, name: str, email: str, password: str, role: str = "user") -> dict:
+            """Create a new user in memory"""
+            if email in self._users:
+                raise ValueError("Email already exists")
+            
+            user_id = self._user_id_counter
+            self._user_id_counter += 1
+            
+            password_hash = self._hash_password(password)
+            user = {
+                "id": user_id,
+                "name": name,
+                "email": email,
+                "password_hash": password_hash,
+                "role": role,
+                "created_at": datetime.now().isoformat()
+            }
+            
+            self._users[email] = user
+            logger.info(f"MockDB: Created user {email} with ID {user_id}")
+            
+            # Return user without password hash
+            return {
+                "id": user_id,
+                "name": name,
+                "email": email,
+                "role": role,
+                "created_at": user["created_at"]
+            }
+        
+        def authenticate_user(self, email: str, password: str) -> Optional[Dict[str, Any]]:
+            """Authenticate a user against in-memory storage"""
+            user = self._users.get(email)
+            if not user:
+                return None
+            
+            if self._verify_password(password, user["password_hash"]):
+                return {
+                    "id": user["id"],
+                    "name": user["name"],
+                    "email": user["email"],
+                    "role": user["role"],
+                    "created_at": user["created_at"]
+                }
+            return None
+        
+        def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+            """Get user by ID from in-memory storage"""
+            for user in self._users.values():
+                if user["id"] == user_id:
+                    return {
+                        "id": user["id"],
+                        "name": user["name"],
+                        "email": user["email"],
+                        "role": user["role"],
+                        "created_at": user["created_at"]
+                    }
+            return None
+        
         def get_all_users(self):
-            return []
+            """Return all users (without password hashes)"""
+            return [
+                {
+                    "id": user["id"],
+                    "name": user["name"],
+                    "email": user["email"],
+                    "role": user["role"],
+                    "created_at": user["created_at"]
+                }
+                for user in self._users.values()
+            ]
+        
+        def create_booking(self, user_id: int, robot_type: str, date: str, start_time: str, end_time: str) -> Dict[str, Any]:
+            """Create a booking in memory"""
+            booking_id = self._booking_id_counter
+            self._booking_id_counter += 1
+            
+            booking = {
+                "id": booking_id,
+                "user_id": user_id,
+                "robot_type": robot_type,
+                "date": date,
+                "start_time": start_time,
+                "end_time": end_time,
+                "status": "active",
+                "created_at": datetime.now().isoformat()
+            }
+            
+            self._bookings.append(booking)
+            logger.info(f"MockDB: Created booking {booking_id} for user {user_id}")
+            return booking
+        
         def get_all_bookings(self):
-            return []
+            """Return all bookings with demo data if empty"""
+            if not self._bookings:
+                return [
+                    {"id": 1, "user_id": 1, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "turtlebot", "date": "2024-01-20", "start_time": "10:00", "end_time": "11:00", "status": "active", "created_at": "2024-01-15T11:00:00"},
+                    {"id": 2, "user_id": 1, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "arm", "date": "2024-01-19", "start_time": "14:00", "end_time": "15:00", "status": "completed", "created_at": "2024-01-14T13:30:00"},
+                    {"id": 3, "user_id": 1, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "hand", "date": "2024-01-18", "start_time": "16:00", "end_time": "17:00", "status": "completed", "created_at": "2024-01-13T15:45:00"}
+                ]
+            return self._bookings
+        
         def get_all_messages(self):
-            return []
+            return [
+                {"id": 1, "name": "Contact User", "email": "contact@example.com", "message": "Hello, I'm interested in using the robot console.", "status": "unread", "created_at": "2024-01-15T12:00:00"}
+            ]
+        
         def get_all_announcements(self):
-            return []
+            return [
+                {"id": 1, "title": "Welcome to Robot Console", "content": "The system is running in demo mode.", "priority": "normal", "is_active": True, "created_by": 2, "created_by_name": "Admin User", "created_at": "2024-01-14T09:30:00", "updated_at": "2024-01-14T09:30:00"},
+                {"id": 2, "title": "Database Connection Info", "content": "Database is currently unavailable, showing demo data.", "priority": "low", "is_active": False, "created_by": 2, "created_by_name": "Admin User", "created_at": "2024-01-13T14:00:00", "updated_at": "2024-01-13T14:00:00"}
+            ]
+        
         def get_all_robots(self):
-            return []
+            return [
+                {"id": 1, "name": "Demo TurtleBot", "type": "turtlebot", "rtsp_url": "rtsp://demo:554/turtlebot", "code_api_url": "http://localhost:8001/api", "status": "active", "created_at": "2024-01-14T10:00:00", "updated_at": "2024-01-14T10:00:00"},
+                {"id": 2, "name": "Demo Robot Arm", "type": "arm", "rtsp_url": "rtsp://demo:554/arm", "code_api_url": "http://localhost:8001/api", "status": "active", "created_at": "2024-01-14T10:05:00", "updated_at": "2024-01-14T10:05:00"},
+                {"id": 3, "name": "Demo Robot Hand", "type": "hand", "rtsp_url": "rtsp://demo:554/hand", "code_api_url": "http://localhost:8001/api", "status": "inactive", "created_at": "2024-01-14T10:10:00", "updated_at": "2024-01-14T10:10:00"}
+            ]
+        
+        def get_active_robots(self):
+            """Get only active robots"""
+            all_robots = self.get_all_robots()
+            return [robot for robot in all_robots if robot.get('status') == 'active']
+        
+        def get_active_robot_by_type(self, robot_type: str):
+            """Get first active robot of specified type"""
+            active_robots = self.get_active_robots()
+            for robot in active_robots:
+                if robot.get('type') == robot_type:
+                    return robot
+            return None
     db = MockDatabaseManager()
 
 # Initialize service manager with fallback
@@ -201,12 +349,20 @@ app = FastAPI(title="Robot Admin Backend API", version="1.0.0", lifespan=lifespa
 @app.exception_handler(500)
 async def internal_server_error_handler(request, exc):
     logger.error(f"Internal server error: {str(exc)}", exc_info=True)
-    return {"error": "Internal server error", "detail": "Please check server logs"}
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "detail": "Please check server logs"}
+    )
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     logger.warning(f"HTTP exception: {exc.status_code} - {exc.detail}")
-    return {"error": "Request failed", "detail": exc.detail}
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": "Request failed", "detail": exc.detail}
+    )
 
 # Configure CORS
 app.add_middleware(
