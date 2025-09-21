@@ -169,14 +169,9 @@ print('✅ Connection successful!')
 "
 ```
 
-## Database Configuration Options
+## Database Configuration
 
-### Development (SQLite)
-```env
-DATABASE_TYPE=sqlite
-DATABASE_URL=sqlite:///robot_console.db
-ENVIRONMENT=development
-```
+**Note: This system now uses MySQL exclusively. SQLite support has been removed.**
 
 ### Production (MySQL)
 ```env

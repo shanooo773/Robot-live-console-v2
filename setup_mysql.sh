@@ -402,26 +402,18 @@ EOF
     fi
 }
 
-# Function to migrate existing SQLite data
-migrate_sqlite_data() {
-    if [ -f "backend/robot_console.db" ]; then
-        print_status "Found existing SQLite database. Migrating data to MySQL..."
-        
-        cd backend
-        
-        if [ -f "venv/bin/activate" ]; then
-            source venv/bin/activate
-            python ../migrate_to_mysql.py
-        else
-            print_error "Virtual environment not found!"
-            exit 1
-        fi
-        
-        cd ..
-        
-        print_success "Data migration completed!"
+# Function to check for any remaining SQLite files (cleanup)
+check_sqlite_cleanup() {
+    print_status "Checking for any remaining SQLite files..."
+    
+    sqlite_files=$(find . -name "*.db" -o -name "*.sqlite" -o -name "*.sqlite3" 2>/dev/null | grep -v backup || true)
+    
+    if [ -n "$sqlite_files" ]; then
+        print_warning "Found SQLite database files that should be removed:"
+        echo "$sqlite_files"
+        print_status "These files are no longer needed as the system now uses MySQL exclusively."
     else
-        print_status "No existing SQLite database found. Skipping migration."
+        print_status "✅ No SQLite files found - system is clean for MySQL-only operation"
     fi
 }
 
@@ -438,11 +430,7 @@ backup_configuration() {
         print_status "Backed up .env file"
     fi
     
-    # Backup SQLite database if it exists
-    if [ -f "backend/robot_console.db" ]; then
-        cp "backend/robot_console.db" "$BACKUP_DIR/robot_console.db.backup"
-        print_status "Backed up SQLite database"
-    fi
+    # No longer backup SQLite database files (MySQL-only system)
     
     print_success "Configuration backed up to $BACKUP_DIR/"
     echo "$BACKUP_DIR" > .last_backup_dir
@@ -589,7 +577,7 @@ main() {
     echo
     
     # Check if we're in the right directory
-    if [ ! -d "backend" ] || [ ! -f "migrate_to_mysql.py" ]; then
+    if [ ! -d "backend" ]; then
         print_error "Please run this script from the project root directory"
         exit 1
     fi
@@ -637,15 +625,11 @@ main() {
         print_status "[DRY RUN] Would test database connection with retry logic"
     fi
     
-    # Step 4: Migrate existing data (optional)
-    if [ "$SKIP_MIGRATION" = false ]; then
-        if [ "$DRY_RUN" = false ]; then
-            migrate_sqlite_data
-        else
-            print_status "[DRY RUN] Would migrate existing SQLite data to MySQL"
-        fi
+    # Step 4: Check SQLite cleanup (no longer migrate)
+    if [ "$DRY_RUN" = false ]; then
+        check_sqlite_cleanup
     else
-        print_status "Skipping data migration (--skip-migration flag used)"
+        print_status "[DRY RUN] Would check for remaining SQLite files"
     fi
     
     # Step 5: Update environment

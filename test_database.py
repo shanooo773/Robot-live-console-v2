@@ -211,7 +211,7 @@ def main():
     print("=" * 50)
     
     # Check environment configuration
-    print(f"Database Type: {os.getenv('DATABASE_TYPE', 'sqlite')}")
+    print(f"Database Type: {os.getenv('DATABASE_TYPE', 'mysql')}")
     print(f"MySQL Host: {os.getenv('MYSQL_HOST', 'localhost')}")
     print(f"MySQL Database: {os.getenv('MYSQL_DATABASE', 'robot_console')}")
     print(f"MySQL User: {os.getenv('MYSQL_USER', 'robot_console')}")
