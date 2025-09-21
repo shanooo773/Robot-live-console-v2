@@ -171,6 +171,27 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   const availableSlots = filteredSlots.filter(slot => slot.available);
   const unavailableSlots = filteredSlots.filter(slot => !slot.available);
 
+  // Helper function to convert 12-hour format to 24-hour format
+  const convertTo24HourFormat = (time12h) => {
+    try {
+      // If already in 24-hour format (no AM/PM), return as-is
+      if (!/AM|PM/i.test(time12h)) {
+        return time12h;
+      }
+      
+      // Parse 12-hour format and convert to 24-hour
+      const date = new Date(`1970-01-01 ${time12h}`);
+      return date.toLocaleTimeString('en-GB', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+    } catch (error) {
+      console.error('Time conversion error:', error);
+      return time12h; // Return original if conversion fails
+    }
+  };
+
   const handleBookSlot = async (slot) => {
     setIsLoading(true);
     
@@ -180,8 +201,8 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
         const bookingData = {
           robot_type: slot.robotType,
           date: slot.date,
-          start_time: slot.startTime,
-          end_time: slot.endTime
+          start_time: convertTo24HourFormat(slot.startTime),
+          end_time: convertTo24HourFormat(slot.endTime)
         };
         
         const booking = await createBooking(bookingData, authToken);
@@ -202,8 +223,8 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
           id: Math.random().toString(36).substr(2, 9),
           robot_type: slot.robotType,
           date: slot.date,
-          start_time: slot.startTime,
-          end_time: slot.endTime,
+          start_time: convertTo24HourFormat(slot.startTime),
+          end_time: convertTo24HourFormat(slot.endTime),
           status: "completed",
           created_at: new Date().toISOString()
         };
@@ -362,7 +383,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                     id: 'demo_direct_access',
                     robotType: 'turtlebot',
                     date: new Date().toISOString().split('T')[0],
-                    startTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+                    startTime: convertTo24HourFormat(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })),
                     endTime: 'Unlimited',
                     bookingId: 'demo',
                     available: true,
