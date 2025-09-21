@@ -215,6 +215,9 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
           bookedBy: user.name,
           bookingTime: demoBooking.created_at,
         });
+      } else {
+        // No auth token and not in demo mode - this shouldn't happen for properly authenticated users
+        throw new Error("Authentication required. Please sign in to book a session.");
       }
       
       toast({
@@ -229,7 +232,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
       console.error('Booking error:', error);
       toast({
         title: "Booking failed",
-        description: error.response?.data?.detail || "Failed to book session. Please try again.",
+        description: error.response?.data?.detail || error.message || "Failed to book session. Please try again.",
         status: "error",
         duration: 5000,
         isClosable: true,

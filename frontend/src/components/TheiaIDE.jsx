@@ -35,13 +35,14 @@ const TheiaIDE = ({ user, authToken, onError }) => {
       });
 
       if (response.ok) {
+        // Read response text first to avoid "body stream already read" error
+        const responseText = await response.text();
         try {
-          const status = await response.json();
+          const status = JSON.parse(responseText);
           setTheiaStatus(status);
           setError(null);
         } catch (jsonError) {
           // Handle JSON parsing errors that might indicate HTML response
-          const responseText = await response.text();
           if (responseText.includes('<!doctype') || responseText.includes('<html')) {
             throw new Error('Theia returned HTML instead of JSON - container may not be properly started');
           } else {
@@ -77,8 +78,10 @@ const TheiaIDE = ({ user, authToken, onError }) => {
       });
 
       if (response.ok) {
+        // Read response text first to avoid "body stream already read" error
+        const responseText = await response.text();
         try {
-          const result = await response.json();
+          const result = JSON.parse(responseText);
           toast({
             title: "Theia IDE Started",
             description: "Your development environment is now ready!",
@@ -92,7 +95,6 @@ const TheiaIDE = ({ user, authToken, onError }) => {
             checkTheiaStatus();
           }, 2000);
         } catch (jsonError) {
-          const responseText = await response.text();
           if (responseText.includes('<!doctype') || responseText.includes('<html')) {
             throw new Error('Server returned HTML instead of JSON - Theia configuration issue');
           } else {
@@ -100,11 +102,12 @@ const TheiaIDE = ({ user, authToken, onError }) => {
           }
         }
       } else {
+        // Read error response text first to avoid "body stream already read" error
+        const errorText = await response.text();
         try {
-          const errorData = await response.json();
+          const errorData = JSON.parse(errorText);
           throw new Error(errorData.detail || 'Failed to start Theia container');
         } catch (jsonError) {
-          const errorText = await response.text();
           throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
       }

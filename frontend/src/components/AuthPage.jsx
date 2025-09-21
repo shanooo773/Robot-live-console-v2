@@ -136,31 +136,6 @@ const AuthPage = ({ onAuth, onBack }) => {
     }
   };
 
-  const handleSkipAuth = () => {
-    // Create a demo user object
-    const demoUser = {
-      id: "demo",
-      name: "Demo User",
-      email: "demo@example.com",
-      role: "user",
-      isDemoMode: true
-    };
-    
-    // Set demo flag in localStorage
-    localStorage.setItem('isDemoMode', 'true');
-    
-    // Call onAuth with demo user and no token
-    onAuth(demoUser, null);
-    
-    toast({
-      title: "Demo Mode Activated",
-      description: "You now have full access without signing up!",
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
-  };
-
   return (
     <Container maxW="md" py={20}>
       <VStack spacing={8}>
@@ -324,28 +299,6 @@ const AuthPage = ({ onAuth, onBack }) => {
           </Text>
         </Alert>
 
-        {/* Skip Authentication Button */}
-        <Card bg="orange.800" borderColor="orange.600" border="1px solid">
-          <CardBody>
-            <VStack spacing={3}>
-              <Text color="orange.200" textAlign="center" fontSize="sm">
-                Want to skip authentication? Try our demo mode!
-              </Text>
-              <Button
-                colorScheme="orange"
-                size="lg"
-                w="full"
-                onClick={handleSkipAuth}
-                variant="solid"
-              >
-                🚀 Skip & Go to Booking
-              </Button>
-              <Text color="orange.300" fontSize="xs" textAlign="center">
-                Demo mode gives you full access without signing up
-              </Text>
-            </VStack>
-          </CardBody>
-        </Card>
         <Button variant="ghost" onClick={onBack} color="gray.400">
           ← Back to Home
         </Button>
