@@ -11,14 +11,14 @@ Tests all requirements specified in the problem statement:
 import sys
 import os
 from datetime import datetime, timedelta
-from test_database_sqlite import TestDatabaseManager
+from database import DatabaseManager
 
 # Add backend directory to path  
 sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
 
 class BookingSystemAuditor:
     def __init__(self):
-        self.db = TestDatabaseManager()
+        self.db = DatabaseManager()
         self.issues = []
         self.recommendations = []
         

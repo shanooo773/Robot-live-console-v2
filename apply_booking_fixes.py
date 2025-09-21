@@ -263,12 +263,12 @@ def test_fixes():
     print("\n🧪 Testing fixes...")
     
     try:
-        # Import the fixed version
-        from test_database_sqlite import TestDatabaseManager
+        # Import the database manager
+        from database import DatabaseManager
         sys.path.append('backend/services')
         from booking_service import BookingService
         
-        db = TestDatabaseManager()
+        db = DatabaseManager()
         booking_service = BookingService(db)
         
         # Test overlap detection
