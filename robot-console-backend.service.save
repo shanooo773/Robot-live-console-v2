@@ -1,0 +1,14 @@
+[Unit]
+Description=Robot Console Backend
+After=network.target
+
+[Service]
+Type=simple
+User=${USER}
+WorkingDirectory=/home/shayan/Robot-live-console-v2/backend
+Environment=PATH=/home/shayan/Robot-live-console-v2/backend/venv/bin
+ExecStart=/home/shayan/Robot-live-console-v2/backend/venv/bin/gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
