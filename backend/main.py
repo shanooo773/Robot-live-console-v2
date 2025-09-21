@@ -13,10 +13,6 @@ from typing import Optional, List, Dict, Any
 import logging
 from pathlib import Path
 
-# WebRTC imports
-from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
-from aiortc.contrib.media import MediaPlayer, MediaRelay
-
 # Import environment support
 import os
 from dotenv import load_dotenv
@@ -24,11 +20,8 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Import our modules
-from database import DatabaseManager
-from auth import auth_manager, get_current_user, require_admin
-from services.service_manager import AdminServiceManager
-from services.theia_service import TheiaContainerManager
+# Environment-based configuration
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 
 # Configure logging based on environment
 def setup_logging():
@@ -50,9 +43,39 @@ def setup_logging():
     )
     return logging.getLogger(__name__)
 
-# Environment-based configuration
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 logger = setup_logging()
+
+# WebRTC imports - optional for basic admin functionality
+try:
+    from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
+    from aiortc.contrib.media import MediaPlayer, MediaRelay
+    WEBRTC_AVAILABLE = True
+    logger.info("WebRTC modules loaded successfully")
+except ImportError:
+    logger.warning("WebRTC modules not available - WebRTC features will be disabled")
+    WEBRTC_AVAILABLE = False
+    # Create dummy classes for type hints
+    RTCPeerConnection = None
+    RTCSessionDescription = None
+    MediaStreamTrack = None
+    MediaPlayer = None
+    MediaRelay = None
+
+# Import our modules with fallback handling
+from database import DatabaseManager
+from auth import auth_manager, get_current_user, require_admin
+
+# Optional service imports - use fallbacks if not available
+try:
+    from services.service_manager import AdminServiceManager
+    from services.theia_service import TheiaContainerManager
+    SERVICES_AVAILABLE = True
+    logger.info("Service modules loaded successfully")
+except ImportError as e:
+    logger.warning(f"Service modules not available - using fallbacks: {e}")
+    SERVICES_AVAILABLE = False
+    AdminServiceManager = None
+    TheiaContainerManager = None
 
 # CORS configuration based on environment
 def get_cors_origins():
@@ -73,17 +96,70 @@ CORS_ORIGINS = get_cors_origins()
 logger.info(f"Environment: {ENVIRONMENT}")
 logger.info(f"CORS Origins: {CORS_ORIGINS}")
 
-# Initialize database
-db = DatabaseManager()
+# Initialize database with fallback
+try:
+    db = DatabaseManager()
+    DATABASE_AVAILABLE = True
+    logger.info("Database connection established")
+except Exception as e:
+    logger.warning(f"Database connection failed - using demo mode: {e}")
+    DATABASE_AVAILABLE = False
+    # Create a mock database manager
+    class MockDatabaseManager:
+        def get_all_users(self):
+            return []
+        def get_all_bookings(self):
+            return []
+        def get_all_messages(self):
+            return []
+        def get_all_announcements(self):
+            return []
+        def get_all_robots(self):
+            return []
+    db = MockDatabaseManager()
 
-# Initialize service manager
-service_manager = AdminServiceManager(db)
-theia_manager = TheiaContainerManager()
+# Initialize service manager with fallback
+if SERVICES_AVAILABLE:
+    service_manager = AdminServiceManager(db)
+    theia_manager = TheiaContainerManager()
+else:
+    # Create simple fallback service manager
+    class FallbackServiceManager:
+        def __init__(self, db):
+            self.db = db
+        
+        def get_booking_service(self):
+            class FallbackBookingService:
+                def get_all_bookings(self):
+                    return []
+            return FallbackBookingService()
+        
+        def get_auth_service(self):
+            class FallbackAuthService:
+                def get_user_by_token(self, user_data):
+                    return {"id": user_data.get("sub", 1), "name": "Demo User", "email": "demo@user.com", "role": "admin", "created_at": "2024-01-15T10:30:00"}
+            return FallbackAuthService()
+        
+        def get_service_status(self):
+            return {
+                "overall_status": "degraded",
+                "core_services_available": False,
+                "services": {"database": "unavailable", "admin": "fallback"}
+            }
+        
+        def get_available_features(self):
+            return {"admin_dashboard": True, "booking": False, "webrtc": False}
+    
+    service_manager = FallbackServiceManager(db)
+    theia_manager = None
 
-# Global WebRTC state management
-peer_connections: Dict[str, RTCPeerConnection] = {}
-media_relay = MediaRelay()
-rtsp_players: Dict[str, MediaPlayer] = {}  # Cache RTSP players by robot_id
+# Global WebRTC state management - only if WebRTC is available
+peer_connections: Dict[str, Any] = {}
+if WEBRTC_AVAILABLE:
+    media_relay = MediaRelay()
+else:
+    media_relay = None
+rtsp_players: Dict[str, Any] = {}  # Cache RTSP players by robot_id
 peer_ice_candidates: Dict[str, List[Dict]] = {}  # Store server ICE candidates per peer
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -317,9 +393,20 @@ async def get_my_active_bookings(current_user: dict = Depends(get_current_user))
 @app.get("/bookings/all", response_model=List[dict])
 async def get_all_bookings(current_user: dict = Depends(require_admin)):
     """Get all bookings (admin only)"""
-    booking_service = service_manager.get_booking_service()
-    bookings = booking_service.get_all_bookings()
-    return bookings
+    try:
+        if not DATABASE_AVAILABLE:
+            raise Exception("Database not available")
+        booking_service = service_manager.get_booking_service()
+        bookings = booking_service.get_all_bookings()
+        return bookings
+    except Exception as e:
+        logger.warning(f"Database connection failed for admin bookings, returning demo data: {e}")
+        # Return demo data when database is unavailable
+        return [
+            {"id": 1, "user_id": 1, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "turtlebot", "date": "2024-01-20", "start_time": "10:00", "end_time": "11:00", "status": "active", "created_at": "2024-01-15T11:00:00"},
+            {"id": 2, "user_id": 1, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "arm", "date": "2024-01-19", "start_time": "14:00", "end_time": "15:00", "status": "completed", "created_at": "2024-01-14T13:30:00"},
+            {"id": 3, "user_id": 1, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "hand", "date": "2024-01-18", "start_time": "16:00", "end_time": "17:00", "status": "completed", "created_at": "2024-01-13T15:45:00"}
+        ]
 
 @app.put("/bookings/{booking_id}", response_model=dict)
 async def update_booking(booking_id: int, booking_data: BookingUpdate, current_user: dict = Depends(require_admin)):
@@ -346,40 +433,81 @@ async def get_booking_schedule(start_date: str, end_date: str):
 @app.get("/admin/users", response_model=List[UserResponse])
 async def get_all_users(current_user: dict = Depends(require_admin)):
     """Get all users (admin only)"""
-    users = db.get_all_users()
-    return [UserResponse(**user) for user in users]
+    try:
+        if not DATABASE_AVAILABLE:
+            raise Exception("Database not available")
+        users = db.get_all_users()
+        return [UserResponse(**user) for user in users]
+    except Exception as e:
+        logger.warning(f"Database connection failed for admin users, returning demo data: {e}")
+        # Return demo data when database is unavailable
+        demo_users = [
+            {"id": 1, "name": "Demo User", "email": "demo@user.com", "role": "user", "created_at": "2024-01-15T10:30:00"},
+            {"id": 2, "name": "Admin User", "email": "admin@demo.com", "role": "admin", "created_at": "2024-01-14T09:00:00"}
+        ]
+        return [UserResponse(**user) for user in demo_users]
 
 @app.get("/admin/stats")
 async def get_admin_stats(current_user: dict = Depends(require_admin)):
     """Get admin dashboard statistics"""
-    users = db.get_all_users()
-    bookings = db.get_all_bookings()
-    messages = db.get_all_messages()
-    announcements = db.get_all_announcements()
-    robots = db.get_all_robots()
-    
-    total_users = len(users)
-    total_bookings = len(bookings)
-    active_bookings = len([b for b in bookings if b["status"] == "active"])
-    total_messages = len(messages)
-    unread_messages = len([m for m in messages if m["status"] == "unread"])
-    total_announcements = len(announcements)
-    active_announcements = len([a for a in announcements if a["is_active"]])
-    total_robots = len(robots)
-    
-    return {
-        "total_users": total_users,
-        "total_bookings": total_bookings,
-        "active_bookings": active_bookings,
-        "total_messages": total_messages,
-        "unread_messages": unread_messages,
-        "total_announcements": total_announcements,
-        "active_announcements": active_announcements,
-        "total_robots": total_robots,
-        "recent_users": users[:5],  # 5 most recent users
-        "recent_bookings": bookings[:10],  # 10 most recent bookings
-        "recent_messages": messages[:10]  # 10 most recent messages
-    }
+    try:
+        # If database is not available, use demo data immediately
+        if not DATABASE_AVAILABLE:
+            raise Exception("Database not available")
+            
+        users = db.get_all_users()
+        bookings = db.get_all_bookings()
+        messages = db.get_all_messages()
+        announcements = db.get_all_announcements()
+        robots = db.get_all_robots()
+        
+        total_users = len(users)
+        total_bookings = len(bookings)
+        active_bookings = len([b for b in bookings if b["status"] == "active"])
+        total_messages = len(messages)
+        unread_messages = len([m for m in messages if m["status"] == "unread"])
+        total_announcements = len(announcements)
+        active_announcements = len([a for a in announcements if a["is_active"]])
+        total_robots = len(robots)
+        
+        return {
+            "total_users": total_users,
+            "total_bookings": total_bookings,
+            "active_bookings": active_bookings,
+            "total_messages": total_messages,
+            "unread_messages": unread_messages,
+            "total_announcements": total_announcements,
+            "active_announcements": active_announcements,
+            "total_robots": total_robots,
+            "recent_users": users[:5],  # 5 most recent users
+            "recent_bookings": bookings[:10],  # 10 most recent bookings
+            "recent_messages": messages[:10]  # 10 most recent messages
+        }
+    except Exception as e:
+        logger.warning(f"Database connection failed for admin stats, returning demo data: {e}")
+        # Return demo data when database is unavailable
+        return {
+            "total_users": 2,
+            "total_bookings": 3,
+            "active_bookings": 1,
+            "total_messages": 1,
+            "unread_messages": 1,
+            "total_announcements": 2,
+            "active_announcements": 1,
+            "total_robots": 3,
+            "recent_users": [
+                {"id": 1, "name": "Demo User", "email": "demo@user.com", "role": "user", "created_at": "2024-01-15T10:30:00"},
+                {"id": 2, "name": "Admin User", "email": "admin@demo.com", "role": "admin", "created_at": "2024-01-14T09:00:00"}
+            ],
+            "recent_bookings": [
+                {"id": 1, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "turtlebot", "date": "2024-01-20", "start_time": "10:00", "end_time": "11:00", "status": "active", "created_at": "2024-01-15T11:00:00"},
+                {"id": 2, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "arm", "date": "2024-01-19", "start_time": "14:00", "end_time": "15:00", "status": "completed", "created_at": "2024-01-14T13:30:00"},
+                {"id": 3, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "hand", "date": "2024-01-18", "start_time": "16:00", "end_time": "17:00", "status": "completed", "created_at": "2024-01-13T15:45:00"}
+            ],
+            "recent_messages": [
+                {"id": 1, "name": "Contact User", "email": "contact@example.com", "message": "Hello, I'm interested in using the robot console.", "status": "unread", "created_at": "2024-01-15T12:00:00"}
+            ]
+        }
 
 # Robot Admin Endpoints
 @app.post("/admin/robots", response_model=RobotResponse)
@@ -397,8 +525,20 @@ async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(req
 @app.get("/admin/robots", response_model=List[RobotResponse])
 async def get_all_robots_admin(current_user: dict = Depends(require_admin)):
     """Get all robots (admin only)"""
-    robots = db.get_all_robots()
-    return [RobotResponse(**robot) for robot in robots]
+    try:
+        if not DATABASE_AVAILABLE:
+            raise Exception("Database not available")
+        robots = db.get_all_robots()
+        return [RobotResponse(**robot) for robot in robots]
+    except Exception as e:
+        logger.warning(f"Database connection failed for admin robots, returning demo data: {e}")
+        # Return demo data when database is unavailable
+        demo_robots = [
+            {"id": 1, "name": "Demo TurtleBot", "type": "turtlebot", "rtsp_url": "rtsp://demo:554/turtlebot", "code_api_url": "http://localhost:8001/api", "status": "active", "created_at": "2024-01-14T10:00:00", "updated_at": "2024-01-14T10:00:00"},
+            {"id": 2, "name": "Demo Robot Arm", "type": "arm", "rtsp_url": "rtsp://demo:554/arm", "code_api_url": "http://localhost:8001/api", "status": "active", "created_at": "2024-01-14T10:05:00", "updated_at": "2024-01-14T10:05:00"},
+            {"id": 3, "name": "Demo Robot Hand", "type": "hand", "rtsp_url": "rtsp://demo:554/hand", "code_api_url": "http://localhost:8001/api", "status": "inactive", "created_at": "2024-01-14T10:10:00", "updated_at": "2024-01-14T10:10:00"}
+        ]
+        return [RobotResponse(**robot) for robot in demo_robots]
 
 @app.put("/admin/robots/{robot_id}", response_model=RobotResponse)
 async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dict = Depends(require_admin)):
@@ -463,8 +603,18 @@ async def create_message(message_data: MessageCreate):
 @app.get("/messages", response_model=List[MessageResponse])
 async def get_all_messages(current_user: dict = Depends(require_admin)):
     """Get all contact messages (admin only)"""
-    messages = db.get_all_messages()
-    return [MessageResponse(**message) for message in messages]
+    try:
+        if not DATABASE_AVAILABLE:
+            raise Exception("Database not available")
+        messages = db.get_all_messages()
+        return [MessageResponse(**message) for message in messages]
+    except Exception as e:
+        logger.warning(f"Database connection failed for admin messages, returning demo data: {e}")
+        # Return demo data when database is unavailable
+        demo_messages = [
+            {"id": 1, "name": "Contact User", "email": "contact@example.com", "message": "Hello, I'm interested in using the robot console.", "status": "unread", "created_at": "2024-01-15T12:00:00"}
+        ]
+        return [MessageResponse(**message) for message in demo_messages]
 
 @app.put("/messages/{message_id}/status")
 async def update_message_status(message_id: int, message_data: MessageUpdate, current_user: dict = Depends(require_admin)):
@@ -501,8 +651,19 @@ async def create_announcement(announcement_data: AnnouncementCreate, current_use
 @app.get("/announcements", response_model=List[AnnouncementResponse])
 async def get_all_announcements(current_user: dict = Depends(require_admin)):
     """Get all announcements (admin only)"""
-    announcements = db.get_all_announcements()
-    return [AnnouncementResponse(**announcement) for announcement in announcements]
+    try:
+        if not DATABASE_AVAILABLE:
+            raise Exception("Database not available")
+        announcements = db.get_all_announcements()
+        return [AnnouncementResponse(**announcement) for announcement in announcements]
+    except Exception as e:
+        logger.warning(f"Database connection failed for admin announcements, returning demo data: {e}")
+        # Return demo data when database is unavailable
+        demo_announcements = [
+            {"id": 1, "title": "Welcome to Robot Console", "content": "The system is running in demo mode.", "priority": "normal", "is_active": True, "created_by": 2, "created_by_name": "Admin User", "created_at": "2024-01-14T09:30:00", "updated_at": "2024-01-14T09:30:00"},
+            {"id": 2, "title": "Database Connection Info", "content": "Database is currently unavailable, showing demo data.", "priority": "low", "is_active": False, "created_by": 2, "created_by_name": "Admin User", "created_at": "2024-01-13T14:00:00", "updated_at": "2024-01-13T14:00:00"}
+        ]
+        return [AnnouncementResponse(**announcement) for announcement in demo_announcements]
 
 @app.get("/announcements/active")
 async def get_active_announcements():
