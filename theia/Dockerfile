@@ -24,13 +24,12 @@ COPY --chown=theia:theia package.json package-lock.json ./
 ENV NODE_OPTIONS="--max_old_space_size=4096"
 
 # Install dependencies using lockfile (deterministic build)
-RUN npm ci --unsafe-perm
+ 
 
 # Build Theia app
 RUN npx theia build || echo "Build completed with warnings"
 
 # Create project directory
-RUN mkdir -p /home/project
 
 EXPOSE 3000
 
