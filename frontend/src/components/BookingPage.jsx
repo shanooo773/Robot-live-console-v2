@@ -141,35 +141,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     }
   };
 
-  const filteredSlots = timeSlots.filter(slot => {
-    let matches = true;
-    if (selectedDate && slot.date !== selectedDate) matches = false;
-    if (selectedRobot && slot.robotType !== selectedRobot) matches = false;
-    
-    // Check if slot is already booked
-    const isBooked = bookedSlots.some(booked => 
-      booked.date === slot.date &&
-      booked.start_time === slot.startTime &&
-      booked.end_time === slot.endTime &&
-      booked.robot_type === slot.robotType
-    );
-    
-    slot.available = !isBooked;
-    if (isBooked) {
-      const booking = bookedSlots.find(booked => 
-        booked.date === slot.date &&
-        booked.start_time === slot.startTime &&
-        booked.end_time === slot.endTime &&
-        booked.robot_type === slot.robotType
-      );
-      slot.bookedBy = booking.user_name;
-    }
-    
-    return matches;
-  });
-
-  const availableSlots = filteredSlots.filter(slot => slot.available);
-  const unavailableSlots = filteredSlots.filter(slot => !slot.available);
+  
 
   // Helper function to convert 12-hour format to 24-hour format
   const convertTo24HourFormat = (time12h) => {
