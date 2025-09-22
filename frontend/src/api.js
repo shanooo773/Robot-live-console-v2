@@ -70,6 +70,13 @@ export const getBookingSchedule = async (startDate, endDate) => {
   return response.data;
 };
 
+export const getAvailableSlots = async (date, robotType, token) => {
+  const response = await API.get(`/bookings/available-slots?date=${date}&robot_type=${robotType}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
 // Admin API
 export const getAllUsers = async (token) => {
   const response = await API.get("/admin/users", {

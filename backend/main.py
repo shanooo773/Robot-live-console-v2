@@ -234,6 +234,41 @@ except Exception as e:
                 ]
             return self._bookings
         
+        def get_bookings_for_date_range(self, start_date: str, end_date: str):
+            """Get bookings within date range"""
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+                
+                all_bookings = self.get_all_bookings()
+                filtered_bookings = []
+                
+                for booking in all_bookings:
+                    try:
+                        booking_date = datetime.strptime(booking["date"], "%Y-%m-%d").date()
+                        if start_dt <= booking_date <= end_dt:
+                            filtered_bookings.append(booking)
+                    except (ValueError, KeyError):
+                        continue
+                
+                return filtered_bookings
+            except Exception as e:
+                logger.error(f"Error filtering bookings by date range: {e}")
+                return []
+        
+        def get_user_bookings(self, user_id: int):
+            """Get bookings for a specific user"""
+            all_bookings = self.get_all_bookings()
+            return [booking for booking in all_bookings if booking.get("user_id") == user_id]
+        
+        def update_booking_status(self, booking_id: int, status: str):
+            """Update booking status"""
+            for booking in self._bookings:
+                if booking["id"] == booking_id:
+                    booking["status"] = status
+                    return booking
+            return None
+        
         def get_all_messages(self):
             return [
                 {"id": 1, "name": "Contact User", "email": "contact@example.com", "message": "Hello, I'm interested in using the robot console.", "status": "unread", "created_at": "2024-01-15T12:00:00"}
@@ -584,6 +619,32 @@ async def get_booking_schedule(start_date: str, end_date: str):
     """Get booking schedule for date range (public)"""
     bookings = db.get_bookings_for_date_range(start_date, end_date)
     return {"bookings": bookings}
+
+@app.get("/bookings/available-slots")
+async def get_available_slots(date: str, robot_type: str, current_user: dict = Depends(get_current_user)):
+    """Get available time slots for a specific date and robot type (authenticated users only)"""
+    booking_service = service_manager.get_booking_service()
+    
+    try:
+        # Validate date format
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    # Validate robot type
+    available_robots = booking_service.get_available_robots()
+    if robot_type not in available_robots:
+        raise HTTPException(status_code=400, detail=f"Invalid robot type. Available types: {list(available_robots.keys())}")
+    
+    slots = booking_service.get_available_time_slots(date, robot_type)
+    return {
+        "date": date,
+        "robot_type": robot_type,
+        "available_slots": slots,
+        "working_hours": "09:00-18:00",
+        "max_session_duration": "2 hours",
+        "slot_duration": "1 hour"
+    }
 
 # Admin Endpoints
 @app.get("/admin/users", response_model=List[UserResponse])
