@@ -234,6 +234,41 @@ except Exception as e:
                 ]
             return self._bookings
         
+        def get_bookings_for_date_range(self, start_date: str, end_date: str):
+            """Get bookings within date range"""
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+                
+                all_bookings = self.get_all_bookings()
+                filtered_bookings = []
+                
+                for booking in all_bookings:
+                    try:
+                        booking_date = datetime.strptime(booking["date"], "%Y-%m-%d").date()
+                        if start_dt <= booking_date <= end_dt:
+                            filtered_bookings.append(booking)
+                    except (ValueError, KeyError):
+                        continue
+                
+                return filtered_bookings
+            except Exception as e:
+                logger.error(f"Error filtering bookings by date range: {e}")
+                return []
+        
+        def get_user_bookings(self, user_id: int):
+            """Get bookings for a specific user"""
+            all_bookings = self.get_all_bookings()
+            return [booking for booking in all_bookings if booking.get("user_id") == user_id]
+        
+        def update_booking_status(self, booking_id: int, status: str):
+            """Update booking status"""
+            for booking in self._bookings:
+                if booking["id"] == booking_id:
+                    booking["status"] = status
+                    return booking
+            return None
+        
         def get_all_messages(self):
             return [
                 {"id": 1, "name": "Contact User", "email": "contact@example.com", "message": "Hello, I'm interested in using the robot console.", "status": "unread", "created_at": "2024-01-15T12:00:00"}
