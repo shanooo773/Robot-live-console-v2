@@ -67,7 +67,7 @@ class BookingService:
             end_dt = datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M")
 
             now = datetime.now()
-            min_advance_time = now - timedelta(minutes=10)
+            min_advance_time = now + timedelta(minutes=10)
             
             if start_dt <= min_advance_time:
                 logger.warning(f"❌ Booking start {start_dt} is in the past")
