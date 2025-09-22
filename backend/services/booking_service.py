@@ -112,14 +112,25 @@ class BookingService:
 
     def create_booking(self, user_id: int, robot_type: str, date: str, 
                       start_time: str, end_time: str) -> Dict[str, Any]:
-        """Create a new booking with proper overlap detection"""
+        """Create a new booking with proper overlap detection and comprehensive audit logging"""
         try:
+            # Log booking attempt for audit trail
+            logger.info(f"🔒 BOOKING ATTEMPT - User {user_id} requesting {robot_type} on {date} from {start_time} to {end_time}")
+            
             # Validate booking time first
             if not self.validate_booking_time(date, start_time, end_time):
+                logger.warning(f"❌ BOOKING REJECTED - Invalid time for user {user_id}: {date} {start_time}-{end_time}")
                 raise HTTPException(status_code=400, detail="Invalid booking time")
+            
+            # Enhanced authentication check - ensure user_id is valid
+            if not user_id or user_id <= 0:
+                logger.error(f"❌ BOOKING REJECTED - Invalid user ID: {user_id}")
+                raise HTTPException(status_code=400, detail="Invalid user authentication")
             
             # Check for conflicting bookings with PROPER overlap detection
             existing_bookings = self.db.get_bookings_for_date_range(date, date)
+            conflicts = []
+            
             for existing in existing_bookings:
                 if (existing["robot_type"] == robot_type and 
                     existing["status"] == "active"):
@@ -127,11 +138,15 @@ class BookingService:
                     # Check for ANY overlap, not just exact matches
                     if self._times_overlap(start_time, end_time, 
                                          existing["start_time"], existing["end_time"]):
-                        raise HTTPException(
-                            status_code=400, 
-                            detail=f"Time slot conflicts with existing booking from {existing['start_time']} to {existing['end_time']}"
-                        )
+                        conflict_msg = f"Time slot conflicts with existing booking from {existing['start_time']} to {existing['end_time']}"
+                        conflicts.append(conflict_msg)
+                        logger.warning(f"❌ BOOKING CONFLICT - User {user_id} conflict with booking ID {existing.get('id')}: {conflict_msg}")
             
+            # Reject if any conflicts found
+            if conflicts:
+                raise HTTPException(status_code=400, detail=conflicts[0])
+            
+            # Create the booking
             booking = self.db.create_booking(
                 user_id=user_id,
                 robot_type=robot_type,
@@ -139,11 +154,16 @@ class BookingService:
                 start_time=start_time,
                 end_time=end_time
             )
+            
+            # Log successful booking creation for audit trail
+            logger.info(f"✅ BOOKING CREATED - User {user_id} successfully booked {robot_type} (ID: {booking.get('id')}) on {date} from {start_time} to {end_time}")
+            
             return booking
+            
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Failed to create booking: {e}")
+            logger.error(f"❌ BOOKING FAILED - User {user_id} booking attempt failed: {e}")
             raise BookingServiceException(f"Failed to create booking: {str(e)}")
     
     def has_active_session(self, user_id: int, robot_type: str) -> bool:
@@ -199,17 +219,31 @@ class BookingService:
             logger.error(f"Failed to get all bookings: {e}")
             raise BookingServiceException(f"Failed to get all bookings: {str(e)}")
     
-    def update_booking_status(self, booking_id: int, status: str) -> Dict[str, Any]:
-        """Update booking status"""
+    def update_booking_status(self, booking_id: int, status: str, admin_user_id: int = None) -> Dict[str, Any]:
+        """Update booking status with audit logging"""
         try:
+            # Get booking details before update for audit trail
+            old_booking = self.db.get_booking_by_id(booking_id) if hasattr(self.db, 'get_booking_by_id') else None
+            
+            # Log the status change attempt
+            if admin_user_id:
+                logger.info(f"🔧 ADMIN ACTION - Admin user {admin_user_id} updating booking {booking_id} status from {old_booking.get('status') if old_booking else 'unknown'} to {status}")
+            else:
+                logger.info(f"🔄 STATUS UPDATE - Booking {booking_id} status changing to {status}")
+            
             booking = self.db.update_booking_status(booking_id, status)
             if not booking:
+                logger.warning(f"❌ BOOKING NOT FOUND - Attempted to update non-existent booking {booking_id}")
                 raise HTTPException(status_code=404, detail="Booking not found")
+            
+            # Log successful status change
+            logger.info(f"✅ STATUS UPDATED - Booking {booking_id} status successfully changed to {status}")
+            
             return booking
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Failed to update booking status: {e}")
+            logger.error(f"❌ STATUS UPDATE FAILED - Failed to update booking {booking_id} status: {e}")
             raise BookingServiceException(f"Failed to update booking status: {str(e)}")
     
     def get_available_time_slots(self, date: str, robot_type: str) -> List[Dict[str, Any]]:

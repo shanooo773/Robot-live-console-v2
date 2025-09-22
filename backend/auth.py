@@ -48,12 +48,33 @@ class AuthManager:
         return payload
     
     def require_admin(self, current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-        """Require admin role"""
-        if current_user.get("role") != "admin":
+        """Require admin role with enhanced privilege validation and audit logging"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        user_id = current_user.get("sub")
+        user_email = current_user.get("email", "unknown")
+        user_role = current_user.get("role")
+        
+        # Log admin access attempt for audit trail
+        logger.info(f"🔐 ADMIN ACCESS ATTEMPT - User {user_id} ({user_email}) with role '{user_role}' attempting admin access")
+        
+        # Check if user has admin role
+        if user_role != "admin":
+            logger.warning(f"❌ ADMIN ACCESS DENIED - User {user_id} ({user_email}) with role '{user_role}' denied admin access")
             raise HTTPException(
                 status_code=403,
-                detail="Admin access required"
+                detail="Admin access required. Only administrators can access this resource."
             )
+        
+        # Additional validation for demo admin accounts
+        # Demo admins should have full access but we log it separately
+        is_demo_admin = any(demo_indicator in user_email.lower() for demo_indicator in ['demo', 'test'])
+        if is_demo_admin:
+            logger.info(f"🎯 DEMO ADMIN ACCESS - Demo admin {user_id} ({user_email}) granted access")
+        else:
+            logger.info(f"✅ ADMIN ACCESS GRANTED - Real admin {user_id} ({user_email}) granted access")
+        
         return current_user
 
 # Global auth manager instance

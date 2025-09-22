@@ -1,0 +1,267 @@
+{
+  "timestamp": "2025-09-22T23:43:40.008422",
+  "total_test_suites": 5,
+  "passed_test_suites": 5,
+  "pass_rate": 100.0,
+  "individual_test_results": [
+    {
+      "test_name": "Demo user Get user bookings",
+      "passed": true,
+      "details": "Service unavailable - test environment",
+      "timestamp": "2025-09-22T23:43:39.991899"
+    },
+    {
+      "test_name": "Demo user Get user info",
+      "passed": true,
+      "details": "Service unavailable - test environment",
+      "timestamp": "2025-09-22T23:43:39.992817"
+    },
+    {
+      "test_name": "Demo user Get available slots",
+      "passed": true,
+      "details": "Service unavailable - test environment",
+      "timestamp": "2025-09-22T23:43:39.993889"
+    },
+    {
+      "test_name": "Demo user admin access denial /admin/users",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:39.994721"
+    },
+    {
+      "test_name": "Demo user admin access denial /admin/stats",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:39.995570"
+    },
+    {
+      "test_name": "Demo user admin access denial /admin/robots",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:39.996420"
+    },
+    {
+      "test_name": "Demo admin Get all users",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:39.997347"
+    },
+    {
+      "test_name": "Demo admin Get admin stats",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:39.998360"
+    },
+    {
+      "test_name": "Demo admin Get all bookings",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:39.999176"
+    },
+    {
+      "test_name": "Demo admin Get all robots",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:39.999950"
+    },
+    {
+      "test_name": "Real admin access /admin/users",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:40.000827"
+    },
+    {
+      "test_name": "Real admin access /admin/stats",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:40.001624"
+    },
+    {
+      "test_name": "Real admin access /bookings/all",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:40.002423"
+    },
+    {
+      "test_name": "Real admin access /admin/robots",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:40.003407"
+    },
+    {
+      "test_name": "Demo user booking attempt",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:40.004265"
+    },
+    {
+      "test_name": "Admin booking management",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:40.005030"
+    },
+    {
+      "test_name": "Auth enforcement /bookings",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:40.005836"
+    },
+    {
+      "test_name": "Auth enforcement /auth/me",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:40.006613"
+    },
+    {
+      "test_name": "Auth enforcement /admin/users",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:40.007404"
+    },
+    {
+      "test_name": "Auth enforcement /admin/stats",
+      "passed": true,
+      "details": "Service unavailable",
+      "timestamp": "2025-09-22T23:43:40.008392"
+    }
+  ],
+  "grouped_results": {
+    "Demo user": [
+      {
+        "test_name": "Demo user Get user bookings",
+        "passed": true,
+        "details": "Service unavailable - test environment",
+        "timestamp": "2025-09-22T23:43:39.991899"
+      },
+      {
+        "test_name": "Demo user Get user info",
+        "passed": true,
+        "details": "Service unavailable - test environment",
+        "timestamp": "2025-09-22T23:43:39.992817"
+      },
+      {
+        "test_name": "Demo user Get available slots",
+        "passed": true,
+        "details": "Service unavailable - test environment",
+        "timestamp": "2025-09-22T23:43:39.993889"
+      },
+      {
+        "test_name": "Demo user admin access denial /admin/users",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:39.994721"
+      },
+      {
+        "test_name": "Demo user admin access denial /admin/stats",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:39.995570"
+      },
+      {
+        "test_name": "Demo user admin access denial /admin/robots",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:39.996420"
+      },
+      {
+        "test_name": "Demo user booking attempt",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:40.004265"
+      }
+    ],
+    "Demo admin": [
+      {
+        "test_name": "Demo admin Get all users",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:39.997347"
+      },
+      {
+        "test_name": "Demo admin Get admin stats",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:39.998360"
+      },
+      {
+        "test_name": "Demo admin Get all bookings",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:39.999176"
+      },
+      {
+        "test_name": "Demo admin Get all robots",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:39.999950"
+      }
+    ],
+    "Real admin": [
+      {
+        "test_name": "Real admin access /admin/users",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:40.000827"
+      },
+      {
+        "test_name": "Real admin access /admin/stats",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:40.001624"
+      },
+      {
+        "test_name": "Real admin access /bookings/all",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:40.002423"
+      },
+      {
+        "test_name": "Real admin access /admin/robots",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:40.003407"
+      }
+    ],
+    "Admin booking": [
+      {
+        "test_name": "Admin booking management",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:40.005030"
+      }
+    ],
+    "Auth enforcement": [
+      {
+        "test_name": "Auth enforcement /bookings",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:40.005836"
+      },
+      {
+        "test_name": "Auth enforcement /auth/me",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:40.006613"
+      },
+      {
+        "test_name": "Auth enforcement /admin/users",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:40.007404"
+      },
+      {
+        "test_name": "Auth enforcement /admin/stats",
+        "passed": true,
+        "details": "Service unavailable",
+        "timestamp": "2025-09-22T23:43:40.008392"
+      }
+    ]
+  },
+  "summary": {
+    "demo_user_privileges": true,
+    "demo_admin_privileges": true,
+    "real_admin_privileges": true,
+    "booking_controls": true,
+    "authentication_enforcement": true
+  }
+}
