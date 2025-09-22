@@ -191,6 +191,46 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
       return time12h; // Return original if conversion fails
     }
   };
+  const filteredSlots = timeSlots.filter((slot) => {
+    let matches = true;
+    if (selectedDate && slot.date !== selectedDate) matches = false;
+    if (selectedRobot && slot.robotType !== selectedRobot) matches = false;
+
+    const slotStart24 = convertTo24HourFormat(slot.startTime);
+    const slotEnd24 = convertTo24HourFormat(slot.endTime);
+
+    const isBooked = bookedSlots.some((booked) => {
+      const bookedStart24 = convertTo24HourFormat(booked.start_time);
+      const bookedEnd24 = convertTo24HourFormat(booked.end_time);
+
+      return (
+        booked.date === slot.date &&
+        bookedStart24 === slotStart24 &&
+        bookedEnd24 === slotEnd24 &&
+        booked.robot_type === slot.robotType
+      );
+    });
+
+    slot.available = !isBooked;
+    if (isBooked) {
+      const booking = bookedSlots.find((booked) => {
+        const bookedStart24 = convertTo24HourFormat(booked.start_time);
+        const bookedEnd24 = convertTo24HourFormat(booked.end_time);
+        return (
+          booked.date === slot.date &&
+          bookedStart24 === slotStart24 &&
+          bookedEnd24 === slotEnd24 &&
+          booked.robot_type === slot.robotType
+        );
+      });
+      slot.bookedBy = booking?.user_name || "Another User";
+    }
+
+    return matches;
+  });
+
+  const availableSlots = filteredSlots.filter((slot) => slot.available);
+  const unavailableSlots = filteredSlots.filter((slot) => !slot.available);
 
   const handleBookSlot = async (slot) => {
     setIsLoading(true);
