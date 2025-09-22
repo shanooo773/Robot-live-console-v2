@@ -45,15 +45,15 @@ const generateTimeSlots = () => {
       slots.push({
         id: `slot_${day}_${hour}`,
         date: date.toISOString().split('T')[0],
-        startTime: startTime.toLocaleTimeString('en-US', { 
-          hour: 'numeric', 
+        startTime: startTime.toLocaleTimeString('en-GB', { 
+          hour: '2-digit', 
           minute: '2-digit',
-          hour12: true 
+          hour12: false 
         }),
-        endTime: endTime.toLocaleTimeString('en-US', { 
-          hour: 'numeric', 
+        endTime: endTime.toLocaleTimeString('en-GB', { 
+          hour: '2-digit', 
           minute: '2-digit',
-          hour12: true 
+          hour12: false 
         }),
         available: !isTaken,
         robotType: ["turtlebot", "arm", "hand"][Math.floor(Math.random() * 3)],
@@ -143,24 +143,24 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
 
   
 
-  // Helper function to convert 12-hour format to 24-hour format
-  const convertTo24HourFormat = (time12h) => {
+  // Helper function to ensure 24-hour format consistency
+  const ensureTwentyFourHourFormat = (timeStr) => {
     try {
       // If already in 24-hour format (no AM/PM), return as-is
-      if (!/AM|PM/i.test(time12h)) {
-        return time12h;
+      if (!/AM|PM/i.test(timeStr)) {
+        return timeStr;
       }
       
-      // Parse 12-hour format and convert to 24-hour
-      const date = new Date(`1970-01-01 ${time12h}`);
+      // Convert 12-hour format to 24-hour format (for backward compatibility)
+      const date = new Date(`1970-01-01 ${timeStr}`);
       return date.toLocaleTimeString('en-GB', { 
         hour12: false, 
         hour: '2-digit', 
         minute: '2-digit' 
       });
     } catch (error) {
-      console.error('Time conversion error:', error);
-      return time12h; // Return original if conversion fails
+      console.error('Time format error:', error);
+      return timeStr; // Return original if conversion fails
     }
   };
   const filteredSlots = timeSlots.filter((slot) => {
@@ -168,12 +168,12 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     if (selectedDate && slot.date !== selectedDate) matches = false;
     if (selectedRobot && slot.robotType !== selectedRobot) matches = false;
 
-    const slotStart24 = convertTo24HourFormat(slot.startTime);
-    const slotEnd24 = convertTo24HourFormat(slot.endTime);
+    const slotStart24 = ensureTwentyFourHourFormat(slot.startTime);
+    const slotEnd24 = ensureTwentyFourHourFormat(slot.endTime);
 
     const isBooked = bookedSlots.some((booked) => {
-      const bookedStart24 = convertTo24HourFormat(booked.start_time);
-      const bookedEnd24 = convertTo24HourFormat(booked.end_time);
+      const bookedStart24 = ensureTwentyFourHourFormat(booked.start_time);
+      const bookedEnd24 = ensureTwentyFourHourFormat(booked.end_time);
 
       return (
         booked.date === slot.date &&
@@ -186,8 +186,8 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     slot.available = !isBooked;
     if (isBooked) {
       const booking = bookedSlots.find((booked) => {
-        const bookedStart24 = convertTo24HourFormat(booked.start_time);
-        const bookedEnd24 = convertTo24HourFormat(booked.end_time);
+        const bookedStart24 = ensureTwentyFourHourFormat(booked.start_time);
+        const bookedEnd24 = ensureTwentyFourHourFormat(booked.end_time);
         return (
           booked.date === slot.date &&
           bookedStart24 === slotStart24 &&
@@ -213,8 +213,8 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
         const bookingData = {
           robot_type: slot.robotType,
           date: slot.date,
-          start_time: convertTo24HourFormat(slot.startTime),
-          end_time: convertTo24HourFormat(slot.endTime)
+          start_time: ensureTwentyFourHourFormat(slot.startTime),
+          end_time: ensureTwentyFourHourFormat(slot.endTime)
         };
         
         const booking = await createBooking(bookingData, authToken);
@@ -235,8 +235,8 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
           id: Math.random().toString(36).substr(2, 9),
           robot_type: slot.robotType,
           date: slot.date,
-          start_time: convertTo24HourFormat(slot.startTime),
-          end_time: convertTo24HourFormat(slot.endTime),
+          start_time: ensureTwentyFourHourFormat(slot.startTime),
+          end_time: ensureTwentyFourHourFormat(slot.endTime),
           status: "completed",
           created_at: new Date().toISOString()
         };
@@ -395,7 +395,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                     id: 'demo_direct_access',
                     robotType: 'turtlebot',
                     date: new Date().toISOString().split('T')[0],
-                    startTime: convertTo24HourFormat(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })),
+                    startTime: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
                     endTime: 'Unlimited',
                     bookingId: 'demo',
                     available: true,
