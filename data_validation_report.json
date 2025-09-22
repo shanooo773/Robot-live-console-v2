@@ -1,0 +1,48 @@
+{
+  "timestamp": "2025-09-22T22:38:38.550161",
+  "summary": {
+    "tests_passed": 1,
+    "total_tests": 6,
+    "success_rate": 16.666666666666664,
+    "issues_count": 4,
+    "warnings_count": 2
+  },
+  "issues": [
+    {
+      "severity": "CRITICAL",
+      "category": "MySQL Connection",
+      "description": "Cannot connect to MySQL: (2003, \"Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)\")",
+      "timestamp": "2025-09-22T22:38:38.548905"
+    },
+    {
+      "severity": "HIGH",
+      "category": "Admin Endpoints",
+      "description": "Admin endpoint missing: @require_admin",
+      "timestamp": "2025-09-22T22:38:38.549454"
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "Security",
+      "description": "Admin using default password in production",
+      "timestamp": "2025-09-22T22:38:38.549756"
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "Security",
+      "description": "Default JWT secret key in production",
+      "timestamp": "2025-09-22T22:38:38.549762"
+    }
+  ],
+  "warnings": [
+    {
+      "category": "Data Consistency",
+      "description": "Cannot test data consistency without MySQL connection",
+      "timestamp": "2025-09-22T22:38:38.549615"
+    },
+    {
+      "category": "Production Config",
+      "description": "VPS URL not using HTTPS",
+      "timestamp": "2025-09-22T22:38:38.549780"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-09-22T22:43:03.936535",
+  "admin_validation": {
+    "issues": [
+      {
+        "severity": "HIGH",
+        "description": "Missing admin endpoint: require_admin (Admin authentication decorator)",
+        "timestamp": "2025-09-22T22:43:03.929429"
+      },
+      {
+        "severity": "HIGH",
+        "description": "Admin password is weak or default",
+        "timestamp": "2025-09-22T22:43:03.934243"
+      }
+    ],
+    "warnings": [
+      {
+        "description": "Auth feature missing: Token creation function",
+        "timestamp": "2025-09-22T22:43:03.930326"
+      },
+      {
+        "description": "Error handling missing: Exception handling blocks",
+        "timestamp": "2025-09-22T22:43:03.931013"
+      },
+      {
+        "description": "Error handling missing: Error messages",
+        "timestamp": "2025-09-22T22:43:03.931915"
+      }
+    ],
+    "dashboard_stats": {},
+    "admin_data": {}
+  }
+}
