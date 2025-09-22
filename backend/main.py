@@ -583,21 +583,37 @@ async def get_my_active_bookings(current_user: dict = Depends(get_current_user))
 
 @app.get("/bookings/all", response_model=List[dict])
 async def get_all_bookings(current_user: dict = Depends(require_admin)):
-    """Get all bookings (admin only)"""
+    """Get all bookings (admin only) - Real data only, no demo fallback"""
     try:
         if not DATABASE_AVAILABLE:
-            raise Exception("Database not available")
+            logger.error("Database connection required for admin booking data")
+            raise HTTPException(
+                status_code=503, 
+                detail="Database service unavailable. Admin dashboard requires database connection for real data."
+            )
+        
         booking_service = service_manager.get_booking_service()
         bookings = booking_service.get_all_bookings()
-        return bookings
+        
+        # Filter out demo/test users for production admin view
+        real_bookings = []
+        for booking in bookings:
+            user_email = booking.get('user_email', '')
+            # Exclude demo users and test accounts from admin view
+            if not any(demo_indicator in user_email.lower() for demo_indicator in ['demo', 'test', 'example']):
+                real_bookings.append(booking)
+        
+        logger.info(f"Admin bookings retrieved: {len(real_bookings)} real bookings (filtered from {len(bookings)} total)")
+        return real_bookings
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"Database connection failed for admin bookings, returning demo data: {e}")
-        # Return demo data when database is unavailable
-        return [
-            {"id": 1, "user_id": 1, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "turtlebot", "date": "2024-01-20", "start_time": "10:00", "end_time": "11:00", "status": "active", "created_at": "2024-01-15T11:00:00"},
-            {"id": 2, "user_id": 1, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "arm", "date": "2024-01-19", "start_time": "14:00", "end_time": "15:00", "status": "completed", "created_at": "2024-01-14T13:30:00"},
-            {"id": 3, "user_id": 1, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "hand", "date": "2024-01-18", "start_time": "16:00", "end_time": "17:00", "status": "completed", "created_at": "2024-01-13T15:45:00"}
-        ]
+        logger.error(f"Failed to retrieve admin bookings: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve booking data. Please check system status."
+        )
 
 @app.put("/bookings/{booking_id}", response_model=dict)
 async def update_booking(booking_id: int, booking_data: BookingUpdate, current_user: dict = Depends(require_admin)):
@@ -649,45 +665,76 @@ async def get_available_slots(date: str, robot_type: str, current_user: dict = D
 # Admin Endpoints
 @app.get("/admin/users", response_model=List[UserResponse])
 async def get_all_users(current_user: dict = Depends(require_admin)):
-    """Get all users (admin only)"""
+    """Get all users (admin only) - Real users only, excluding demo accounts"""
     try:
         if not DATABASE_AVAILABLE:
-            raise Exception("Database not available")
+            logger.error("Database connection required for user management")
+            raise HTTPException(
+                status_code=503, 
+                detail="Database service unavailable. User management requires database connection."
+            )
+        
         users = db.get_all_users()
-        return [UserResponse(**user) for user in users]
+        # Filter out demo/test users from admin view, but keep real admin accounts
+        real_users = []
+        for user in users:
+            email = user.get('email', '').lower()
+            # Keep real admin accounts, exclude demo/test accounts
+            if (user.get('role') == 'admin' and not any(demo_indicator in email for demo_indicator in ['demo', 'test', 'example'])) or \
+               (user.get('role') != 'admin' and not any(demo_indicator in email for demo_indicator in ['demo', 'test', 'example'])):
+                real_users.append(user)
+        
+        logger.info(f"Admin users retrieved: {len(real_users)} real users (filtered from {len(users)} total)")
+        return [UserResponse(**user) for user in real_users]
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"Database connection failed for admin users, returning demo data: {e}")
-        # Return demo data when database is unavailable
-        demo_users = [
-            {"id": 1, "name": "Demo User", "email": "demo@user.com", "role": "user", "created_at": "2024-01-15T10:30:00"},
-            {"id": 2, "name": "Admin User", "email": "admin@demo.com", "role": "admin", "created_at": "2024-01-14T09:00:00"}
-        ]
-        return [UserResponse(**user) for user in demo_users]
+        logger.error(f"Failed to retrieve admin users: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve user data. Please check system status."
+        )
 
 @app.get("/admin/stats")
 async def get_admin_stats(current_user: dict = Depends(require_admin)):
-    """Get admin dashboard statistics"""
+    """Get admin dashboard statistics - Real data only, no demo fallback"""
     try:
-        # If database is not available, use demo data immediately
         if not DATABASE_AVAILABLE:
-            raise Exception("Database not available")
-            
+            logger.error("Database connection required for admin statistics")
+            raise HTTPException(
+                status_code=503, 
+                detail="Database service unavailable. Admin dashboard requires database connection for real data."
+            )
+        
+        # Get real statistics from database
         users = db.get_all_users()
         bookings = db.get_all_bookings()
         messages = db.get_all_messages()
         announcements = db.get_all_announcements()
         robots = db.get_all_robots()
         
-        total_users = len(users)
-        total_bookings = len(bookings)
-        active_bookings = len([b for b in bookings if b["status"] == "active"])
-        total_messages = len(messages)
-        unread_messages = len([m for m in messages if m["status"] == "unread"])
-        total_announcements = len(announcements)
-        active_announcements = len([a for a in announcements if a["is_active"]])
-        total_robots = len(robots)
+        # Filter out demo/test data for admin dashboard
+        real_users = [u for u in users if not any(demo_indicator in u.get('email', '').lower() 
+                                                  for demo_indicator in ['demo', 'test', 'example'])]
+        real_bookings = [b for b in bookings if not any(demo_indicator in b.get('user_email', '').lower() 
+                                                        for demo_indicator in ['demo', 'test', 'example'])]
+        real_messages = [m for m in messages if not any(demo_indicator in m.get('email', '').lower() 
+                                                        for demo_indicator in ['demo', 'test', 'example'])]
         
-        return {
+        # Calculate statistics from real data only
+        total_users = len(real_users)
+        total_bookings = len(real_bookings)
+        active_bookings = len([b for b in real_bookings if b["status"] == "active"])
+        total_messages = len(real_messages)
+        unread_messages = len([m for m in real_messages if m["status"] == "unread"])
+        total_announcements = len(announcements)
+        active_announcements = len([a for a in announcements if a.get("is_active", False)])
+        
+        # Only show robots that are explicitly managed by admin (active status only)
+        admin_managed_robots = [r for r in robots if r.get("status") == "active"]
+        
+        stats = {
             "total_users": total_users,
             "total_bookings": total_bookings,
             "active_bookings": active_bookings,
@@ -695,36 +742,23 @@ async def get_admin_stats(current_user: dict = Depends(require_admin)):
             "unread_messages": unread_messages,
             "total_announcements": total_announcements,
             "active_announcements": active_announcements,
-            "total_robots": total_robots,
-            "recent_users": users[:5],  # 5 most recent users
-            "recent_bookings": bookings[:10],  # 10 most recent bookings
-            "recent_messages": messages[:10]  # 10 most recent messages
+            "total_robots": len(admin_managed_robots),
+            "recent_users": real_users[-5:] if real_users else [],  # 5 most recent real users
+            "recent_bookings": real_bookings[:10],  # 10 most recent real bookings
+            "recent_messages": real_messages[:10]  # 10 most recent real messages
         }
+        
+        logger.info(f"Admin stats retrieved: {total_users} real users, {total_bookings} real bookings, {len(admin_managed_robots)} managed robots")
+        return stats
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"Database connection failed for admin stats, returning demo data: {e}")
-        # Return demo data when database is unavailable
-        return {
-            "total_users": 2,
-            "total_bookings": 3,
-            "active_bookings": 1,
-            "total_messages": 1,
-            "unread_messages": 1,
-            "total_announcements": 2,
-            "active_announcements": 1,
-            "total_robots": 3,
-            "recent_users": [
-                {"id": 1, "name": "Demo User", "email": "demo@user.com", "role": "user", "created_at": "2024-01-15T10:30:00"},
-                {"id": 2, "name": "Admin User", "email": "admin@demo.com", "role": "admin", "created_at": "2024-01-14T09:00:00"}
-            ],
-            "recent_bookings": [
-                {"id": 1, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "turtlebot", "date": "2024-01-20", "start_time": "10:00", "end_time": "11:00", "status": "active", "created_at": "2024-01-15T11:00:00"},
-                {"id": 2, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "arm", "date": "2024-01-19", "start_time": "14:00", "end_time": "15:00", "status": "completed", "created_at": "2024-01-14T13:30:00"},
-                {"id": 3, "user_name": "Demo User", "user_email": "demo@user.com", "robot_type": "hand", "date": "2024-01-18", "start_time": "16:00", "end_time": "17:00", "status": "completed", "created_at": "2024-01-13T15:45:00"}
-            ],
-            "recent_messages": [
-                {"id": 1, "name": "Contact User", "email": "contact@example.com", "message": "Hello, I'm interested in using the robot console.", "status": "unread", "created_at": "2024-01-15T12:00:00"}
-            ]
-        }
+        logger.error(f"Failed to retrieve admin statistics: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve admin statistics. Please check system status."
+        )
 
 # Robot Admin Endpoints
 @app.post("/admin/robots", response_model=RobotResponse)
@@ -741,21 +775,31 @@ async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(req
 
 @app.get("/admin/robots", response_model=List[RobotResponse])
 async def get_all_robots_admin(current_user: dict = Depends(require_admin)):
-    """Get all robots (admin only)"""
+    """Get all robots (admin only) - Only show admin-managed robots"""
     try:
         if not DATABASE_AVAILABLE:
-            raise Exception("Database not available")
+            logger.error("Database connection required for robot management")
+            raise HTTPException(
+                status_code=503, 
+                detail="Database service unavailable. Robot management requires database connection."
+            )
+        
         robots = db.get_all_robots()
-        return [RobotResponse(**robot) for robot in robots]
+        # Only show robots that are explicitly managed by admin actions
+        # This ensures only robots added/managed by admins are visible
+        admin_managed_robots = [robot for robot in robots if robot.get('status') in ['active', 'inactive']]
+        
+        logger.info(f"Admin robots retrieved: {len(admin_managed_robots)} admin-managed robots")
+        return [RobotResponse(**robot) for robot in admin_managed_robots]
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"Database connection failed for admin robots, returning demo data: {e}")
-        # Return demo data when database is unavailable
-        demo_robots = [
-            {"id": 1, "name": "Demo TurtleBot", "type": "turtlebot", "rtsp_url": "rtsp://demo:554/turtlebot", "code_api_url": "http://localhost:8001/api", "status": "active", "created_at": "2024-01-14T10:00:00", "updated_at": "2024-01-14T10:00:00"},
-            {"id": 2, "name": "Demo Robot Arm", "type": "arm", "rtsp_url": "rtsp://demo:554/arm", "code_api_url": "http://localhost:8001/api", "status": "active", "created_at": "2024-01-14T10:05:00", "updated_at": "2024-01-14T10:05:00"},
-            {"id": 3, "name": "Demo Robot Hand", "type": "hand", "rtsp_url": "rtsp://demo:554/hand", "code_api_url": "http://localhost:8001/api", "status": "inactive", "created_at": "2024-01-14T10:10:00", "updated_at": "2024-01-14T10:10:00"}
-        ]
-        return [RobotResponse(**robot) for robot in demo_robots]
+        logger.error(f"Failed to retrieve admin robots: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve robot data. Please check system status."
+        )
 
 @app.put("/admin/robots/{robot_id}", response_model=RobotResponse)
 async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dict = Depends(require_admin)):
@@ -819,19 +863,31 @@ async def create_message(message_data: MessageCreate):
 
 @app.get("/messages", response_model=List[MessageResponse])
 async def get_all_messages(current_user: dict = Depends(require_admin)):
-    """Get all contact messages (admin only)"""
+    """Get all contact messages (admin only) - Real data only"""
     try:
         if not DATABASE_AVAILABLE:
-            raise Exception("Database not available")
+            logger.error("Database connection required for admin messages")
+            raise HTTPException(
+                status_code=503, 
+                detail="Database service unavailable. Message management requires database connection."
+            )
+        
         messages = db.get_all_messages()
-        return [MessageResponse(**message) for message in messages]
+        # Filter out demo/test messages for admin view
+        real_messages = [m for m in messages if not any(demo_indicator in m.get('email', '').lower() 
+                                                        for demo_indicator in ['demo', 'test', 'example'])]
+        
+        logger.info(f"Admin messages retrieved: {len(real_messages)} real messages (filtered from {len(messages)} total)")
+        return [MessageResponse(**message) for message in real_messages]
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"Database connection failed for admin messages, returning demo data: {e}")
-        # Return demo data when database is unavailable
-        demo_messages = [
-            {"id": 1, "name": "Contact User", "email": "contact@example.com", "message": "Hello, I'm interested in using the robot console.", "status": "unread", "created_at": "2024-01-15T12:00:00"}
-        ]
-        return [MessageResponse(**message) for message in demo_messages]
+        logger.error(f"Failed to retrieve admin messages: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve message data. Please check system status."
+        )
 
 @app.put("/messages/{message_id}/status")
 async def update_message_status(message_id: int, message_data: MessageUpdate, current_user: dict = Depends(require_admin)):
@@ -867,20 +923,27 @@ async def create_announcement(announcement_data: AnnouncementCreate, current_use
 
 @app.get("/announcements", response_model=List[AnnouncementResponse])
 async def get_all_announcements(current_user: dict = Depends(require_admin)):
-    """Get all announcements (admin only)"""
+    """Get all announcements (admin only) - Real data only"""
     try:
         if not DATABASE_AVAILABLE:
-            raise Exception("Database not available")
+            logger.error("Database connection required for admin announcements")
+            raise HTTPException(
+                status_code=503, 
+                detail="Database service unavailable. Announcement management requires database connection."
+            )
+        
         announcements = db.get_all_announcements()
+        logger.info(f"Admin announcements retrieved: {len(announcements)} announcements")
         return [AnnouncementResponse(**announcement) for announcement in announcements]
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"Database connection failed for admin announcements, returning demo data: {e}")
-        # Return demo data when database is unavailable
-        demo_announcements = [
-            {"id": 1, "title": "Welcome to Robot Console", "content": "The system is running in demo mode.", "priority": "normal", "is_active": True, "created_by": 2, "created_by_name": "Admin User", "created_at": "2024-01-14T09:30:00", "updated_at": "2024-01-14T09:30:00"},
-            {"id": 2, "title": "Database Connection Info", "content": "Database is currently unavailable, showing demo data.", "priority": "low", "is_active": False, "created_by": 2, "created_by_name": "Admin User", "created_at": "2024-01-13T14:00:00", "updated_at": "2024-01-13T14:00:00"}
-        ]
-        return [AnnouncementResponse(**announcement) for announcement in demo_announcements]
+        logger.error(f"Failed to retrieve admin announcements: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve announcement data. Please check system status."
+        )
 
 @app.get("/announcements/active")
 async def get_active_announcements():

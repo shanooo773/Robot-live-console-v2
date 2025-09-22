@@ -1,0 +1,94 @@
+{
+  "timestamp": "2025-09-22T23:47:56.956633",
+  "tests_run": 5,
+  "tests_passed": 5,
+  "pass_rate": 100.0,
+  "issues": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "total": 0
+  },
+  "successes": 19,
+  "warnings": 0,
+  "detailed_issues": [],
+  "detailed_successes": [
+    {
+      "description": "Admin bookings endpoint filters demo data",
+      "timestamp": "2025-09-22T23:47:56.955600"
+    },
+    {
+      "description": "Admin users endpoint filters demo data",
+      "timestamp": "2025-09-22T23:47:56.955628"
+    },
+    {
+      "description": "Demo data fallbacks removed from admin endpoints",
+      "timestamp": "2025-09-22T23:47:56.955680"
+    },
+    {
+      "description": "Proper error handling for unavailable database",
+      "timestamp": "2025-09-22T23:47:56.955710"
+    },
+    {
+      "description": "Audit logging found: \ud83d\udd12 BOOKING ATTEMPT",
+      "timestamp": "2025-09-22T23:47:56.955871"
+    },
+    {
+      "description": "Audit logging found: \u2705 BOOKING CREATED",
+      "timestamp": "2025-09-22T23:47:56.955892"
+    },
+    {
+      "description": "Audit logging found: \u274c BOOKING REJECTED",
+      "timestamp": "2025-09-22T23:47:56.955906"
+    },
+    {
+      "description": "Audit logging found: \ud83d\udd04 STATUS UPDATE",
+      "timestamp": "2025-09-22T23:47:56.955934"
+    },
+    {
+      "description": "Audit logging found: \ud83d\udd27 ADMIN ACTION",
+      "timestamp": "2025-09-22T23:47:56.955970"
+    },
+    {
+      "description": "Enhanced user authentication validation",
+      "timestamp": "2025-09-22T23:47:56.955990"
+    },
+    {
+      "description": "Enhanced booking conflict detection",
+      "timestamp": "2025-09-22T23:47:56.956009"
+    },
+    {
+      "description": "Enhanced admin access logging",
+      "timestamp": "2025-09-22T23:47:56.956098"
+    },
+    {
+      "description": "Demo admin access tracking",
+      "timestamp": "2025-09-22T23:47:56.956118"
+    },
+    {
+      "description": "Enhanced admin access error messages",
+      "timestamp": "2025-09-22T23:47:56.956149"
+    },
+    {
+      "description": "Robot visibility restricted to admin-managed robots",
+      "timestamp": "2025-09-22T23:47:56.956373"
+    },
+    {
+      "description": "Robot demo data fallbacks removed",
+      "timestamp": "2025-09-22T23:47:56.956424"
+    },
+    {
+      "description": "Demo user detection preserved in frontend",
+      "timestamp": "2025-09-22T23:47:56.956556"
+    },
+    {
+      "description": "Demo mode unrestricted access maintained",
+      "timestamp": "2025-09-22T23:47:56.956580"
+    },
+    {
+      "description": "Demo admin workspace file exists",
+      "timestamp": "2025-09-22T23:47:56.956611"
+    }
+  ],
+  "detailed_warnings": []
+}
