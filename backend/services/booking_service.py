@@ -39,19 +39,13 @@ class BookingService:
         }
     
     def _parse_time_string(self, time_str: str) -> time:
-        """Parse time string to time object, handling different formats"""
+        """Parse time string (HH:MM) to time object, enforcing 24-hour format"""
         try:
-            # Handle both "HH:MM" and "H:MM" formats
-            if ':' in time_str:
-                parts = time_str.split(':')
-                hour = int(parts[0])
-                minute = int(parts[1])
-                return time(hour, minute)
-            else:
-                raise ValueError(f"Invalid time format: {time_str}")
-        except (ValueError, IndexError) as e:
-            raise ValueError(f"Cannot parse time '{time_str}': {e}")
-    
+            return datetime.strptime(time_str.strip(), "%H:%M").time()
+        except ValueError as e:
+            logger.error(f"❌ Invalid time format '{time_str}', expected HH:MM (24-hour). Error: {e}")
+            raise ValueError(f"Invalid time format: {time_str}, expected HH:MM (24-hour)")
+
     def _times_overlap(self, start1: str, end1: str, start2: str, end2: str) -> bool:
         """Check if two time ranges overlap"""
         try:
@@ -67,39 +61,35 @@ class BookingService:
             return False
     
     def validate_booking_time(self, date: str, start_time: str, end_time: str) -> bool:
-        """Validate booking time constraints"""
         try:
-            # Parse date and times to validate format
             booking_date = datetime.strptime(date, "%Y-%m-%d")
             start_dt = datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M")
             end_dt = datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M")
-            
-            # Check if booking is in the future (allow bookings starting within next 10 minutes for testing)
+
             now = datetime.now()
-            min_advance_time = now - timedelta(minutes=10)  # Allow some flexibility for testing
+            min_advance_time = now - timedelta(minutes=10)
+            
             if start_dt <= min_advance_time:
+                logger.warning(f"❌ Booking start {start_dt} is in the past")
                 return False
-            
-            # Check if end time is after start time
             if end_dt <= start_dt:
+                logger.warning(f"❌ End time {end_dt} is not after start {start_dt}")
                 return False
-            
-            # Check if booking duration is reasonable (e.g., max 4 hours)
+
             duration = (end_dt - start_dt).total_seconds() / 3600
             if duration > 4:
+                logger.warning(f"❌ Booking too long ({duration} hours)")
                 return False
-            
-            # Validate time format consistency
-            try:
-                self._parse_time_string(start_time)
-                self._parse_time_string(end_time)
-            except ValueError:
-                return False
-            
+
+            # Confirm both times are valid 24-hour
+            self._parse_time_string(start_time)
+            self._parse_time_string(end_time)
+
             return True
-        except ValueError:
+        except ValueError as e:
+            logger.error(f"❌ Validation failed: {e}")
             return False
-    
+
     def create_booking(self, user_id: int, robot_type: str, date: str, 
                       start_time: str, end_time: str) -> Dict[str, Any]:
         """Create a new booking with proper overlap detection"""
