@@ -69,6 +69,7 @@ class BookingService:
             now = datetime.now()
             min_advance_time = now + timedelta(minutes=10)
             
+            # Check if booking is not in the past
             if start_dt <= min_advance_time:
                 logger.warning(f"❌ Booking start {start_dt} is in the past")
                 return False
@@ -76,9 +77,28 @@ class BookingService:
                 logger.warning(f"❌ End time {end_dt} is not after start {start_dt}")
                 return False
 
+            # Validate working hours (9:00-18:00)
+            start_time_obj = self._parse_time_string(start_time)
+            end_time_obj = self._parse_time_string(end_time)
+            working_start = time(9, 0)  # 9:00 AM
+            working_end = time(18, 0)   # 6:00 PM
+            
+            if start_time_obj < working_start or start_time_obj >= working_end:
+                logger.warning(f"❌ Booking start {start_time} outside working hours (9:00-18:00)")
+                return False
+            if end_time_obj > working_end:
+                logger.warning(f"❌ Booking end {end_time} outside working hours (9:00-18:00)")
+                return False
+
+            # Validate maximum session duration (2 hours)
             duration = (end_dt - start_dt).total_seconds() / 3600
-            if duration > 4:
-                logger.warning(f"❌ Booking too long ({duration} hours)")
+            if duration > 2:
+                logger.warning(f"❌ Booking too long ({duration} hours), maximum allowed is 2 hours")
+                return False
+            
+            # Validate minimum session duration (30 minutes)
+            if duration < 0.5:
+                logger.warning(f"❌ Booking too short ({duration} hours), minimum allowed is 30 minutes")
                 return False
 
             # Confirm both times are valid 24-hour
@@ -192,6 +212,65 @@ class BookingService:
             logger.error(f"Failed to update booking status: {e}")
             raise BookingServiceException(f"Failed to update booking status: {str(e)}")
     
+    def get_available_time_slots(self, date: str, robot_type: str) -> List[Dict[str, Any]]:
+        """Get available time slots for a specific date and robot type"""
+        try:
+            # Parse the requested date
+            requested_date = datetime.strptime(date, "%Y-%m-%d").date()
+            today = datetime.now().date()
+            
+            # Don't allow booking for past dates
+            if requested_date < today:
+                return []
+            
+            # Get existing bookings for this date and robot type
+            existing_bookings = self.db.get_bookings_for_date_range(date, date)
+            robot_bookings = [
+                b for b in existing_bookings 
+                if b["robot_type"] == robot_type and b["status"] == "active"
+            ]
+            
+            # Generate potential slots within working hours (9:00-18:00)
+            available_slots = []
+            working_start = 9  # 9 AM
+            working_end = 18   # 6 PM
+            slot_duration = 1  # 1 hour slots
+            
+            for hour in range(working_start, working_end):
+                start_time = f"{hour:02d}:00"
+                end_time = f"{hour + slot_duration:02d}:00"
+                
+                # Check if this slot conflicts with existing bookings
+                slot_available = True
+                for booking in robot_bookings:
+                    if self._times_overlap(start_time, end_time, 
+                                         booking["start_time"], booking["end_time"]):
+                        slot_available = False
+                        break
+                
+                # For today, also check if the slot is not in the past
+                if requested_date == today:
+                    current_time = datetime.now()
+                    slot_start_dt = datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M")
+                    if slot_start_dt <= current_time + timedelta(minutes=10):
+                        slot_available = False
+                
+                if slot_available:
+                    available_slots.append({
+                        "date": date,
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "robot_type": robot_type,
+                        "duration_hours": slot_duration
+                    })
+            
+            logger.info(f"Found {len(available_slots)} available slots for {robot_type} on {date}")
+            return available_slots
+            
+        except Exception as e:
+            logger.error(f"Error getting available time slots: {e}")
+            return []
+
     def get_available_robots(self) -> Dict[str, Any]:
         """Get available robot types and their descriptions"""
         return {

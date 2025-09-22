@@ -585,6 +585,32 @@ async def get_booking_schedule(start_date: str, end_date: str):
     bookings = db.get_bookings_for_date_range(start_date, end_date)
     return {"bookings": bookings}
 
+@app.get("/bookings/available-slots")
+async def get_available_slots(date: str, robot_type: str, current_user: dict = Depends(get_current_user)):
+    """Get available time slots for a specific date and robot type (authenticated users only)"""
+    booking_service = service_manager.get_booking_service()
+    
+    try:
+        # Validate date format
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    # Validate robot type
+    available_robots = booking_service.get_available_robots()
+    if robot_type not in available_robots:
+        raise HTTPException(status_code=400, detail=f"Invalid robot type. Available types: {list(available_robots.keys())}")
+    
+    slots = booking_service.get_available_time_slots(date, robot_type)
+    return {
+        "date": date,
+        "robot_type": robot_type,
+        "available_slots": slots,
+        "working_hours": "09:00-18:00",
+        "max_session_duration": "2 hours",
+        "slot_duration": "1 hour"
+    }
+
 # Admin Endpoints
 @app.get("/admin/users", response_model=List[UserResponse])
 async def get_all_users(current_user: dict = Depends(require_admin)):

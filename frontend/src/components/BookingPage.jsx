@@ -19,11 +19,35 @@ import {
   FormLabel,
 } from "@chakra-ui/react";
 import { useState, useEffect } from "react";
-import { createBooking, getUserBookings, getBookingSchedule, getActiveAnnouncements } from "../api";
+import { createBooking, getUserBookings, getBookingSchedule, getActiveAnnouncements, getAvailableSlots } from "../api";
 import ServiceStatus from "./ServiceStatus";
 
-// Dummy data for available time slots
-const generateTimeSlots = () => {
+// Generate realistic time slots based on business rules
+const generateAvailableTimeSlots = async (authToken, selectedDate, selectedRobot) => {
+  if (!authToken || !selectedDate || !selectedRobot) {
+    return [];
+  }
+  
+  try {
+    const response = await getAvailableSlots(selectedDate, selectedRobot, authToken);
+    return response.available_slots.map((slot, index) => ({
+      id: `slot_${selectedDate}_${slot.start_time}_${selectedRobot}`,
+      date: slot.date,
+      startTime: slot.start_time,
+      endTime: slot.end_time,
+      robotType: slot.robot_type,
+      available: true,
+      bookedBy: null,
+      duration: slot.duration_hours
+    }));
+  } catch (error) {
+    console.error('Error fetching available slots:', error);
+    return [];
+  }
+};
+
+// Fallback dummy data for demo mode or when API is unavailable
+const generateFallbackTimeSlots = () => {
   const slots = [];
   const today = new Date();
   
@@ -31,16 +55,21 @@ const generateTimeSlots = () => {
     const date = new Date(today);
     date.setDate(today.getDate() + day);
     
-    // Generate slots from 9 AM to 9 PM
-    for (let hour = 9; hour <= 21; hour++) {
+    // Generate slots from 9 AM to 6 PM (working hours)
+    for (let hour = 9; hour < 18; hour++) {
       const startTime = new Date(date);
       startTime.setHours(hour, 0, 0, 0);
       
       const endTime = new Date(startTime);
       endTime.setHours(hour + 1, 0, 0, 0);
       
+      // Skip past time slots for today
+      if (date.toDateString() === today.toDateString() && startTime <= new Date()) {
+        continue;
+      }
+      
       // Randomly mark some slots as taken to simulate real usage
-      const isTaken = Math.random() < 0.3;
+      const isTaken = Math.random() < 0.2; // Reduced probability for better demo experience
       
       slots.push({
         id: `slot_${day}_${hour}`,
@@ -82,10 +111,6 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   const toast = useToast();
 
   useEffect(() => {
-    // Generate dummy time slots on component mount
-    const slots = generateTimeSlots();
-    setTimeSlots(slots);
-    
     // Set default date to today
     const today = new Date().toISOString().split('T')[0];
     setSelectedDate(today);
@@ -94,6 +119,34 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     loadBookings();
     loadAnnouncements();
   }, [authToken]);
+
+  // Load available slots when date or robot selection changes
+  useEffect(() => {
+    loadAvailableSlots();
+  }, [selectedDate, selectedRobot, authToken]);
+
+  const loadAvailableSlots = async () => {
+    try {
+      if (authToken && selectedDate && selectedRobot) {
+        // Load real available slots from API
+        const slots = await generateAvailableTimeSlots(authToken, selectedDate, selectedRobot);
+        setTimeSlots(slots);
+      } else if (user?.isDemoMode) {
+        // Demo mode - use fallback data
+        const slots = generateFallbackTimeSlots();
+        setTimeSlots(slots);
+      } else {
+        // No auth or incomplete selection - show empty or fallback slots
+        const slots = generateFallbackTimeSlots();
+        setTimeSlots(slots);
+      }
+    } catch (error) {
+      console.error('Error loading available slots:', error);
+      // Fallback to dummy data on error
+      const fallbackSlots = generateFallbackTimeSlots();
+      setTimeSlots(fallbackSlots);
+    }
+  };
 
   const loadBookings = async () => {
     try {
@@ -205,11 +258,23 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   const unavailableSlots = filteredSlots.filter((slot) => !slot.available);
 
   const handleBookSlot = async (slot) => {
+    // Enforce authentication requirement
+    if (!authToken && !user?.isDemoMode) {
+      toast({
+        title: "Authentication Required",
+        description: "You must be logged in to make a booking. Please sign in first.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
     setIsLoading(true);
     
     try {
       if (authToken) {
-        // Regular authenticated booking
+        // Regular authenticated booking with enhanced validation
         const bookingData = {
           robot_type: slot.robotType,
           date: slot.date,
@@ -217,10 +282,32 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
           end_time: ensureTwentyFourHourFormat(slot.endTime)
         };
         
+        // Client-side validation
+        const startHour = parseInt(slot.startTime.split(':')[0]);
+        const endHour = parseInt(slot.endTime.split(':')[0]);
+        
+        if (startHour < 9 || startHour >= 18) {
+          throw new Error("Bookings are only allowed during working hours (9:00 AM - 6:00 PM)");
+        }
+        
+        if (endHour > 18) {
+          throw new Error("Booking sessions cannot extend beyond 6:00 PM");
+        }
+        
+        const duration = endHour - startHour;
+        if (duration > 2) {
+          throw new Error("Maximum booking duration is 2 hours");
+        }
+        
+        if (duration < 1) {
+          throw new Error("Minimum booking duration is 1 hour");
+        }
+        
         const booking = await createBooking(bookingData, authToken);
         
-        // Update local state
+        // Update local state by reloading available slots
         await loadBookings();
+        await loadAvailableSlots();
         
         onBooking({
           ...slot,
@@ -248,14 +335,11 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
           bookedBy: user.name,
           bookingTime: demoBooking.created_at,
         });
-      } else {
-        // No auth token and not in demo mode - this shouldn't happen for properly authenticated users
-        throw new Error("Authentication required. Please sign in to book a session.");
       }
       
       toast({
         title: "Development session booked!",
-        description: `Your coding console is reserved for ${slot.date} at ${slot.startTime}`,
+        description: `Your coding console is reserved for ${slot.date} from ${slot.startTime} to ${slot.endTime}`,
         status: "success",
         duration: 5000,
         isClosable: true,
@@ -263,11 +347,30 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
       
     } catch (error) {
       console.error('Booking error:', error);
+      
+      // Enhanced error message handling
+      let errorMessage = "Failed to book session. Please try again.";
+      
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      // Specific error handling for common cases
+      if (errorMessage.includes("conflicts with existing booking")) {
+        errorMessage = "This time slot is no longer available. Please select a different time.";
+      } else if (errorMessage.includes("working hours")) {
+        errorMessage = "Bookings are only allowed during working hours (9:00 AM - 6:00 PM).";
+      } else if (errorMessage.includes("duration")) {
+        errorMessage = "Session duration must be between 1-2 hours during working hours.";
+      }
+      
       toast({
         title: "Booking failed",
-        description: error.response?.data?.detail || error.message || "Failed to book session. Please try again.",
+        description: errorMessage,
         status: "error",
-        duration: 5000,
+        duration: 7000,
         isClosable: true,
       });
     } finally {
@@ -328,6 +431,31 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
         <Box w="full">
           <ServiceStatus showDetails={false} />
         </Box>
+
+        {/* Booking Rules Information */}
+        <Card w="full" bg="blue.900" border="1px solid" borderColor="blue.500">
+          <CardBody>
+            <VStack align="start" spacing={3}>
+              <Text fontSize="lg" fontWeight="bold" color="blue.100">
+                📋 Booking Guidelines
+              </Text>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="full">
+                <VStack align="start" spacing={2}>
+                  <Text color="blue.200" fontWeight="semibold">Working Hours</Text>
+                  <Text color="blue.300" fontSize="sm">9:00 AM - 6:00 PM</Text>
+                  <Text color="blue.200" fontWeight="semibold">Session Duration</Text>
+                  <Text color="blue.300" fontSize="sm">30 minutes - 2 hours maximum</Text>
+                </VStack>
+                <VStack align="start" spacing={2}>
+                  <Text color="blue.200" fontWeight="semibold">Authentication</Text>
+                  <Text color="blue.300" fontSize="sm">Login required for booking</Text>
+                  <Text color="blue.200" fontWeight="semibold">Availability</Text>
+                  <Text color="blue.300" fontSize="sm">Real-time slot availability</Text>
+                </VStack>
+              </SimpleGrid>
+            </VStack>
+          </CardBody>
+        </Card>
 
         {/* Active Announcements */}
         {announcements.length > 0 && (
