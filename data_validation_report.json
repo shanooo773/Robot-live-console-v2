@@ -1,48 +1,73 @@
 {
-  "timestamp": "2025-09-22T22:44:30.227857",
+  "timestamp": "2025-09-23T23:30:35.691404",
   "summary": {
-    "tests_passed": 1,
+    "tests_passed": 6,
     "total_tests": 6,
-    "success_rate": 16.666666666666664,
+    "success_rate": 100.0,
     "issues_count": 4,
-    "warnings_count": 2
+    "warnings_count": 7
   },
   "issues": [
     {
-      "severity": "CRITICAL",
-      "category": "MySQL Connection",
-      "description": "Cannot connect to MySQL: (2003, \"Can't connect to MySQL server on 'localhost' ([Errno 111] Connection refused)\")",
-      "timestamp": "2025-09-22T22:44:30.227342"
+      "severity": "HIGH",
+      "category": "Schema",
+      "description": "Table 'messages' missing columns: {'subject'}",
+      "timestamp": "2025-09-23T23:30:35.576914"
     },
     {
       "severity": "HIGH",
-      "category": "Admin Endpoints",
-      "description": "Admin endpoint missing: @require_admin",
-      "timestamp": "2025-09-22T22:44:30.227666"
+      "category": "Schema",
+      "description": "Table 'announcements' missing columns: {'active'}",
+      "timestamp": "2025-09-23T23:30:35.577754"
     },
     {
       "severity": "CRITICAL",
       "category": "Security",
       "description": "Admin using default password in production",
-      "timestamp": "2025-09-22T22:44:30.227768"
+      "timestamp": "2025-09-23T23:30:35.690920"
     },
     {
       "severity": "CRITICAL",
       "category": "Security",
       "description": "Default JWT secret key in production",
-      "timestamp": "2025-09-22T22:44:30.227770"
+      "timestamp": "2025-09-23T23:30:35.690926"
     }
   ],
   "warnings": [
     {
-      "category": "Data Consistency",
-      "description": "Cannot test data consistency without MySQL connection",
-      "timestamp": "2025-09-22T22:44:30.227745"
+      "category": "MySQL Config",
+      "description": "Variable 'query_cache_size' not found",
+      "timestamp": "2025-09-23T23:30:35.679847"
+    },
+    {
+      "category": "MySQL Performance",
+      "description": "Consider adding index on bookings.robot_type",
+      "timestamp": "2025-09-23T23:30:35.686830"
+    },
+    {
+      "category": "MySQL Performance",
+      "description": "Consider adding index on bookings.date",
+      "timestamp": "2025-09-23T23:30:35.686839"
+    },
+    {
+      "category": "MySQL Performance",
+      "description": "Consider adding index on sessions.token_hash",
+      "timestamp": "2025-09-23T23:30:35.689229"
+    },
+    {
+      "category": "MySQL Performance",
+      "description": "Consider adding index on robots.type",
+      "timestamp": "2025-09-23T23:30:35.690574"
+    },
+    {
+      "category": "MySQL Performance",
+      "description": "Consider adding index on robots.status",
+      "timestamp": "2025-09-23T23:30:35.690580"
     },
     {
       "category": "Production Config",
       "description": "VPS URL not using HTTPS",
-      "timestamp": "2025-09-22T22:44:30.227775"
+      "timestamp": "2025-09-23T23:30:35.690939"
     }
   ]
 }
