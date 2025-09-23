@@ -557,6 +557,7 @@ class RobotCreate(BaseModel):
     name: str
     type: str
     rtsp_url: Optional[str] = None
+    webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
     status: str = 'active'
 
@@ -564,6 +565,7 @@ class RobotUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
     rtsp_url: Optional[str] = None
+    webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
     status: Optional[str] = None
 
@@ -575,6 +577,7 @@ class RobotResponse(BaseModel):
     name: str
     type: str
     rtsp_url: Optional[str] = None
+    webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
     status: str
     created_at: str
@@ -828,6 +831,7 @@ async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(req
         name=robot_data.name,
         robot_type=robot_data.type,
         rtsp_url=robot_data.rtsp_url,
+        webrtc_url=robot_data.webrtc_url,
         code_api_url=robot_data.code_api_url,
         status=robot_data.status
     )
@@ -869,6 +873,7 @@ async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dic
         name=robot_data.name,
         robot_type=robot_data.type,
         rtsp_url=robot_data.rtsp_url,
+        webrtc_url=robot_data.webrtc_url,
         code_api_url=robot_data.code_api_url,
         status=robot_data.status
     )
@@ -1611,7 +1616,7 @@ async def has_booking_for_robot(user_id: int, robot_id: int) -> bool:
 
 @app.post("/webrtc/offer")
 async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(get_current_user)):
-    """Handle WebRTC SDP offer from client"""
+    """Handle WebRTC SDP offer from client - now returns robot WebRTC URL for direct connection"""
     user_id = int(current_user["sub"])
     
     # Resolve robot_id from offer (supports both robot_id and robot_type)
@@ -1626,148 +1631,50 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
             detail=f"No active booking session for robot {robot_id} ({robot_type}). Video access requires an active session during your booking time."
         )
     
-    try:
-        # Create unique peer ID for this connection
-        peer_id = str(uuid.uuid4())
-        
-        # Create RTCPeerConnection
-        pc = RTCPeerConnection()
-        peer_connections[peer_id] = pc
-        peer_ice_candidates[peer_id] = []  # Initialize ICE candidates list
-        
-        # Get RTSP stream from robot and set up media relay
-        rtsp_player = await get_or_create_rtsp_player(robot_id)
-        
-        # Add video track from RTSP stream via media relay
-        if rtsp_player.video:
-            video_track = media_relay.subscribe(rtsp_player.video)
-            pc.addTrack(video_track)
-        
-        # Set remote description from client offer
-        await pc.setRemoteDescription(RTCSessionDescription(sdp=offer.sdp, type=offer.type))
-        
-        # Create answer
-        answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
-        
-        # Set up connection state monitoring
-        @pc.on("connectionstatechange")
-        async def on_connectionstatechange():
-            logger.info(f"Connection state for {peer_id}: {pc.connectionState}")
-            if pc.connectionState in ["failed", "closed"]:
-                await cleanup_peer_connection(peer_id)
-        
-        # Note: aiortc doesn't emit icecandidate events in the same way as browser WebRTC
-        # ICE candidates are handled internally during the setLocalDescription process
-        # Server-side ICE candidates will be collected from the localDescription
-        
-        robot = db.get_robot_by_id(robot_id)
-        robot_name = robot.get("name", "Unknown") if robot else "Unknown"
-        robot_type = robot.get("type", "Unknown") if robot else "Unknown"
-        rtsp_url = robot.get("rtsp_url", "Unknown") if robot else "Unknown"
-        
-        logger.info(f"Created WebRTC offer answer for robot {robot_name} (ID: {robot_id}, Type: {robot_type}), RTSP: {rtsp_url}, peer {peer_id}")
-        
-        # Extract server ICE candidates from the SDP for later retrieval
-        if pc.localDescription:
-            # Parse SDP to extract ICE candidates
-            sdp_lines = pc.localDescription.sdp.split('\n')
-            for line in sdp_lines:
-                if line.startswith('a=candidate:'):
-                    candidate_dict = {
-                        "candidate": line.strip(),
-                        "sdpMLineIndex": 0,  # This would need proper parsing for multiple media lines
-                        "sdpMid": "0",  # This would need proper parsing
-                        "timestamp": time.time()
-                    }
-                    peer_ice_candidates[peer_id].append(candidate_dict)
-                    logger.debug(f"Extracted ICE candidate for peer {peer_id}: {line[:50]}...")
-        
-        return {
-            "peer_id": peer_id,
-            "sdp": pc.localDescription.sdp,
-            "type": pc.localDescription.type
-        }
-        
-    except Exception as e:
-        # Clean up on error
-        if peer_id in peer_connections:
-            await cleanup_peer_connection(peer_id)
-        logger.error(f"Error handling WebRTC offer for robot {robot_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to process WebRTC offer: {str(e)}")
+    # Get robot details including webrtc_url
+    robot = db.get_robot_by_id(robot_id)
+    if not robot:
+        raise HTTPException(status_code=404, detail=f"Robot with ID {robot_id} not found")
+    
+    webrtc_url = robot.get('webrtc_url')
+    if not webrtc_url:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Robot {robot_id} does not have a WebRTC URL configured"
+        )
+    
+    robot_name = robot.get("name", "Unknown")
+    robot_type = robot.get("type", "Unknown")
+    
+    logger.info(f"Providing WebRTC URL for robot {robot_name} (ID: {robot_id}, Type: {robot_type}): {webrtc_url}")
+    
+    # Return the robot's WebRTC signaling endpoint instead of handling the offer
+    return {
+        "robot_id": robot_id,
+        "robot_name": robot_name,
+        "robot_type": robot_type,
+        "webrtc_url": webrtc_url,
+        "message": "Connect directly to robot WebRTC server using this URL"
+    }
+
+# Legacy WebRTC endpoints - deprecated in favor of direct robot connection
+# Keeping minimal versions for backward compatibility during transition
 
 @app.get("/webrtc/answer")
-async def get_webrtc_answer(robot_type: str = None, peer_id: str = None, current_user: dict = Depends(get_current_user)):
-    """Get WebRTC SDP answer for a specific peer connection"""
-    # Support both robot_type and peer_id parameters for flexibility
-    if peer_id:
-        # Direct peer lookup
-        if peer_id not in peer_connections:
-            raise HTTPException(status_code=404, detail=f"Peer connection {peer_id} not found")
-        
-        pc = peer_connections[peer_id]
-        if not pc.localDescription:
-            raise HTTPException(status_code=404, detail=f"No answer available for peer {peer_id}")
-        
-        return {
-            "peer_id": peer_id,
-            "sdp": pc.localDescription.sdp,
-            "type": pc.localDescription.type,
-            "timestamp": time.time()
-        }
-    
-    elif robot_type:
-        # Find peer connection by robot type (for backward compatibility)
-        user_id = int(current_user["sub"])
-        
-        # This is a simplified lookup - in practice, you might need to track
-        # which peer connections belong to which users and robots
-        for peer_id, pc in peer_connections.items():
-            if pc.localDescription:
-                return {
-                    "peer_id": peer_id,
-                    "sdp": pc.localDescription.sdp,
-                    "type": pc.localDescription.type,
-                    "robot_type": robot_type,
-                    "timestamp": time.time()
-                }
-        
-        raise HTTPException(status_code=404, detail=f"No active WebRTC answer found for robot type {robot_type}")
-    
-    else:
-        raise HTTPException(status_code=400, detail="Either 'robot_type' or 'peer_id' parameter is required")
+async def get_webrtc_answer_deprecated(robot_type: str = None, peer_id: str = None, current_user: dict = Depends(get_current_user)):
+    """DEPRECATED: Direct robot connection recommended. Get WebRTC URL instead."""
+    raise HTTPException(
+        status_code=410, 
+        detail="This endpoint is deprecated. Use POST /webrtc/offer to get robot WebRTC URL for direct connection."
+    )
 
 @app.post("/webrtc/ice-candidate")
-async def handle_ice_candidate(candidate: ICECandidate, current_user: dict = Depends(get_current_user)):
-    """Handle ICE candidate from client"""
-    # Get the peer connection
-    if candidate.peer_id not in peer_connections:
-        raise HTTPException(status_code=404, detail=f"Peer connection {candidate.peer_id} not found")
-    
-    pc = peer_connections[candidate.peer_id]
-    
-    try:
-        # Add ICE candidate to peer connection
-        from aiortc import RTCIceCandidate
-        ice_candidate = RTCIceCandidate(
-            candidate=candidate.candidate.get("candidate"),
-            sdpMLineIndex=candidate.candidate.get("sdpMLineIndex"),
-            sdpMid=candidate.candidate.get("sdpMid")
-        )
-        await pc.addIceCandidate(ice_candidate)
-        
-        logger.debug(f"Added ICE candidate for peer {candidate.peer_id}")
-        
-        return {
-            "success": True,
-            "message": "ICE candidate added successfully",
-            "peer_id": candidate.peer_id,
-            "timestamp": time.time()
-        }
-        
-    except Exception as e:
-        logger.error(f"Error adding ICE candidate for peer {candidate.peer_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to add ICE candidate: {str(e)}")
+async def handle_ice_candidate_deprecated(candidate: ICECandidate, current_user: dict = Depends(get_current_user)):
+    """DEPRECATED: Direct robot connection recommended."""
+    raise HTTPException(
+        status_code=410,
+        detail="This endpoint is deprecated. Handle ICE candidates directly with robot WebRTC server."
+    )
 
 @app.get("/webrtc/config")
 async def get_webrtc_config(current_user: dict = Depends(get_current_user)):
