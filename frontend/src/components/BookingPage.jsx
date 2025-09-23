@@ -19,7 +19,7 @@ import {
   FormLabel,
 } from "@chakra-ui/react";
 import { useState, useEffect } from "react";
-import { createBooking, getUserBookings, getBookingSchedule, getActiveAnnouncements, getAvailableSlots } from "../api";
+import { createBooking, getUserBookings, getBookingSchedule, getActiveAnnouncements, getAvailableSlots, getAvailableRobots } from "../api";
 import ServiceStatus from "./ServiceStatus";
 
 // Generate realistic time slots based on business rules
@@ -94,12 +94,6 @@ const generateFallbackTimeSlots = () => {
   return slots;
 };
 
-const robotNames = {
-  turtlebot: { name: "TurtleBot3 Navigation", emoji: "🤖" },
-  arm: { name: "Robot Arm Manipulation", emoji: "🦾" },
-  hand: { name: "Dexterous Hand Control", emoji: "🤲" },
-};
-
 const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) => {
   const [timeSlots, setTimeSlots] = useState([]);
   const [bookedSlots, setBookedSlots] = useState([]);
@@ -108,6 +102,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   const [isLoading, setIsLoading] = useState(false);
   const [userBookings, setUserBookings] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [availableRobots, setAvailableRobots] = useState({});
   const toast = useToast();
 
   useEffect(() => {
@@ -115,10 +110,53 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     const today = new Date().toISOString().split('T')[0];
     setSelectedDate(today);
     
-    // Load user bookings, booked slots, and announcements
+    // Load user bookings, booked slots, announcements, and available robots
     loadBookings();
     loadAnnouncements();
+    loadRobots();
   }, [authToken]);
+
+  const loadRobots = async () => {
+    try {
+      if (user?.isDemoMode || user?.isDemoUser || user?.isDemoAdmin || 
+          localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin')) {
+        // Demo mode - use hardcoded robots for demo experience
+        setAvailableRobots({
+          "turtlebot": { name: "TurtleBot3 Navigation", emoji: "🤖" },
+          "arm": { name: "Robot Arm Manipulation", emoji: "🦾" },
+          "hand": { name: "Dexterous Hand Control", emoji: "🤲" }
+        });
+      } else {
+        // Regular mode - load robots from API (admin-added only)
+        const robotData = await getAvailableRobots();
+        const robotDetails = robotData.details || {};
+        
+        // Convert to format expected by frontend, adding emojis based on type
+        const formattedRobots = {};
+        Object.keys(robotDetails).forEach(robotType => {
+          const robot = robotDetails[robotType];
+          let emoji = "🤖"; // default emoji
+          if (robotType.includes("arm")) emoji = "🦾";
+          else if (robotType.includes("hand")) emoji = "🤲";
+          else if (robotType.includes("turtle")) emoji = "🤖";
+          
+          formattedRobots[robotType] = {
+            name: robot.name || robotType,
+            emoji: emoji
+          };
+        });
+        
+        setAvailableRobots(formattedRobots);
+      }
+    } catch (error) {
+      console.error('Error loading robots:', error);
+      // Only show empty robots for non-demo users if API fails
+      if (!(user?.isDemoMode || user?.isDemoUser || user?.isDemoAdmin || 
+            localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin'))) {
+        setAvailableRobots({});
+      }
+    }
+  };
 
   // Load available slots when date or robot selection changes
   useEffect(() => {
@@ -577,9 +615,11 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                   color="white"
                 >
                   <option value="">All environments</option>
-                  <option value="turtlebot">🤖 TurtleBot3 Navigation</option>
-                  <option value="arm">🦾 Robot Arm Manipulation</option>
-                  <option value="hand">🤲 Dexterous Hand Control</option>
+                  {Object.keys(availableRobots).map(robotType => (
+                    <option key={robotType} value={robotType}>
+                      {availableRobots[robotType].emoji} {availableRobots[robotType].name}
+                    </option>
+                  ))}
                 </Select>
               </FormControl>
             </SimpleGrid>
@@ -624,9 +664,9 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                       <HStack justify="space-between" w="full">
                         <Badge colorScheme="green">Available</Badge>
                         <HStack>
-                          <Text fontSize="xl">{robotNames[slot.robotType].emoji}</Text>
+                          <Text fontSize="xl">{availableRobots[slot.robotType]?.emoji || "🤖"}</Text>
                           <Text fontSize="sm" color="gray.300">
-                            {robotNames[slot.robotType].name}
+                            {availableRobots[slot.robotType]?.name || slot.robotType}
                           </Text>
                         </HStack>
                       </HStack>
@@ -688,9 +728,9 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                       <HStack justify="space-between" w="full">
                         <Badge colorScheme="green">Your Booking</Badge>
                         <HStack>
-                          <Text fontSize="xl">{robotNames[booking.robot_type].emoji}</Text>
+                          <Text fontSize="xl">{availableRobots[booking.robot_type]?.emoji || "🤖"}</Text>
                           <Text fontSize="sm" color="green.100">
-                            {robotNames[booking.robot_type].name}
+                            {availableRobots[booking.robot_type]?.name || booking.robot_type}
                           </Text>
                         </HStack>
                       </HStack>
@@ -761,9 +801,9 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                       <HStack justify="space-between" w="full">
                         <Badge colorScheme="red">Taken</Badge>
                         <HStack>
-                          <Text fontSize="xl">{robotNames[slot.robotType].emoji}</Text>
+                          <Text fontSize="xl">{availableRobots[slot.robotType]?.emoji || "🤖"}</Text>
                           <Text fontSize="sm" color="gray.400">
-                            {robotNames[slot.robotType].name}
+                            {availableRobots[slot.robotType]?.name || slot.robotType}
                           </Text>
                         </HStack>
                       </HStack>

@@ -306,18 +306,23 @@ class BookingService:
             return []
 
     def get_available_robots(self) -> Dict[str, Any]:
-        """Get available robot types and their descriptions"""
-        return {
-            "arm": {
-                "name": "Robotic Arm",
-                "description": "6-DOF robotic arm for pick and place operations"
-            },
-            "hand": {
-                "name": "Dexterous Hand", 
-                "description": "Multi-fingered hand for complex manipulation tasks"
-            },
-            "turtlebot": {
-                "name": "TurtleBot",
-                "description": "Mobile robot platform for navigation and exploration"
-            }
-        }
+        """Get available robot types and their descriptions from database registry"""
+        try:
+            # Get active robots from database registry
+            robots = self.db.get_active_robots()
+            
+            # Create details dictionary from database data
+            details = {}
+            for robot in robots:
+                robot_type = robot["type"]
+                if robot_type not in details:
+                    details[robot_type] = {
+                        "name": robot["name"],
+                        "description": f"Robot type: {robot_type}"
+                    }
+            
+            return details
+        except Exception as e:
+            logger.error(f"Error getting available robots from database: {e}")
+            # Return empty dict instead of hardcoded fallback
+            return {}
