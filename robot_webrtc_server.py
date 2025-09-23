@@ -19,12 +19,19 @@ import logging
 import os
 from pathlib import Path
 
-import cv2
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    print("Warning: OpenCV not available. Using dummy video stream.")
+
 from aiohttp import web, web_response
 from aiohttp.web_request import Request
 from aiortc import RTCPeerConnection, VideoStreamTrack
 from aiortc.contrib.media import MediaPlayer
 from av import VideoFrame
+import numpy as np
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,27 +39,32 @@ logger = logging.getLogger(__name__)
 
 class CameraStream(VideoStreamTrack):
     """
-    Video track that captures from camera using OpenCV
+    Video track that captures from camera using OpenCV or creates dummy stream
     """
     def __init__(self, camera_id=0):
         super().__init__()
         self.camera_id = camera_id
-        self.cap = cv2.VideoCapture(camera_id)
+        self.cap = None
         
-        # Set camera properties for better performance
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self.cap.set(cv2.CAP_PROP_FPS, 30)
-        
-        if not self.cap.isOpened():
-            logger.warning(f"Failed to open camera {camera_id}, creating dummy stream")
-            self.cap = None
+        if CV2_AVAILABLE:
+            self.cap = cv2.VideoCapture(camera_id)
+            
+            # Set camera properties for better performance
+            if self.cap.isOpened():
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                self.cap.set(cv2.CAP_PROP_FPS, 30)
+            else:
+                logger.warning(f"Failed to open camera {camera_id}, using dummy stream")
+                self.cap = None
+        else:
+            logger.info("OpenCV not available, using dummy stream")
             
     async def recv(self):
         """Get next video frame"""
         pts, time_base = await self.next_timestamp()
         
-        if self.cap and self.cap.isOpened():
+        if CV2_AVAILABLE and self.cap and self.cap.isOpened():
             ret, frame = self.cap.read()
             if ret:
                 # Convert BGR to RGB
@@ -61,11 +73,10 @@ class CameraStream(VideoStreamTrack):
             else:
                 # Create a black frame if camera read fails
                 video_frame = VideoFrame.from_ndarray(
-                    cv2.zeros((480, 640, 3), dtype=cv2.uint8), format="rgb24"
+                    np.zeros((480, 640, 3), dtype=np.uint8), format="rgb24"
                 )
         else:
             # Create a colored test pattern for dummy stream
-            import numpy as np
             test_frame = np.zeros((480, 640, 3), dtype=np.uint8)
             test_frame[:, :, 0] = 128  # Red channel
             test_frame[:, :, 1] = 64   # Green channel  
@@ -84,7 +95,7 @@ class CameraStream(VideoStreamTrack):
     
     def stop(self):
         """Cleanup camera resources"""
-        if self.cap:
+        if CV2_AVAILABLE and self.cap:
             self.cap.release()
 
 class RobotWebRTCServer:
