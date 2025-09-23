@@ -1,5 +1,6 @@
 import jwt
 import secrets
+import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from fastapi import HTTPException, Depends
@@ -10,7 +11,9 @@ security = HTTPBearer()
 
 class AuthManager:
     def __init__(self, secret_key: Optional[str] = None):
-        self.secret_key = secret_key or secrets.token_urlsafe(32)
+        # Use environment variable for secret key, fallback to provided key, or generate random
+        env_secret = os.getenv('JWT_SECRET_KEY')
+        self.secret_key = env_secret or secret_key or secrets.token_urlsafe(32)
         self.algorithm = "HS256"
         self.access_token_expire_hours = 24
     
@@ -78,6 +81,7 @@ class AuthManager:
         return current_user
 
 # Global auth manager instance
+# Use a test-friendly secret key if in testing environment
 auth_manager = AuthManager()
 
 # Dependency functions for FastAPI
