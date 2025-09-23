@@ -281,8 +281,8 @@ except Exception as e:
             ]
         
         def get_all_robots(self):
-            # Return empty list - no dummy robots, only admin-added robots should be visible
-            return []
+            # Return robots from in-memory storage for demo/testing
+            return getattr(self, '_robots', [])
         
         def get_active_robots(self):
             """Get only active robots"""
@@ -296,6 +296,69 @@ except Exception as e:
                 if robot.get('type') == robot_type:
                     return robot
             return None
+        
+        def create_robot(self, name: str, robot_type: str, rtsp_url: str = None, code_api_url: str = None, status: str = 'active'):
+            """Create a new robot in memory"""
+            if not hasattr(self, '_robots'):
+                self._robots = []
+            if not hasattr(self, '_robot_id_counter'):
+                self._robot_id_counter = 1
+            
+            robot_id = self._robot_id_counter
+            self._robot_id_counter += 1
+            
+            robot = {
+                "id": robot_id,
+                "name": name,
+                "type": robot_type,
+                "rtsp_url": rtsp_url,
+                "code_api_url": code_api_url,
+                "status": status,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": None
+            }
+            
+            self._robots.append(robot)
+            logger.info(f"MockDB: Created robot {name} (ID: {robot_id}, Type: {robot_type})")
+            return robot
+        
+        def get_robot_by_id(self, robot_id: int):
+            """Get robot by ID"""
+            robots = self.get_all_robots()
+            for robot in robots:
+                if robot["id"] == robot_id:
+                    return robot
+            return None
+        
+        def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, rtsp_url: str = None, code_api_url: str = None, status: str = None):
+            """Update robot in memory"""
+            robot = self.get_robot_by_id(robot_id)
+            if not robot:
+                return False
+            
+            if name is not None:
+                robot["name"] = name
+            if robot_type is not None:
+                robot["type"] = robot_type
+            if rtsp_url is not None:
+                robot["rtsp_url"] = rtsp_url
+            if code_api_url is not None:
+                robot["code_api_url"] = code_api_url
+            if status is not None:
+                robot["status"] = status
+            
+            robot["updated_at"] = datetime.now().isoformat()
+            logger.info(f"MockDB: Updated robot {robot_id}")
+            return True
+        
+        def delete_robot(self, robot_id: int):
+            """Delete robot from memory"""
+            if not hasattr(self, '_robots'):
+                return False
+            
+            self._robots = [robot for robot in self._robots if robot["id"] != robot_id]
+            logger.info(f"MockDB: Deleted robot {robot_id}")
+            return True
     db = MockDatabaseManager()
 
 # Initialize service manager with fallback
