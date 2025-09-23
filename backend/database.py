@@ -118,23 +118,26 @@ class DatabaseManager:
         # Robots table for robot registry
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS robots (
-                id INTEGER {primary_key},
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 name VARCHAR(255) NOT NULL,
                 type VARCHAR(100) NOT NULL,
-                rtsp_url VARCHAR(500),
                 webrtc_url VARCHAR(500),
                 code_api_url VARCHAR(500),
                 status VARCHAR(20) DEFAULT 'active',
-                created_at TIMESTAMP {timestamp_default},
-                updated_at TIMESTAMP {timestamp_default} ON UPDATE CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             )
         """)
         
         # Add webrtc_url column to existing robots table if it doesn't exist
         try:
+            cursor.execute("ALTER TABLE robots DROP COLUMN rtsp_url;")
+        except pymysql.Error:
+            pass  
+
+        try:
             cursor.execute("ALTER TABLE robots ADD COLUMN webrtc_url VARCHAR(500)")
         except pymysql.Error:
-            # Column already exists, which is fine
             pass
         
         # Create default admin user if none exists
@@ -615,25 +618,22 @@ class DatabaseManager:
         return deleted
     
     # Robot Registry Methods
-    def create_robot(self, name: str, robot_type: str, rtsp_url: str = None, webrtc_url: str = None, code_api_url: str = None, status: str = 'active') -> Dict[str, Any]:
+    
+    def create_robot(self, name: str, robot_type: str, webrtc_url: str = None, code_api_url: str = None, status: str = 'active') -> Dict[str, Any]:
         """Create a new robot in the registry"""
         conn = self.get_connection()
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
-        
         try:
             cursor.execute(f"""
-                INSERT INTO robots (name, type, rtsp_url, webrtc_url, code_api_url, status)
-                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
-            """, (name, robot_type, rtsp_url, webrtc_url, code_api_url, status))
-            
+                INSERT INTO robots (name, type, webrtc_url, code_api_url, status)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+            """, (name, robot_type, webrtc_url, code_api_url, status))
             robot_id = cursor.lastrowid
-            
             return {
                 "id": robot_id,
                 "name": name,
                 "type": robot_type,
-                "rtsp_url": rtsp_url,
                 "webrtc_url": webrtc_url,
                 "code_api_url": code_api_url,
                 "status": status,
@@ -646,26 +646,22 @@ class DatabaseManager:
         """Get all robots from the registry"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
         cursor.execute("""
-            SELECT id, name, type, rtsp_url, webrtc_url, code_api_url, status, created_at, updated_at
+            SELECT id, name, type, webrtc_url, code_api_url, status, created_at, updated_at
             FROM robots ORDER BY created_at DESC
         """)
-        
         robots = cursor.fetchall()
         conn.close()
-        
         return [
             {
                 "id": robot[0],
                 "name": robot[1],
                 "type": robot[2],
-                "rtsp_url": robot[3],
-                "webrtc_url": robot[4],
-                "code_api_url": robot[5],
-                "status": robot[6],
-                "created_at": robot[7].isoformat() if robot[7] else None,
-                "updated_at": robot[8].isoformat() if robot[8] else None
+                "webrtc_url": robot[3],
+                "code_api_url": robot[4],
+                "status": robot[5],
+                "created_at": robot[6].isoformat() if robot[6] else None,
+                "updated_at": robot[7].isoformat() if robot[7] else None
             }
             for robot in robots
         ]
@@ -675,132 +671,103 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
-        
         cursor.execute(f"""
-            SELECT id, name, type, rtsp_url, webrtc_url, code_api_url, status, created_at, updated_at
+            SELECT id, name, type, webrtc_url, code_api_url, status, created_at, updated_at
             FROM robots WHERE id = {placeholder}
         """, (robot_id,))
-        
         robot = cursor.fetchone()
         conn.close()
-        
         if not robot:
             return None
-            
         return {
             "id": robot[0],
             "name": robot[1],
             "type": robot[2],
-            "rtsp_url": robot[3],
-            "webrtc_url": robot[4],
-            "code_api_url": robot[5],
-            "status": robot[6],
-            "created_at": robot[7].isoformat() if robot[7] else None,
-            "updated_at": robot[8].isoformat() if robot[8] else None
+            "webrtc_url": robot[3],
+            "code_api_url": robot[4],
+            "status": robot[5],
+            "created_at": robot[6].isoformat() if robot[6] else None,
+            "updated_at": robot[7].isoformat() if robot[7] else None
         }
-    
+
     def get_robot_by_type(self, robot_type: str) -> Optional[Dict[str, Any]]:
         """Get a robot by type (returns first match)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
-        
         cursor.execute(f"""
-            SELECT id, name, type, rtsp_url, webrtc_url, code_api_url, status, created_at, updated_at
+            SELECT id, name, type, webrtc_url, code_api_url, status, created_at, updated_at
             FROM robots WHERE type = {placeholder} LIMIT 1
         """, (robot_type,))
-        
         robot = cursor.fetchone()
         conn.close()
-        
         if not robot:
             return None
-            
         return {
             "id": robot[0],
             "name": robot[1],
             "type": robot[2],
-            "rtsp_url": robot[3],
-            "webrtc_url": robot[4],
-            "code_api_url": robot[5],
-            "status": robot[6],
-            "created_at": robot[7].isoformat() if robot[7] else None,
-            "updated_at": robot[8].isoformat() if robot[8] else None
+            "webrtc_url": robot[3],
+            "code_api_url": robot[4],
+            "status": robot[5],
+            "created_at": robot[6].isoformat() if robot[6] else None,
+            "updated_at": robot[7].isoformat() if robot[7] else None
         }
 
-    def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, rtsp_url: str = None, webrtc_url: str = None, code_api_url: str = None, status: str = None) -> bool:
+    def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, webrtc_url: str = None, code_api_url: str = None, status: str = None) -> bool:
         """Update a robot in the registry"""
         conn = self.get_connection()
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
-        
-        # Build update query dynamically based on provided fields
         update_fields = []
         update_values = []
-        
+
         if name is not None:
             update_fields.append(f"name = {placeholder}")
             update_values.append(name)
-        
         if robot_type is not None:
             update_fields.append(f"type = {placeholder}")
             update_values.append(robot_type)
-        
-        if rtsp_url is not None:
-            update_fields.append(f"rtsp_url = {placeholder}")
-            update_values.append(rtsp_url)
-        
         if webrtc_url is not None:
             update_fields.append(f"webrtc_url = {placeholder}")
             update_values.append(webrtc_url)
-        
         if code_api_url is not None:
             update_fields.append(f"code_api_url = {placeholder}")
             update_values.append(code_api_url)
-        
         if status is not None:
             update_fields.append(f"status = {placeholder}")
             update_values.append(status)
-        
         if not update_fields:
             conn.close()
             return False
-            
         update_fields.append(f"updated_at = NOW()")
         update_values.append(robot_id)
-        
         query = f"UPDATE robots SET {', '.join(update_fields)} WHERE id = {placeholder}"
-        
         cursor.execute(query, update_values)
         updated = cursor.rowcount > 0
         conn.close()
-        
         return updated
-    
+
     def get_active_robots(self) -> List[Dict[str, Any]]:
         """Get all active robots from the registry"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
         cursor.execute("""
-            SELECT id, name, type, rtsp_url, webrtc_url, code_api_url, status, created_at, updated_at
+            SELECT id, name, type, webrtc_url, code_api_url, status, created_at, updated_at
             FROM robots WHERE status = 'active' ORDER BY created_at DESC
         """)
-        
         robots = cursor.fetchall()
         conn.close()
-        
         return [
             {
                 "id": robot[0],
                 "name": robot[1],
                 "type": robot[2],
-                "rtsp_url": robot[3],
-                "webrtc_url": robot[4], 
-                "code_api_url": robot[5],
-                "status": robot[6],
-                "created_at": robot[7].isoformat() if robot[7] else None,
-                "updated_at": robot[8].isoformat() if robot[8] else None
+                "webrtc_url": robot[3],
+                "code_api_url": robot[4],
+                "status": robot[5],
+                "created_at": robot[6].isoformat() if robot[6] else None,
+                "updated_at": robot[7].isoformat() if robot[7] else None
             }
             for robot in robots
         ]
@@ -810,29 +777,25 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
-        
         cursor.execute(f"""
-            SELECT id, name, type, rtsp_url, webrtc_url, code_api_url, status, created_at, updated_at
+            SELECT id, name, type, webrtc_url, code_api_url, status, created_at, updated_at
             FROM robots WHERE type = {placeholder} AND status = 'active' LIMIT 1
         """, (robot_type,))
-        
         robot = cursor.fetchone()
         conn.close()
-        
         if not robot:
             return None
-            
         return {
             "id": robot[0],
             "name": robot[1],
             "type": robot[2],
-            "rtsp_url": robot[3],
-            "webrtc_url": robot[4],
-            "code_api_url": robot[5],
-            "status": robot[6],
-            "created_at": robot[7].isoformat() if robot[7] else None,
-            "updated_at": robot[8].isoformat() if robot[8] else None
+            "webrtc_url": robot[3],
+            "code_api_url": robot[4],
+            "status": robot[5],
+            "created_at": robot[6].isoformat() if robot[6] else None,
+            "updated_at": robot[7].isoformat() if robot[7] else None
         }
+
     
     def delete_robot(self, robot_id: int) -> bool:
         """Delete a robot from the registry"""
