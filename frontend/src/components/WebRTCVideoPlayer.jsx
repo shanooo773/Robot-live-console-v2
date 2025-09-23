@@ -187,10 +187,6 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }
           videoRef.current.src = testStreams.test;
           setIsConnected(true);
         }
-      } else if (streamType === "rtsp") {
-        // TODO: Implement RTSP stream connection
-        // For now, show placeholder
-        setError("RTSP streaming is not yet implemented. This will connect to the Raspberry Pi robot camera.");
       } else if (streamType === "webrtc") {
         // Initialize WebRTC connection
         await initWebRTC();
@@ -259,7 +255,6 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }
             maxW="200px"
           >
             <option value="test">Test Stream</option>
-            <option value="rtsp">RTSP (Robot Camera)</option>
             <option value="webrtc">WebRTC (Real-time)</option>
           </Select>
           
@@ -303,7 +298,6 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }
         {/* Stream Info */}
         <Text fontSize="xs" color="gray.400" textAlign="center">
           {streamType === "test" && "Test video stream for development"}
-          {streamType === "rtsp" && "🤖 Raspberry Pi robot camera (RTSP) - Not yet implemented"}
           {streamType === "webrtc" && `🚀 Real-time robot video feed (WebRTC) - Robot: ${robotType}`}
         </Text>
       </VStack>
