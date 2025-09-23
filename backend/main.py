@@ -997,31 +997,37 @@ async def available_features():
 
 @app.get("/robots")
 def get_available_robots():
-    """Get list of available robot types from registry"""
+    """Get list of available robot types from registry - admin-added robots only"""
     try:
-        # Get only active robots from registry
+        # Get only active robots from registry (admin-added only)
         robots = db.get_active_robots()
         
         # Extract just the types for backward compatibility
         robot_types = list(set(robot["type"] for robot in robots))
         
-        # Fall back to hardcoded list if no robots in registry
-        if not robot_types:
-            robot_types = ["turtlebot", "arm", "hand"]
+        # Create details from database registry data instead of hardcoded values
+        details = {}
+        for robot in robots:
+            robot_type = robot["type"]
+            if robot_type not in details:
+                details[robot_type] = {
+                    "name": robot["name"],
+                    "description": f"Robot type: {robot_type}"
+                }
         
-        booking_service = service_manager.get_booking_service()
         return {
             "robots": robot_types,
-            "details": booking_service.get_available_robots(),
+            "details": details,
             "registry": robots  # Include full registry data for admin use
         }
     except Exception as e:
-        # Fallback to original hardcoded response if registry fails
+        # Log error but don't fall back to dummy data
         logger.error(f"Error accessing robot registry: {e}")
-        booking_service = service_manager.get_booking_service()
         return {
-            "robots": ["turtlebot", "arm", "hand"],
-            "details": booking_service.get_available_robots()
+            "robots": [],
+            "details": {},
+            "registry": [],
+            "error": "Unable to retrieve robot registry. Please ensure robots are added via admin dashboard."
         }
 
 # Video serving and access control

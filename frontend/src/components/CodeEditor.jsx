@@ -20,13 +20,7 @@ import {
 import TheiaIDE from "./TheiaIDE";
 import RTSPVideoPlayer from "./RTSPVideoPlayer";
 import RobotSelector from "./RobotSelector";
-import { checkAccess, getVideo, getMyActiveBookings } from "../api";
-
-const robotNames = {
-  turtlebot: { name: "TurtleBot3", emoji: "🤖" },
-  arm: { name: "Robot Arm", emoji: "🦾" },
-  hand: { name: "Robot Hand", emoji: "🤲" },
-};
+import { checkAccess, getVideo, getMyActiveBookings, getAvailableRobots } from "../api";
 
 const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
   const [robot, setRobot] = useState(slot?.robotType || "turtlebot");
@@ -37,7 +31,36 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
   const [videoLoading, setVideoLoading] = useState(false);
   const [activeBookings, setActiveBookings] = useState([]);
   const [availableRobots, setAvailableRobots] = useState([]);
+  const [robotNames, setRobotNames] = useState({});
   const toast = useToast();
+
+  const loadRobotNames = async () => {
+    try {
+      const robotData = await getAvailableRobots();
+      const robotDetails = robotData.details || {};
+      
+      // Convert to format expected by CodeEditor
+      const formattedRobots = {};
+      Object.keys(robotDetails).forEach(robotType => {
+        const robot = robotDetails[robotType];
+        let emoji = "🤖"; // default emoji
+        if (robotType.includes("arm")) emoji = "🦾";
+        else if (robotType.includes("hand")) emoji = "🤲";
+        else if (robotType.includes("turtle")) emoji = "🤖";
+        
+        formattedRobots[robotType] = {
+          name: robot.name || robotType,
+          emoji: emoji
+        };
+      });
+      
+      setRobotNames(formattedRobots);
+    } catch (error) {
+      console.error('Error loading robot names:', error);
+      // Set empty robot names for non-demo users
+      setRobotNames({});
+    }
+  };
 
   useEffect(() => {
     // Check if user has access to Monaco Editor and fetch active bookings
@@ -53,9 +76,17 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
           // Demo users get immediate access with all robot types
           setHasAccess(true);
           setAvailableRobots(['turtlebot', 'arm', 'hand']);
+          setRobotNames({
+            turtlebot: { name: "TurtleBot3", emoji: "🤖" },
+            arm: { name: "Robot Arm", emoji: "🦾" },
+            hand: { name: "Robot Hand", emoji: "🤲" },
+          });
           setLoading(false);
           return;
         }
+        
+        // Load robot names from API
+        await loadRobotNames();
         
         // Regular access check for non-demo users
         if (authToken) {
