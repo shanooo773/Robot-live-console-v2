@@ -281,11 +281,8 @@ except Exception as e:
             ]
         
         def get_all_robots(self):
-            return [
-                {"id": 1, "name": "Demo TurtleBot", "type": "turtlebot", "rtsp_url": "rtsp://demo:554/turtlebot", "code_api_url": "http://localhost:8001/api", "status": "active", "created_at": "2024-01-14T10:00:00", "updated_at": "2024-01-14T10:00:00"},
-                {"id": 2, "name": "Demo Robot Arm", "type": "arm", "rtsp_url": "rtsp://demo:554/arm", "code_api_url": "http://localhost:8001/api", "status": "active", "created_at": "2024-01-14T10:05:00", "updated_at": "2024-01-14T10:05:00"},
-                {"id": 3, "name": "Demo Robot Hand", "type": "hand", "rtsp_url": "rtsp://demo:554/hand", "code_api_url": "http://localhost:8001/api", "status": "inactive", "created_at": "2024-01-14T10:10:00", "updated_at": "2024-01-14T10:10:00"}
-            ]
+            # Return empty list - no dummy robots, only admin-added robots should be visible
+            return []
         
         def get_active_robots(self):
             """Get only active robots"""
