@@ -11,19 +11,17 @@ import {
   HStack,
   Select
 } from "@chakra-ui/react";
-import io from 'socket.io-client';
-import { getWebRTCConfig, sendWebRTCOffer, sendICECandidate, getServerICECandidates } from '../api';
+import { getWebRTCConfig, getRobotWebRTCUrl, sendOfferToRobot, sendICECandidateToRobot } from '../api';
 
 const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) => {
   const videoRef = useRef();
   const peerConnectionRef = useRef();
-  const socketRef = useRef();
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [streamType, setStreamType] = useState("test"); // test, rtsp, webrtc
   const [webrtcStatus, setWebrtcStatus] = useState("disconnected"); // disconnected, connecting, connected
-  const [peerId, setPeerId] = useState(null); // Store peer ID for ICE candidate polling
+  const [peerId, setPeerId] = useState(null); // Store peer ID for robot connection
   
   // Test streams for different modes
   const testStreams = {
@@ -42,43 +40,10 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
     ]
   });
 
-  // ICE candidate polling function
-  const startICECandidatePolling = (peer_id) => {
-    const pollInterval = setInterval(async () => {
-      try {
-        const candidatesResponse = await getServerICECandidates(peer_id, authToken);
-        
-        if (candidatesResponse.candidates && candidatesResponse.candidates.length > 0) {
-          console.log(`Received ${candidatesResponse.candidates.length} server ICE candidates`);
-          
-          for (const candidateData of candidatesResponse.candidates) {
-            if (peerConnectionRef.current && candidateData.candidate) {
-              const iceCandidate = new RTCIceCandidate({
-                candidate: candidateData.candidate,
-                sdpMLineIndex: candidateData.sdpMLineIndex,
-                sdpMid: candidateData.sdpMid
-              });
-              
-              await peerConnectionRef.current.addIceCandidate(iceCandidate);
-              console.log('Added server ICE candidate:', candidateData.candidate.substring(0, 50) + '...');
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error polling for ICE candidates:', error);
-        // Stop polling on error (peer might be disconnected)
-        clearInterval(pollInterval);
-      }
-    }, 2000); // Poll every 2 seconds
-    
-    // Stop polling after 30 seconds (ICE gathering should be complete)
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      console.log('Stopped ICE candidate polling');
-    }, 30000);
-  };
+  // State for direct robot WebRTC connection
+  const [robotWebRTCUrl, setRobotWebRTCUrl] = useState(null);
 
-  // Initialize WebRTC connection with proper backend integration
+  // Initialize WebRTC connection with direct robot connection
   const initWebRTC = async () => {
     try {
       setWebrtcStatus("connecting");
@@ -94,7 +59,42 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         console.warn('Failed to fetch WebRTC config from backend, using defaults:', configError);
       }
       
-      // Step 2: Create peer connection with fetched configuration
+      // Step 2: Get robot WebRTC URL from backend (with auth/booking validation)
+      let robotWebRTCInfo;
+      try {
+        console.log('Getting robot WebRTC URL from backend...');
+        robotWebRTCInfo = await getRobotWebRTCUrl(robotType, authToken);
+        console.log('Robot WebRTC info:', robotWebRTCInfo);
+      } catch (urlError) {
+        console.error('Failed to get robot WebRTC URL:', urlError);
+        
+        if (urlError.response) {
+          const status = urlError.response.status;
+          const detail = urlError.response.data?.detail || urlError.message;
+          
+          if (status === 403) {
+            setError(`Access denied: ${detail}`);
+          } else if (status === 404) {
+            setError(`Robot not found or WebRTC not configured: ${detail}`);
+          } else {
+            setError(`Failed to get robot WebRTC URL: ${detail}`);
+          }
+        } else {
+          setError(`Failed to get robot WebRTC URL: ${urlError.message}`);
+        }
+        
+        setWebrtcStatus("disconnected");
+        return;
+      }
+      
+      const robotWebRTCUrl = robotWebRTCInfo.webrtc_url;
+      if (!robotWebRTCUrl) {
+        setError('Robot WebRTC URL not configured');
+        setWebrtcStatus("disconnected");
+        return;
+      }
+      
+      // Step 3: Create peer connection with fetched configuration
       const peerConnection = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = peerConnection;
 
@@ -102,7 +102,7 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
       const connectionTimeout = setTimeout(() => {
         if (webrtcStatus === "connecting") {
           console.warn('WebRTC connection timed out');
-          setError('Connection timed out. The robot may not be available or not pushing video.');
+          setError('Connection timed out. The robot may not be available.');
           setWebrtcStatus("disconnected");
           if (peerConnection) {
             peerConnection.close();
@@ -110,9 +110,9 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         }
       }, 30000);
 
-      // Step 3: Set up video element to receive remote stream
+      // Step 4: Set up video element to receive remote stream
       peerConnection.ontrack = (event) => {
-        console.log('Received remote stream');
+        console.log('Received remote stream from robot');
         clearTimeout(connectionTimeout); // Clear timeout on successful connection
         if (videoRef.current && event.streams[0]) {
           videoRef.current.srcObject = event.streams[0];
@@ -121,100 +121,20 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         }
       };
 
-      // Step 4: Handle ICE candidates - send through backend API
+      // Step 5: Handle ICE candidates - send directly to robot
+      let robotPeerId = null;
       peerConnection.onicecandidate = async (event) => {
-        if (event.candidate && authToken && peerId) {
-          console.log('Sending ICE candidate through backend API');
+        if (event.candidate && robotPeerId) {
+          console.log('Sending ICE candidate directly to robot');
           try {
-            await sendICECandidate(peerId, event.candidate, authToken);
+            await sendICECandidateToRobot(robotWebRTCUrl, robotPeerId, event.candidate);
           } catch (iceError) {
-            console.error('Failed to send ICE candidate through backend:', iceError);
-            // Fallback to direct signaling server for development
-            if (socketRef.current) {
-              socketRef.current.emit('ice-candidate', {
-                to: `robot_${robotType}`,
-                candidate: event.candidate
-              });
-            }
+            console.error('Failed to send ICE candidate to robot:', iceError);
           }
         }
       };
 
-      // Step 5: Connect to signaling server (with auth token)
-      const socket = io('ws://localhost:8080', {
-        transports: ['websocket'],
-        auth: {
-          token: authToken
-        }
-      });
-      socketRef.current = socket;
-
-      socket.on('connect', () => {
-        console.log('Connected to signaling server');
-        // Register as viewer
-        socket.emit('register', {
-          userId: user?.id || 'anonymous',
-          userType: 'viewer'
-        });
-        
-        // Join robot room
-        socket.emit('join-room', {
-          roomId: `robot_${robotType}_${user?.id || 'anonymous'}`
-        });
-      });
-
-      socket.on('offer', async (data) => {
-        console.log('Received offer from robot');
-        try {
-          await peerConnection.setRemoteDescription(data.offer);
-          const answer = await peerConnection.createAnswer();
-          await peerConnection.setLocalDescription(answer);
-          
-          socket.emit('answer', {
-            to: data.from,
-            answer: answer
-          });
-        } catch (err) {
-          console.error('Error handling offer:', err);
-          setError(`Failed to process video offer: ${err.message}`);
-        }
-      });
-
-      socket.on('ice-candidate', async (data) => {
-        console.log('Received ICE candidate');
-        try {
-          await peerConnection.addIceCandidate(data.candidate);
-        } catch (err) {
-          console.error('Error adding ICE candidate:', err);
-        }
-      });
-
-      socket.on('robot-available', (data) => {
-        console.log('Robot available:', data.userId);
-        // Robot is ready to stream
-      });
-
-      socket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error);
-        setError(`Failed to connect to signaling server: ${error.message}`);
-        setWebrtcStatus("disconnected");
-      });
-
-      socket.on('disconnect', (reason) => {
-        console.log('Signaling server disconnected:', reason);
-        if (reason === 'io server disconnect') {
-          setError('Signaling server disconnected unexpectedly. Please try reconnecting.');
-        }
-        setWebrtcStatus("disconnected");
-      });
-
-      socket.on('error', (error) => {
-        console.error('Socket error:', error);
-        setError(`Signaling server error: ${error.message || 'Unknown error'}`);
-        setWebrtcStatus("disconnected");
-      });
-
-      // Step 6: Create offer and send through backend API (with booking validation)
+      // Step 6: Create offer and send directly to robot
       const offer = await peerConnection.createOffer({
         offerToReceiveVideo: true,  // Ensure we request video from robot
         offerToReceiveAudio: false  // We only need video for robot cameras
@@ -222,54 +142,32 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
       await peerConnection.setLocalDescription(offer);
       
       try {
-        console.log('Sending SDP offer through backend API');
-        const offerResponse = await sendWebRTCOffer(robotType, offer.sdp, authToken);
-        console.log('Offer sent successfully:', offerResponse);
+        console.log('Sending SDP offer directly to robot at:', robotWebRTCUrl);
+        const answerResponse = await sendOfferToRobot(robotWebRTCUrl, offer);
+        console.log('Received answer from robot:', answerResponse);
         
-        // Store peer ID for ICE candidate polling
-        if (offerResponse.peer_id) {
-          setPeerId(offerResponse.peer_id);
-          
-          // Apply the answer from backend
-          if (offerResponse.sdp && offerResponse.type) {
-            await peerConnection.setRemoteDescription({
-              sdp: offerResponse.sdp,
-              type: offerResponse.type
-            });
-            console.log('Applied remote description from backend');
-            
-            // Start polling for server ICE candidates
-            startICECandidatePolling(offerResponse.peer_id);
-          }
+        // Store robot peer ID for ICE candidates
+        if (answerResponse.peer_id) {
+          robotPeerId = answerResponse.peer_id;
+          setPeerId(answerResponse.peer_id);
         }
         
-        // Still send through signaling server for backward compatibility/fallback
-        socket.emit('offer', {
-          to: `robot_${robotType}`,
-          offer: offer
-        });
-      } catch (offerError) {
-        console.error('Failed to send offer through backend:', offerError);
-        
-        // Handle specific error types
-        if (offerError.response) {
-          const status = offerError.response.status;
-          const detail = offerError.response.data?.detail || offerError.message;
-          
-          if (status === 403) {
-            setError(`Access denied: ${detail}`);
-          } else if (status === 404) {
-            setError(`Robot not found or not available: ${detail}`);
-          } else if (status === 500) {
-            setError(`Server error: ${detail}. The robot may not be pushing video to Nginx.`);
-          } else {
-            setError(`WebRTC offer failed: ${detail}`);
-          }
+        // Apply the answer from robot
+        if (answerResponse.sdp && answerResponse.type) {
+          await peerConnection.setRemoteDescription({
+            sdp: answerResponse.sdp,
+            type: answerResponse.type
+          });
+          console.log('Applied remote description from robot');
         } else {
-          setError(`WebRTC offer failed: ${offerError.message || 'Booking validation failed or robot unavailable'}`);
+          throw new Error('Invalid answer received from robot');
         }
         
+      } catch (offerError) {
+        console.error('Failed to connect to robot WebRTC server:', offerError);
+        setError(`Failed to connect to robot: ${offerError.message}. The robot may be offline or not configured.`);
         setWebrtcStatus("disconnected");
+        clearTimeout(connectionTimeout);
         return;
       }
 

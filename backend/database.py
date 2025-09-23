@@ -122,12 +122,20 @@ class DatabaseManager:
                 name VARCHAR(255) NOT NULL,
                 type VARCHAR(100) NOT NULL,
                 rtsp_url VARCHAR(500),
+                webrtc_url VARCHAR(500),
                 code_api_url VARCHAR(500),
                 status VARCHAR(20) DEFAULT 'active',
                 created_at TIMESTAMP {timestamp_default},
                 updated_at TIMESTAMP {timestamp_default} ON UPDATE CURRENT_TIMESTAMP
             )
         """)
+        
+        # Add webrtc_url column to existing robots table if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE robots ADD COLUMN webrtc_url VARCHAR(500)")
+        except pymysql.Error:
+            # Column already exists, which is fine
+            pass
         
         # Create default admin user if none exists
         self._create_default_admin(cursor, conn)
@@ -607,7 +615,7 @@ class DatabaseManager:
         return deleted
     
     # Robot Registry Methods
-    def create_robot(self, name: str, robot_type: str, rtsp_url: str = None, code_api_url: str = None, status: str = 'active') -> Dict[str, Any]:
+    def create_robot(self, name: str, robot_type: str, rtsp_url: str = None, webrtc_url: str = None, code_api_url: str = None, status: str = 'active') -> Dict[str, Any]:
         """Create a new robot in the registry"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -615,9 +623,9 @@ class DatabaseManager:
         
         try:
             cursor.execute(f"""
-                INSERT INTO robots (name, type, rtsp_url, code_api_url, status)
-                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
-            """, (name, robot_type, rtsp_url, code_api_url, status))
+                INSERT INTO robots (name, type, rtsp_url, webrtc_url, code_api_url, status)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+            """, (name, robot_type, rtsp_url, webrtc_url, code_api_url, status))
             
             robot_id = cursor.lastrowid
             
@@ -626,6 +634,7 @@ class DatabaseManager:
                 "name": name,
                 "type": robot_type,
                 "rtsp_url": rtsp_url,
+                "webrtc_url": webrtc_url,
                 "code_api_url": code_api_url,
                 "status": status,
                 "created_at": datetime.now().isoformat()
@@ -639,7 +648,7 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT id, name, type, rtsp_url, code_api_url, status, created_at, updated_at
+            SELECT id, name, type, rtsp_url, webrtc_url, code_api_url, status, created_at, updated_at
             FROM robots ORDER BY created_at DESC
         """)
         
@@ -652,10 +661,11 @@ class DatabaseManager:
                 "name": robot[1],
                 "type": robot[2],
                 "rtsp_url": robot[3],
-                "code_api_url": robot[4],
-                "status": robot[5],
-                "created_at": robot[6].isoformat() if robot[6] else None,
-                "updated_at": robot[7].isoformat() if robot[7] else None
+                "webrtc_url": robot[4],
+                "code_api_url": robot[5],
+                "status": robot[6],
+                "created_at": robot[7].isoformat() if robot[7] else None,
+                "updated_at": robot[8].isoformat() if robot[8] else None
             }
             for robot in robots
         ]
@@ -667,7 +677,7 @@ class DatabaseManager:
         placeholder = self._get_placeholder()
         
         cursor.execute(f"""
-            SELECT id, name, type, rtsp_url, code_api_url, status, created_at, updated_at
+            SELECT id, name, type, rtsp_url, webrtc_url, code_api_url, status, created_at, updated_at
             FROM robots WHERE id = {placeholder}
         """, (robot_id,))
         
@@ -682,10 +692,11 @@ class DatabaseManager:
             "name": robot[1],
             "type": robot[2],
             "rtsp_url": robot[3],
-            "code_api_url": robot[4],
-            "status": robot[5],
-            "created_at": robot[6].isoformat() if robot[6] else None,
-            "updated_at": robot[7].isoformat() if robot[7] else None
+            "webrtc_url": robot[4],
+            "code_api_url": robot[5],
+            "status": robot[6],
+            "created_at": robot[7].isoformat() if robot[7] else None,
+            "updated_at": robot[8].isoformat() if robot[8] else None
         }
     
     def get_robot_by_type(self, robot_type: str) -> Optional[Dict[str, Any]]:
@@ -695,7 +706,7 @@ class DatabaseManager:
         placeholder = self._get_placeholder()
         
         cursor.execute(f"""
-            SELECT id, name, type, rtsp_url, code_api_url, status, created_at, updated_at
+            SELECT id, name, type, rtsp_url, webrtc_url, code_api_url, status, created_at, updated_at
             FROM robots WHERE type = {placeholder} LIMIT 1
         """, (robot_type,))
         
@@ -710,13 +721,14 @@ class DatabaseManager:
             "name": robot[1],
             "type": robot[2],
             "rtsp_url": robot[3],
-            "code_api_url": robot[4],
-            "status": robot[5],
-            "created_at": robot[6].isoformat() if robot[6] else None,
-            "updated_at": robot[7].isoformat() if robot[7] else None
+            "webrtc_url": robot[4],
+            "code_api_url": robot[5],
+            "status": robot[6],
+            "created_at": robot[7].isoformat() if robot[7] else None,
+            "updated_at": robot[8].isoformat() if robot[8] else None
         }
 
-    def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, rtsp_url: str = None, code_api_url: str = None, status: str = None) -> bool:
+    def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, rtsp_url: str = None, webrtc_url: str = None, code_api_url: str = None, status: str = None) -> bool:
         """Update a robot in the registry"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -737,6 +749,10 @@ class DatabaseManager:
         if rtsp_url is not None:
             update_fields.append(f"rtsp_url = {placeholder}")
             update_values.append(rtsp_url)
+        
+        if webrtc_url is not None:
+            update_fields.append(f"webrtc_url = {placeholder}")
+            update_values.append(webrtc_url)
         
         if code_api_url is not None:
             update_fields.append(f"code_api_url = {placeholder}")
@@ -767,7 +783,7 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT id, name, type, rtsp_url, code_api_url, status, created_at, updated_at
+            SELECT id, name, type, rtsp_url, webrtc_url, code_api_url, status, created_at, updated_at
             FROM robots WHERE status = 'active' ORDER BY created_at DESC
         """)
         
@@ -780,10 +796,11 @@ class DatabaseManager:
                 "name": robot[1],
                 "type": robot[2],
                 "rtsp_url": robot[3],
-                "code_api_url": robot[4],
-                "status": robot[5],
-                "created_at": robot[6].isoformat() if robot[6] else None,
-                "updated_at": robot[7].isoformat() if robot[7] else None
+                "webrtc_url": robot[4], 
+                "code_api_url": robot[5],
+                "status": robot[6],
+                "created_at": robot[7].isoformat() if robot[7] else None,
+                "updated_at": robot[8].isoformat() if robot[8] else None
             }
             for robot in robots
         ]
@@ -795,7 +812,7 @@ class DatabaseManager:
         placeholder = self._get_placeholder()
         
         cursor.execute(f"""
-            SELECT id, name, type, rtsp_url, code_api_url, status, created_at, updated_at
+            SELECT id, name, type, rtsp_url, webrtc_url, code_api_url, status, created_at, updated_at
             FROM robots WHERE type = {placeholder} AND status = 'active' LIMIT 1
         """, (robot_type,))
         
@@ -810,10 +827,11 @@ class DatabaseManager:
             "name": robot[1],
             "type": robot[2],
             "rtsp_url": robot[3],
-            "code_api_url": robot[4],
-            "status": robot[5],
-            "created_at": robot[6].isoformat() if robot[6] else None,
-            "updated_at": robot[7].isoformat() if robot[7] else None
+            "webrtc_url": robot[4],
+            "code_api_url": robot[5],
+            "status": robot[6],
+            "created_at": robot[7].isoformat() if robot[7] else None,
+            "updated_at": robot[8].isoformat() if robot[8] else None
         }
     
     def delete_robot(self, robot_id: int) -> bool:

@@ -247,7 +247,7 @@ export const executeRobotCode = async (sourceCode, robotType = null, filename = 
   }
 };
 
-// WebRTC API - for real-time video streaming
+// WebRTC API - for real-time video streaming (updated for direct robot connection)
 export const getWebRTCConfig = async (token) => {
   const response = await API.get("/webrtc/config", {
     headers: { Authorization: `Bearer ${token}` }
@@ -255,7 +255,59 @@ export const getWebRTCConfig = async (token) => {
   return response.data;
 };
 
+export const getRobotWebRTCUrl = async (robotType, token) => {
+  const response = await API.post("/webrtc/offer", {
+    robot_type: robotType,
+    sdp: "dummy",  // Backend now returns WebRTC URL instead of processing offer
+    type: "offer"
+  }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+// Direct robot WebRTC signaling functions
+export const sendOfferToRobot = async (webrtcUrl, offer) => {
+  const response = await fetch(`${webrtcUrl}/offer`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sdp: offer.sdp,
+      type: offer.type
+    })
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Robot WebRTC offer failed: ${response.statusText}`);
+  }
+  
+  return await response.json();
+};
+
+export const sendICECandidateToRobot = async (webrtcUrl, peerId, candidate) => {
+  const response = await fetch(`${webrtcUrl}/ice-candidate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      peer_id: peerId,
+      candidate: candidate
+    })
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Robot ICE candidate failed: ${response.statusText}`);
+  }
+  
+  return await response.json();
+};
+
+// Legacy backend WebRTC functions (kept for backward compatibility during transition)
 export const sendWebRTCOffer = async (robotType, sdp, token) => {
+  console.warn("sendWebRTCOffer is deprecated. Use getRobotWebRTCUrl and sendOfferToRobot instead.");
   const response = await API.post("/webrtc/offer", {
     robot_type: robotType,
     sdp: sdp,
@@ -267,6 +319,7 @@ export const sendWebRTCOffer = async (robotType, sdp, token) => {
 };
 
 export const getWebRTCAnswer = async (robotType, token) => {
+  console.warn("getWebRTCAnswer is deprecated. Connect directly to robot WebRTC server.");
   const response = await API.get(`/webrtc/answer?robot_type=${robotType}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
@@ -274,6 +327,7 @@ export const getWebRTCAnswer = async (robotType, token) => {
 };
 
 export const sendICECandidate = async (peer_id, candidate, token) => {
+  console.warn("sendICECandidate is deprecated. Use sendICECandidateToRobot instead.");
   const response = await API.post("/webrtc/ice-candidate", {
     peer_id: peer_id,
     candidate: candidate  // Send the full RTCIceCandidate object
@@ -284,6 +338,7 @@ export const sendICECandidate = async (peer_id, candidate, token) => {
 };
 
 export const getServerICECandidates = async (peer_id, token) => {
+  console.warn("getServerICECandidates is deprecated. ICE candidates handled directly with robot.");
   const response = await API.get(`/webrtc/candidates/${peer_id}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
