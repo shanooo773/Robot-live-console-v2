@@ -20,7 +20,7 @@ import json
 import requests
 import jwt
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 import logging
 
@@ -58,7 +58,7 @@ class PrivilegeTestSuite:
             "email": user_data["email"],
             "role": user_data["role"],
             "name": user_data["name"],
-            "exp": datetime.utcnow() + timedelta(hours=1)
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1)
         }
         
         return jwt.encode(payload, test_secret, algorithm="HS256")

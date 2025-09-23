@@ -1,7 +1,7 @@
 import jwt
 import secrets
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -20,7 +20,7 @@ class AuthManager:
     def create_access_token(self, data: Dict[str, Any]) -> str:
         """Create a JWT access token"""
         to_encode = data.copy()
-        expire = datetime.utcnow() + timedelta(hours=self.access_token_expire_hours)
+        expire = datetime.now(timezone.utc) + timedelta(hours=self.access_token_expire_hours)
         to_encode.update({"exp": expire})
         
         encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
