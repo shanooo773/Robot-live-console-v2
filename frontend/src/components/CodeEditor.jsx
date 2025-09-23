@@ -72,25 +72,33 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
         const isDummy = localStorage.getItem('isDummy');
         const isDemoMode = localStorage.getItem('isDemoMode');
         
-        if (isDemoUser || isDemoAdmin || isDummy || isDemoMode || user?.isDemoUser || user?.isDemoAdmin || user?.isDemoMode) {
-          // Demo users get immediate access with all robot types
-          setHasAccess(true);
-          setAvailableRobots(['turtlebot', 'arm', 'hand']);
-          setRobotNames({
-            turtlebot: { name: "TurtleBot3", emoji: "🤖" },
-            arm: { name: "Robot Arm", emoji: "🦾" },
-            hand: { name: "Robot Hand", emoji: "🤲" },
-          });
-          setLoading(false);
-          return;
-        }
-        
-        // Load robot names from API
+        // Load robot names from API for all users (including demo users)
         await loadRobotNames();
         
-        // Regular access check for non-demo users
-        if (authToken) {
-          // Fetch user's active bookings
+        // Check for demo user access - give immediate access but only for admin-created robots
+        if (isDemoUser || isDemoAdmin || isDummy || isDemoMode || user?.isDemoUser || user?.isDemoAdmin || user?.isDemoMode) {
+          // Demo users get access to all available admin-created robots
+          const robotData = await getAvailableRobots();
+          const availableRobotTypes = robotData.robots || [];
+          
+          setAvailableRobots(availableRobotTypes);
+          setHasAccess(availableRobotTypes.length > 0);
+          
+          if (availableRobotTypes.length > 0 && !availableRobotTypes.includes(robot)) {
+            setRobot(availableRobotTypes[0]);
+          }
+          
+          if (availableRobotTypes.length === 0) {
+            toast({
+              title: "No Robots Available",
+              description: "No robots have been configured by admin yet.",
+              status: "info",
+              duration: 5000,
+              isClosable: true,
+            });
+          }
+        } else if (authToken) {
+          // Regular access check for authenticated users
           try {
             const bookings = await getMyActiveBookings(authToken);
             setActiveBookings(bookings);
@@ -169,11 +177,13 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
           duration: 3000,
           isClosable: true,
         });
-      } else if (user?.isDemoMode) {
-        // Demo mode - show success message but no video
+      } else if (user?.isDemoMode || user?.isDemoUser || user?.isDemoAdmin || 
+                 localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin') || 
+                 localStorage.getItem('isDummy') || localStorage.getItem('isDemoMode')) {
+        // Demo mode - show success message but no video (unless admin has configured videos)
         toast({
           title: "Demo Mode",
-          description: `In demo mode, ${robotNames[robot].name} simulation would display here. Full video access requires account registration.`,
+          description: `In demo mode, ${robotNames[robot]?.name || robot} simulation would display here. Video access depends on robot configuration.`,
           status: "info",
           duration: 5000,
           isClosable: true,

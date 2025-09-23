@@ -48,50 +48,8 @@ const generateAvailableTimeSlots = async (authToken, selectedDate, selectedRobot
 
 // Fallback dummy data for demo mode or when API is unavailable
 const generateFallbackTimeSlots = () => {
-  const slots = [];
-  const today = new Date();
-  
-  for (let day = 0; day < 7; day++) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + day);
-    
-    // Generate slots from 9 AM to 6 PM (working hours)
-    for (let hour = 9; hour < 18; hour++) {
-      const startTime = new Date(date);
-      startTime.setHours(hour, 0, 0, 0);
-      
-      const endTime = new Date(startTime);
-      endTime.setHours(hour + 1, 0, 0, 0);
-      
-      // Skip past time slots for today
-      if (date.toDateString() === today.toDateString() && startTime <= new Date()) {
-        continue;
-      }
-      
-      // Randomly mark some slots as taken to simulate real usage
-      const isTaken = Math.random() < 0.2; // Reduced probability for better demo experience
-      
-      slots.push({
-        id: `slot_${day}_${hour}`,
-        date: date.toISOString().split('T')[0],
-        startTime: startTime.toLocaleTimeString('en-GB', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: false 
-        }),
-        endTime: endTime.toLocaleTimeString('en-GB', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: false 
-        }),
-        available: !isTaken,
-        robotType: ["turtlebot", "arm", "hand"][Math.floor(Math.random() * 3)],
-        bookedBy: isTaken ? "Another User" : null,
-      });
-    }
-  }
-  
-  return slots;
+  // Don't generate any fallback slots - only admin-created robots should be available
+  return [];
 };
 
 const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) => {
@@ -118,43 +76,30 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
 
   const loadRobots = async () => {
     try {
-      if (user?.isDemoMode || user?.isDemoUser || user?.isDemoAdmin || 
-          localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin')) {
-        // Demo mode - use hardcoded robots for demo experience
-        setAvailableRobots({
-          "turtlebot": { name: "TurtleBot3 Navigation", emoji: "🤖" },
-          "arm": { name: "Robot Arm Manipulation", emoji: "🦾" },
-          "hand": { name: "Dexterous Hand Control", emoji: "🤲" }
-        });
-      } else {
-        // Regular mode - load robots from API (admin-added only)
-        const robotData = await getAvailableRobots();
-        const robotDetails = robotData.details || {};
+      // Load robots from API (admin-added only) - applies to all users including demo users
+      const robotData = await getAvailableRobots();
+      const robotDetails = robotData.details || {};
+      
+      // Convert to format expected by frontend, adding emojis based on type
+      const formattedRobots = {};
+      Object.keys(robotDetails).forEach(robotType => {
+        const robot = robotDetails[robotType];
+        let emoji = "🤖"; // default emoji
+        if (robotType.includes("arm")) emoji = "🦾";
+        else if (robotType.includes("hand")) emoji = "🤲";
+        else if (robotType.includes("turtle")) emoji = "🤖";
         
-        // Convert to format expected by frontend, adding emojis based on type
-        const formattedRobots = {};
-        Object.keys(robotDetails).forEach(robotType => {
-          const robot = robotDetails[robotType];
-          let emoji = "🤖"; // default emoji
-          if (robotType.includes("arm")) emoji = "🦾";
-          else if (robotType.includes("hand")) emoji = "🤲";
-          else if (robotType.includes("turtle")) emoji = "🤖";
-          
-          formattedRobots[robotType] = {
-            name: robot.name || robotType,
-            emoji: emoji
-          };
-        });
-        
-        setAvailableRobots(formattedRobots);
-      }
+        formattedRobots[robotType] = {
+          name: robot.name || robotType,
+          emoji: emoji
+        };
+      });
+      
+      setAvailableRobots(formattedRobots);
     } catch (error) {
       console.error('Error loading robots:', error);
-      // Only show empty robots for non-demo users if API fails
-      if (!(user?.isDemoMode || user?.isDemoUser || user?.isDemoAdmin || 
-            localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin'))) {
-        setAvailableRobots({});
-      }
+      // Always show empty robots if API fails - no fallback to dummy data
+      setAvailableRobots({});
     }
   };
 
