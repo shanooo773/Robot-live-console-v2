@@ -13,22 +13,20 @@ import {
 } from "@chakra-ui/react";
 import { getWebRTCConfig, getRobotWebRTCUrl, sendOfferToRobot, sendICECandidateToRobot } from '../api';
 
-const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) => {
+const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) => {
   const videoRef = useRef();
   const peerConnectionRef = useRef();
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [streamType, setStreamType] = useState("test"); // test, rtsp, webrtc
+  const [streamType, setStreamType] = useState("webrtc"); // test, webrtc
   const [webrtcStatus, setWebrtcStatus] = useState("disconnected"); // disconnected, connecting, connected
   const [peerId, setPeerId] = useState(null); // Store peer ID for robot connection
   
   // Test streams for different modes
   const testStreams = {
     test: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    // Future: RTSP stream will be configured here
-    rtsp: "rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov",
-    // WebRTC will be handled by peer connection
+    // WebRTC stream is handled directly through robot connection
     webrtc: null
   };
 
@@ -379,20 +377,20 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
         )}
       </Box>
 
-      {/* Future Enhancement Markers */}
+      {/* Enhancement Status */}
       <VStack spacing={2} mt={3} align="start">
         <Text fontSize="xs" color="gray.500">
-          🔧 Future enhancements:
+          ✅ Current features:
         </Text>
         <VStack spacing={1} align="start" pl={4}>
           <Text fontSize="xs" color="gray.500">
-            • Connect to Raspberry Pi robot camera via RTSP
+            • Direct WebRTC streaming from robot
           </Text>
           <Text fontSize="xs" color="gray.500">
-            • Real-time WebRTC streaming for low latency
+            • Real-time low-latency video connection
           </Text>
           <Text fontSize="xs" color="gray.500">
-            • Multiple camera angles and robot sensors
+            • Automatic ICE candidate handling
           </Text>
         </VStack>
       </VStack>
@@ -400,4 +398,4 @@ const RTSPVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) 
   );
 };
 
-export default RTSPVideoPlayer;
+export default WebRTCVideoPlayer;
