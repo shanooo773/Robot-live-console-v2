@@ -46,8 +46,21 @@ def setup_logging():
 
 logger = setup_logging()
 
-# WebRTC no longer needed for backend - robots handle WebRTC directly
-# Backend only provides robot WebRTC URLs and configuration
+# WebRTC imports - optional for basic admin functionality
+try:
+    from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
+    from aiortc.contrib.media import MediaPlayer, MediaRelay
+    WEBRTC_AVAILABLE = True
+    logger.info("WebRTC modules loaded successfully")
+except ImportError:
+    logger.warning("WebRTC modules not available - WebRTC features will be disabled")
+    WEBRTC_AVAILABLE = False
+    # Create dummy classes for type hints
+    RTCPeerConnection = None
+    RTCSessionDescription = None
+    MediaStreamTrack = None
+    MediaPlayer = None
+    MediaRelay = None
 
 # Import our modules with fallback handling
 from database import DatabaseManager
@@ -284,7 +297,7 @@ except Exception as e:
                     return robot
             return None
         
-        def create_robot(self, name: str, robot_type: str, webrtc_url: str = None, code_api_url: str = None, status: str = 'active'):
+        def create_robot(self, name: str, robot_type: str, rtsp_url: str = None, code_api_url: str = None, status: str = 'active'):
             """Create a new robot in memory"""
             if not hasattr(self, '_robots'):
                 self._robots = []
@@ -298,7 +311,7 @@ except Exception as e:
                 "id": robot_id,
                 "name": name,
                 "type": robot_type,
-                "webrtc_url": webrtc_url,
+                "rtsp_url": rtsp_url,
                 "code_api_url": code_api_url,
                 "status": status,
                 "created_at": datetime.now().isoformat(),
@@ -317,7 +330,7 @@ except Exception as e:
                     return robot
             return None
         
-        def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, webrtc_url: str = None, code_api_url: str = None, status: str = None):
+        def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, rtsp_url: str = None, code_api_url: str = None, status: str = None):
             """Update robot in memory"""
             robot = self.get_robot_by_id(robot_id)
             if not robot:
@@ -327,8 +340,8 @@ except Exception as e:
                 robot["name"] = name
             if robot_type is not None:
                 robot["type"] = robot_type
-            if webrtc_url is not None:
-                robot["webrtc_url"] = webrtc_url
+            if rtsp_url is not None:
+                robot["rtsp_url"] = rtsp_url
             if code_api_url is not None:
                 robot["code_api_url"] = code_api_url
             if status is not None:
@@ -383,6 +396,14 @@ else:
     service_manager = FallbackServiceManager(db)
     theia_manager = None
 
+# Global WebRTC state management - only if WebRTC is available
+peer_connections: Dict[str, Any] = {}
+if WEBRTC_AVAILABLE:
+    media_relay = MediaRelay()
+else:
+    media_relay = None
+rtsp_players: Dict[str, Any] = {}  # Cache RTSP players by robot_id
+peer_ice_candidates: Dict[str, List[Dict]] = {}  # Store server ICE candidates per peer
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle application lifespan events"""
@@ -398,6 +419,21 @@ async def lifespan(app: FastAPI):
         logger.error("❌ Critical: Core services not available!")
     
     yield
+    
+    # Cleanup WebRTC connections on shutdown
+    logger.info("🧹 Cleaning up WebRTC connections...")
+    for peer_id in list(peer_connections.keys()):
+        await cleanup_peer_connection(peer_id)
+    
+    # Cleanup RTSP players
+    for robot_id, player in rtsp_players.items():
+        try:
+            player.audio = None
+            player.video = None
+            logger.info(f"Cleaned up RTSP player for robot {robot_id}")
+        except Exception as e:
+            logger.error(f"Error cleaning up RTSP player for robot {robot_id}: {e}")
+    rtsp_players.clear()
     
     logger.info("🛑 Admin Backend API shutting down...")
 
@@ -520,6 +556,7 @@ class AnnouncementResponse(BaseModel):
 class RobotCreate(BaseModel):
     name: str
     type: str
+    rtsp_url: Optional[str] = None
     webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
     status: str = 'active'
@@ -527,6 +564,7 @@ class RobotCreate(BaseModel):
 class RobotUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
+    rtsp_url: Optional[str] = None
     webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
     status: Optional[str] = None
@@ -538,6 +576,7 @@ class RobotResponse(BaseModel):
     id: int
     name: str
     type: str
+    rtsp_url: Optional[str] = None
     webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
     status: str
@@ -791,6 +830,7 @@ async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(req
     robot = db.create_robot(
         name=robot_data.name,
         robot_type=robot_data.type,
+        rtsp_url=robot_data.rtsp_url,
         webrtc_url=robot_data.webrtc_url,
         code_api_url=robot_data.code_api_url,
         status=robot_data.status
@@ -832,6 +872,7 @@ async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dic
         robot_id=robot_id,
         name=robot_data.name,
         robot_type=robot_data.type,
+        rtsp_url=robot_data.rtsp_url,
         webrtc_url=robot_data.webrtc_url,
         code_api_url=robot_data.code_api_url,
         status=robot_data.status
@@ -1496,7 +1537,23 @@ class WebRTCOffer(BaseModel):
     sdp: str
     type: str = "offer"
 
+class ICECandidate(BaseModel):
+    peer_id: str
+    candidate: Dict[str, Any]  # Full RTCIceCandidate object with candidate, sdpMLineIndex, sdpMid fields
+
 # Helper functions for WebRTC management
+async def get_robot_rtsp_url(robot_id: int) -> str:
+    """Get RTSP URL for a robot from the database registry"""
+    robot = db.get_robot_by_id(robot_id)
+    if not robot:
+        raise HTTPException(status_code=404, detail=f"Robot with ID {robot_id} not found")
+    
+    rtsp_url = robot.get('rtsp_url')
+    if not rtsp_url:
+        raise HTTPException(status_code=404, detail=f"Robot {robot_id} does not have an RTSP URL configured")
+    
+    return rtsp_url
+
 async def resolve_robot_id(offer: WebRTCOffer) -> int:
     """Resolve robot_id from either robot_id or robot_type in the offer"""
     if offer.robot_id is not None:
@@ -1517,6 +1574,30 @@ async def resolve_robot_id(offer: WebRTCOffer) -> int:
         status_code=400, 
         detail="Either robot_id or robot_type must be provided"
     )
+
+async def get_or_create_rtsp_player(robot_id: int) -> MediaPlayer:
+    """Get cached RTSP player or create new one for robot"""
+    if robot_id not in rtsp_players:
+        rtsp_url = await get_robot_rtsp_url(robot_id)
+        robot = db.get_robot_by_id(robot_id)
+        robot_name = robot.get("name", "Unknown") if robot else "Unknown"
+        robot_type = robot.get("type", "Unknown") if robot else "Unknown"
+        logger.info(f"Creating new RTSP player for robot {robot_name} (ID: {robot_id}, Type: {robot_type}): {rtsp_url}")
+        rtsp_players[robot_id] = MediaPlayer(rtsp_url)
+    return rtsp_players[robot_id]
+
+async def cleanup_peer_connection(peer_id: str):
+    """Clean up a peer connection and remove from tracking"""
+    if peer_id in peer_connections:
+        pc = peer_connections[peer_id]
+        await pc.close()
+        del peer_connections[peer_id]
+        logger.info(f"Cleaned up peer connection: {peer_id}")
+    
+    # Clean up ICE candidates
+    if peer_id in peer_ice_candidates:
+        del peer_ice_candidates[peer_id]
+        logger.debug(f"Cleaned up ICE candidates for peer: {peer_id}")
 
 async def has_booking_for_robot(user_id: int, robot_id: int) -> bool:
     """Check if user has active booking for the robot"""
@@ -1579,6 +1660,22 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
 # Legacy WebRTC endpoints - deprecated in favor of direct robot connection
 # Keeping minimal versions for backward compatibility during transition
 
+@app.get("/webrtc/answer")
+async def get_webrtc_answer_deprecated(robot_type: str = None, peer_id: str = None, current_user: dict = Depends(get_current_user)):
+    """DEPRECATED: Direct robot connection recommended. Get WebRTC URL instead."""
+    raise HTTPException(
+        status_code=410, 
+        detail="This endpoint is deprecated. Use POST /webrtc/offer to get robot WebRTC URL for direct connection."
+    )
+
+@app.post("/webrtc/ice-candidate")
+async def handle_ice_candidate_deprecated(candidate: ICECandidate, current_user: dict = Depends(get_current_user)):
+    """DEPRECATED: Direct robot connection recommended."""
+    raise HTTPException(
+        status_code=410,
+        detail="This endpoint is deprecated. Handle ICE candidates directly with robot WebRTC server."
+    )
+
 @app.get("/webrtc/config")
 async def get_webrtc_config(current_user: dict = Depends(get_current_user)):
     """Get WebRTC configuration for client with TURN/STUN servers"""
@@ -1601,6 +1698,50 @@ async def get_webrtc_config(current_user: dict = Depends(get_current_user)):
         "ice_servers": ice_servers,
         "ice_transport_policy": "all",  # Use both STUN and TURN
         "bundle_policy": "max-bundle"
+    }
+
+@app.get("/webrtc/candidates/{peer_id}")
+async def get_peer_ice_candidates(peer_id: str, current_user: dict = Depends(get_current_user)):
+    """Get server ICE candidates for a specific peer connection"""
+    if peer_id not in peer_connections:
+        raise HTTPException(status_code=404, detail=f"Peer connection {peer_id} not found")
+    
+    candidates = peer_ice_candidates.get(peer_id, [])
+    return {
+        "peer_id": peer_id,
+        "candidates": candidates,
+        "count": len(candidates),
+        "timestamp": time.time()
+    }
+
+@app.delete("/webrtc/peer/{peer_id}")
+async def cleanup_peer(peer_id: str, current_user: dict = Depends(get_current_user)):
+    """Clean up a specific peer connection"""
+    if peer_id not in peer_connections:
+        raise HTTPException(status_code=404, detail=f"Peer connection {peer_id} not found")
+    
+    await cleanup_peer_connection(peer_id)
+    return {"success": True, "message": f"Peer connection {peer_id} cleaned up"}
+
+@app.get("/webrtc/health")
+async def webrtc_health(current_user: dict = Depends(get_current_user)):
+    """Get WebRTC service health and active connections"""
+    active_connections = len(peer_connections)
+    active_rtsp_players = len(rtsp_players)
+    
+    # Clean up any failed connections
+    failed_peers = []
+    for peer_id, pc in list(peer_connections.items()):
+        if pc.connectionState in ["failed", "closed"]:
+            failed_peers.append(peer_id)
+            await cleanup_peer_connection(peer_id)
+    
+    return {
+        "status": "healthy",
+        "active_peer_connections": active_connections - len(failed_peers),
+        "active_rtsp_players": active_rtsp_players,
+        "cleaned_up_peers": failed_peers,
+        "timestamp": time.time()
     }
 
 if __name__ == "__main__":

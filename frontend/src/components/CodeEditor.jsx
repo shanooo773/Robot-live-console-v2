@@ -18,7 +18,7 @@ import {
   AlertIcon
 } from "@chakra-ui/react";
 import TheiaIDE from "./TheiaIDE";
-import RTSPVideoPlayer from "./RTSPVideoPlayer";
+import WebRTCVideoPlayer from "./WebRTCVideoPlayer";
 import RobotSelector from "./RobotSelector";
 import { checkAccess, getVideo, getMyActiveBookings, getAvailableRobots } from "../api";
 
@@ -355,7 +355,7 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
                         Your browser does not support the video tag.
                       </video>
                     ) : (
-                      <RTSPVideoPlayer 
+                      <WebRTCVideoPlayer 
                         user={user}
                         authToken={authToken}
                         robotType={robot}

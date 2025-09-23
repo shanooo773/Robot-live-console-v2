@@ -305,46 +305,6 @@ export const sendICECandidateToRobot = async (webrtcUrl, peerId, candidate) => {
   return await response.json();
 };
 
-// Legacy backend WebRTC functions (kept for backward compatibility during transition)
-export const sendWebRTCOffer = async (robotType, sdp, token) => {
-  console.warn("sendWebRTCOffer is deprecated. Use getRobotWebRTCUrl and sendOfferToRobot instead.");
-  const response = await API.post("/webrtc/offer", {
-    robot_type: robotType,
-    sdp: sdp,
-    type: "offer"
-  }, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return response.data;
-};
-
-export const getWebRTCAnswer = async (robotType, token) => {
-  console.warn("getWebRTCAnswer is deprecated. Connect directly to robot WebRTC server.");
-  const response = await API.get(`/webrtc/answer?robot_type=${robotType}`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return response.data;
-};
-
-export const sendICECandidate = async (peer_id, candidate, token) => {
-  console.warn("sendICECandidate is deprecated. Use sendICECandidateToRobot instead.");
-  const response = await API.post("/webrtc/ice-candidate", {
-    peer_id: peer_id,
-    candidate: candidate  // Send the full RTCIceCandidate object
-  }, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return response.data;
-};
-
-export const getServerICECandidates = async (peer_id, token) => {
-  console.warn("getServerICECandidates is deprecated. ICE candidates handled directly with robot.");
-  const response = await API.get(`/webrtc/candidates/${peer_id}`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return response.data;
-};
-
 // Robot Registry Admin API
 export const getAllRobots = async (token) => {
   const response = await API.get("/admin/robots", {
