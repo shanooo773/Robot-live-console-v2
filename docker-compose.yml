@@ -1,30 +1,4 @@
 services:
-  # WebRTC Signaling Service - Real-time robot telemetry and video streaming
-  webrtc-signaling:
-    build:
-      context: ./webrtc
-      dockerfile: Dockerfile
-    image: robot-webrtc-signaling:latest
-    container_name: webrtc-signaling
-    ports:
-      - "8080:8080"   # WebRTC signaling server
-      - "3478:3478"   # STUN server port
-      - "5349:5349"   # TURN server port
-    environment:
-      - NODE_ENV=${ENVIRONMENT:-development}
-      - SIGNALING_PORT=${WEBRTC_SIGNALING_PORT:-8080}
-      - STUN_PORT=${WEBRTC_STUN_PORT:-3478}
-      - TURN_PORT=${WEBRTC_TURN_PORT:-5349}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
-    networks:
-      - robot-console-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   # Eclipse Theia IDE Base Service (for image building only)
   # Individual user containers are managed dynamically by the backend
   theia-base:
