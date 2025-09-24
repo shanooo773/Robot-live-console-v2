@@ -206,11 +206,6 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }
       peerConnectionRef.current = null;
     }
     
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
-    
     if (videoRef.current) {
       videoRef.current.src = "";
       videoRef.current.srcObject = null;

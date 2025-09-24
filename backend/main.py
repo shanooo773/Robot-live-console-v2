@@ -398,6 +398,14 @@ except Exception as e:
             self._robots = [robot for robot in self._robots if robot["id"] != robot_id]
             logger.info(f"MockDB: Deleted robot {robot_id}")
             return True
+        
+        def get_active_announcements(self):
+            """Get active announcements - returns empty list for demo mode"""
+            return []
+        
+        def get_all_announcements(self):
+            """Get all announcements - returns empty list for demo mode"""
+            return []
     db = MockDatabaseManager()
 
 # Initialize service manager with fallback
