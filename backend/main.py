@@ -100,7 +100,59 @@ except Exception as e:
             self._user_id_counter = 1
             self._bookings = []
             self._booking_id_counter = 1
+            
+            # Initialize demo robots for development
+            self._robots = []
+            self._robot_id_counter = 1
+            self._init_demo_robots()
+            
             logger.info("MockDatabaseManager initialized with in-memory user storage")
+        
+        def _init_demo_robots(self):
+            """Initialize demo robots for testing and development"""
+            demo_robots = [
+                {
+                    "name": "TurtleBot Demo",
+                    "type": "turtlebot", 
+                    "webrtc_url": "http://demo-turtlebot:8080",
+                    "code_api_url": "http://demo-turtlebot:9000",
+                    "status": "active"
+                },
+                {
+                    "name": "Robot Arm Demo",
+                    "type": "arm",
+                    "webrtc_url": "http://demo-arm:8080", 
+                    "code_api_url": "http://demo-arm:9000",
+                    "status": "active"
+                },
+                {
+                    "name": "Manipulation Hand Demo",
+                    "type": "hand",
+                    "webrtc_url": "http://demo-hand:8080",
+                    "code_api_url": "http://demo-hand:9000", 
+                    "status": "active"
+                }
+            ]
+            
+            from datetime import datetime
+            for robot_data in demo_robots:
+                robot_id = self._robot_id_counter
+                self._robot_id_counter += 1
+                
+                robot = {
+                    "id": robot_id,
+                    "name": robot_data["name"],
+                    "type": robot_data["type"],
+                    "webrtc_url": robot_data["webrtc_url"],
+                    "code_api_url": robot_data["code_api_url"],
+                    "status": robot_data["status"],
+                    "created_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat()
+                }
+                
+                self._robots.append(robot)
+                logger.info(f"MockDB: Initialized demo robot {robot['name']} (ID: {robot_id}, Type: {robot['type']})")
+        
         
         def _hash_password(self, password: str) -> str:
             """Hash a password using SHA-256 with salt"""
