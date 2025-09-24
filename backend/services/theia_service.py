@@ -16,6 +16,7 @@ class TheiaContainerManager:
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
         self.theia_image = os.getenv('THEIA_IMAGE', 'robot-console-theia:latest')
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
+        self.host = os.getenv('THEIA_HOST', os.getenv('VPS_URL', 'http://localhost')).rstrip('/')
         
         # Paths
         project_path = os.getenv('THEIA_PROJECT_PATH', './projects')
@@ -162,7 +163,7 @@ int main() {
             
             return {
                 "status": "running" if is_running else "stopped",
-                "url": f"http://localhost:{port}" if is_running else None,
+                "url": f"{self.host}:{port}" if is_running else None,
                 "port": port if is_running else None,
                 "container_name": container_name
             }
@@ -222,7 +223,7 @@ int main() {
                 return {
                     "success": True,
                     "status": "running",
-                    "url": f"http://localhost:{port}",
+                    "url": f"{self.host}:{port}",
                     "port": port,
                     "container_name": container_name
                 }

@@ -50,8 +50,7 @@ Updated robot models to include `webrtc_url`:
 class RobotCreate(BaseModel):
     name: str
     type: str
-    rtsp_url: Optional[str] = None
-    webrtc_url: Optional[str] = None  # NEW
+    webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
     status: str = 'active'
 ```
@@ -239,8 +238,7 @@ python robot_webrtc_server.py --port 8081 --camera 1 --verbose
 {
   "name": "Mobile Robot Alpha",
   "type": "turtlebot",
-  "rtsp_url": "rtmp://robot-alpha:1935/live/stream",  // Legacy, still supported
-  "webrtc_url": "http://robot-alpha:8080",           // New direct connection
+  "webrtc_url": "http://robot-alpha:8080",           // Direct connection
   "code_api_url": "http://robot-alpha:9000",
   "status": "active"
 }
@@ -270,8 +268,7 @@ Old endpoints return deprecation messages:
 ### Fallback Strategy
 If robot webrtc_url is not configured, the system can:
 1. Return clear error message to admin
-2. Fall back to RTSP streaming (if rtsp_url is available)
-3. Display configuration guidance
+2. Display configuration guidance
 
 ## Security Considerations
 

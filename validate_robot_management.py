@@ -35,12 +35,12 @@ def validate_requirements():
                 "Database schema includes type VARCHAR(100) NOT NULL"
             ]
         },
-        "MySQL stores RTSP URL (via NGINX RELAY)": {
+        "MySQL stores WebRTC URL": {
             "status": "✅ PASSED",
             "details": [
-                "Database schema includes rtsp_url VARCHAR(500)",
-                "WebRTC endpoints use RTSP URL from database",
-                "Enhanced logging includes RTSP URL"
+                "Database schema includes webrtc_url VARCHAR(500)",
+                "WebRTC endpoints use WebRTC URL from database",
+                "Enhanced logging includes WebRTC URL"
             ]
         },
         "MySQL stores Code execution endpoint URL": {

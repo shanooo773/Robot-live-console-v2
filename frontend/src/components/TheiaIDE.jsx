@@ -44,13 +44,16 @@ const TheiaIDE = ({ user, authToken, onError }) => {
         } catch (jsonError) {
           // Handle JSON parsing errors that might indicate HTML response
           if (responseText.includes('<!doctype') || responseText.includes('<html')) {
-            throw new Error('Theia returned HTML instead of JSON - container may not be properly started');
+            throw new Error('Theia service returned HTML instead of JSON - service may not be properly configured');
           } else {
             throw new Error(`Invalid JSON response: ${jsonError.message}`);
           }
         }
       } else {
         const errorText = await response.text();
+        if (response.status === 503) {
+          throw new Error('Development environment service not available - Docker may not be installed on server');
+        }
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
     } catch (err) {
@@ -106,8 +109,14 @@ const TheiaIDE = ({ user, authToken, onError }) => {
         const errorText = await response.text();
         try {
           const errorData = JSON.parse(errorText);
+          if (errorData.detail && errorData.detail.includes('not available')) {
+            throw new Error('Development environment service not available - Docker may not be installed on server');
+          }
           throw new Error(errorData.detail || 'Failed to start Theia container');
         } catch (jsonError) {
+          if (response.status === 503) {
+            throw new Error('Development environment service not available - please contact administrator');
+          }
           throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
       }
@@ -235,6 +244,11 @@ const TheiaIDE = ({ user, authToken, onError }) => {
                   NOT STARTED
                 </Badge>
               )}
+              {theiaStatus?.status === "not_available" && (
+                <Badge colorScheme="red" fontSize="xs">
+                  NOT AVAILABLE
+                </Badge>
+              )}
             </HStack>
             <Text fontSize="xs" color="gray.400">
               Your personal development environment with Python, C++, Git, and Terminal
@@ -254,6 +268,14 @@ const TheiaIDE = ({ user, authToken, onError }) => {
                   Stop
                 </Button>
               </>
+            ) : theiaStatus?.status === "not_available" ? (
+              <Button 
+                size="sm" 
+                colorScheme="gray" 
+                disabled
+              >
+                Service Not Available
+              </Button>
             ) : (
               <Button 
                 size="sm" 
@@ -324,6 +346,22 @@ const TheiaIDE = ({ user, authToken, onError }) => {
             p={8} 
             textAlign="center"
           >
+            {theiaStatus?.status === "not_available" && (
+              <>
+                <Text fontSize="4xl">⚠️</Text>
+                <Text color="gray.300" fontSize="lg" fontWeight="bold">
+                  Development Environment Not Available
+                </Text>
+                <Text color="gray.500" fontSize="sm" maxW="md">
+                  The Theia IDE service is currently not available. This may be because Docker 
+                  is not installed or properly configured on the server.
+                </Text>
+                <Text color="gray.600" fontSize="xs" maxW="md" mt={2}>
+                  Please contact the administrator to enable containerized development environments.
+                </Text>
+              </>
+            )}
+
             {theiaStatus?.status === "not_created" && (
               <>
                 <Text fontSize="4xl">🚀</Text>

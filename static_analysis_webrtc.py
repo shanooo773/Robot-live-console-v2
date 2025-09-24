@@ -260,7 +260,7 @@ class WebRTCStaticAnalysis:
         database_py = self.base_path / "backend" / "database.py"
         if database_py.exists():
             db_content = database_py.read_text()
-            robot_schema = "robots" in db_content.lower() and ("rtsp_url" in db_content or "code_api_url" in db_content)
+            robot_schema = "robots" in db_content.lower() and ("webrtc_url" in db_content or "code_api_url" in db_content)
             self.log_result(
                 "Database schema supports robot registry",
                 robot_schema,

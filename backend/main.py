@@ -1145,6 +1145,14 @@ async def get_available_videos(current_user: dict = Depends(get_current_user)):
 @app.get("/theia/status")
 async def get_theia_status(current_user: dict = Depends(get_current_user)):
     """Get status of user's Theia container"""
+    if not theia_manager:
+        return {
+            "status": "not_available",
+            "url": None,
+            "port": None,
+            "error": "Theia service not available - Docker may not be installed"
+        }
+    
     user_id = int(current_user["sub"])
     status = theia_manager.get_container_status(user_id)
     return status
@@ -1152,22 +1160,30 @@ async def get_theia_status(current_user: dict = Depends(get_current_user)):
 @app.post("/theia/start")
 async def start_theia_container(current_user: dict = Depends(get_current_user)):
     """Start user's Theia container"""
-    # Check if user has access (completed booking)
+    # Check if user has access (active booking during current time)
     booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
     
     # Get user's bookings
     bookings = booking_service.get_user_bookings(user_id)
     
-    # Check if user has at least one completed booking
-    has_completed_booking = any(
-        booking["status"] == "completed" for booking in bookings
+    # Check if user has at least one active booking for current time
+    has_active_booking = any(
+        booking_service.has_active_session(user_id, booking["robot_type"])
+        for booking in bookings
+        if booking["status"] == "active"
     )
     
-    if not has_completed_booking:
+    if not has_active_booking:
         raise HTTPException(
             status_code=403, 
-            detail="You need to complete a booking before accessing the development environment"
+            detail="You need an active booking session during your scheduled time to access the development environment"
+        )
+    
+    if not theia_manager:
+        raise HTTPException(
+            status_code=503,
+            detail="Development environment service not available - Docker may not be installed on this server"
         )
     
     result = theia_manager.start_container(user_id)
@@ -1188,6 +1204,12 @@ async def start_theia_container(current_user: dict = Depends(get_current_user)):
 @app.post("/theia/stop")
 async def stop_theia_container(current_user: dict = Depends(get_current_user)):
     """Stop user's Theia container"""
+    if not theia_manager:
+        raise HTTPException(
+            status_code=503,
+            detail="Development environment service not available"
+        )
+    
     user_id = int(current_user["sub"])
     result = theia_manager.stop_container(user_id)
     
@@ -1202,6 +1224,12 @@ async def stop_theia_container(current_user: dict = Depends(get_current_user)):
 @app.post("/theia/restart")
 async def restart_theia_container(current_user: dict = Depends(get_current_user)):
     """Restart user's Theia container"""
+    if not theia_manager:
+        raise HTTPException(
+            status_code=503,
+            detail="Development environment service not available"
+        )
+    
     user_id = int(current_user["sub"])
     result = theia_manager.restart_container(user_id)
     
