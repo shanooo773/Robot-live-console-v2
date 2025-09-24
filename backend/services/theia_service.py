@@ -121,6 +121,17 @@ int main() {
     def is_container_running(self, user_id: int) -> bool:
         """Check if user's Theia container is running"""
         try:
+            # First check if Docker is available
+            docker_check = subprocess.run(
+                ["docker", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if docker_check.returncode != 0:
+                logger.warning("Docker is not available or not running")
+                return False
+                
             container_name = self.get_container_name(user_id)
             result = subprocess.run(
                 ["docker", "ps", "-q", "-f", f"name={container_name}"],
@@ -129,6 +140,12 @@ int main() {
                 timeout=10
             )
             return bool(result.stdout.strip())
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Docker command timed out when checking container for user {user_id}")
+            return False
+        except FileNotFoundError:
+            logger.warning("Docker command not found - Docker may not be installed")
+            return False
         except Exception as e:
             logger.error(f"Error checking container status for user {user_id}: {e}")
             return False
@@ -136,6 +153,21 @@ int main() {
     def get_container_status(self, user_id: int) -> Dict:
         """Get detailed status of user's container"""
         try:
+            # First check if Docker is available
+            docker_check = subprocess.run(
+                ["docker", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if docker_check.returncode != 0:
+                return {
+                    "status": "docker_unavailable", 
+                    "error": "Docker service is not available",
+                    "url": None, 
+                    "port": None
+                }
+                
             container_name = self.get_container_name(user_id)
             
             # Check if container exists
@@ -167,6 +199,22 @@ int main() {
                 "container_name": container_name
             }
             
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Docker command timed out when getting status for user {user_id}")
+            return {
+                "status": "docker_timeout", 
+                "error": "Docker service timeout - may be under heavy load",
+                "url": None, 
+                "port": None
+            }
+        except FileNotFoundError:
+            logger.warning("Docker command not found - Docker may not be installed")
+            return {
+                "status": "docker_not_found", 
+                "error": "Docker is not installed or not in PATH",
+                "url": None, 
+                "port": None
+            }
         except Exception as e:
             logger.error(f"Error getting container status for user {user_id}: {e}")
             return {"status": "error", "error": str(e)}
@@ -174,6 +222,19 @@ int main() {
     def start_container(self, user_id: int) -> Dict:
         """Start Theia container for user"""
         try:
+            # First check if Docker is available
+            docker_check = subprocess.run(
+                ["docker", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if docker_check.returncode != 0:
+                return {
+                    "success": False, 
+                    "error": "Docker service is not available. Please ensure Docker is installed and running."
+                }
+            
             # Ensure project directory exists
             if not self.ensure_user_project_dir(user_id):
                 return {"success": False, "error": "Failed to create project directory"}
@@ -186,24 +247,41 @@ int main() {
             self.stop_container(user_id)
             
             # Build Theia image if it doesn't exist
-            build_result = subprocess.run(
-                ["docker", "build", "-t", "robot-console-theia:latest", "."],
-                cwd=self.theia_dir,
-                capture_output=True,
-                text=True,
-                timeout=300
-            )
-            
-            if build_result.returncode != 0:
-                logger.error(f"Failed to build Theia image: {build_result.stderr}")
-                # Try to continue with existing image
+            try:
+                build_result = subprocess.run(
+                    ["docker", "build", "-t", "robot-console-theia:latest", "."],
+                    cwd=self.theia_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+                
+                if build_result.returncode != 0:
+                    logger.warning(f"Failed to build Theia image, trying to use existing: {build_result.stderr}")
+                    # Check if image exists
+                    image_check = subprocess.run(
+                        ["docker", "images", "-q", "robot-console-theia:latest"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    if not image_check.stdout.strip():
+                        return {
+                            "success": False, 
+                            "error": "Theia Docker image not available and failed to build. Please build manually."
+                        }
+            except subprocess.TimeoutExpired:
+                logger.warning("Docker build timed out, will try to use existing image")
             
             # Create network if it doesn't exist
-            subprocess.run(
-                ["docker", "network", "create", self.docker_network],
-                capture_output=True,
-                timeout=10
-            )
+            try:
+                subprocess.run(
+                    ["docker", "network", "create", self.docker_network],
+                    capture_output=True,
+                    timeout=10
+                )
+            except subprocess.TimeoutExpired:
+                logger.warning("Docker network creation timed out")
             
             # Start container
             cmd = [
@@ -228,11 +306,17 @@ int main() {
                 }
             else:
                 logger.error(f"Failed to start container for user {user_id}: {result.stderr}")
-                return {"success": False, "error": result.stderr}
+                return {"success": False, "error": f"Failed to start Theia container: {result.stderr}"}
                 
+        except subprocess.TimeoutExpired:
+            logger.error(f"Docker command timed out when starting container for user {user_id}")
+            return {"success": False, "error": "Docker operation timed out. Service may be under heavy load."}
+        except FileNotFoundError:
+            logger.error("Docker command not found when starting container")
+            return {"success": False, "error": "Docker is not installed or not in PATH"}
         except Exception as e:
             logger.error(f"Error starting container for user {user_id}: {e}")
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"Unexpected error: {str(e)}"}
     
     def stop_container(self, user_id: int) -> Dict:
         """Stop user's Theia container"""

@@ -222,7 +222,7 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
             <AlertIcon />
             <Box>
               <Text fontWeight="bold">Access Denied</Text>
-              <Text>You need to complete a booking before accessing the development console.</Text>
+              <Text>You need an active booking to access the development console.</Text>
             </Box>
           </Alert>
           <Button colorScheme="blue" onClick={onBack}>

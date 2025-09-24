@@ -35,12 +35,12 @@ def validate_requirements():
                 "Database schema includes type VARCHAR(100) NOT NULL"
             ]
         },
-        "MySQL stores RTSP URL (via NGINX RELAY)": {
+        "MySQL stores WebRTC URL": {
             "status": "✅ PASSED",
             "details": [
-                "Database schema includes rtsp_url VARCHAR(500)",
-                "WebRTC endpoints use RTSP URL from database",
-                "Enhanced logging includes RTSP URL"
+                "Database schema includes webrtc_url VARCHAR(500)",
+                "WebRTC endpoints use WebRTC URL from database",
+                "Enhanced logging includes WebRTC URL"
             ]
         },
         "MySQL stores Code execution endpoint URL": {
@@ -93,11 +93,11 @@ def validate_requirements():
                 "Enhanced error messages with robot details"
             ]
         },
-        "Logs include robot ID, RTSP URL, and code execution URL": {
+        "Logs include robot ID, WebRTC URL, and code execution URL": {
             "status": "✅ PASSED",
             "details": [
                 "Robot code execution logs include robot details",
-                "WebRTC stream creation logs include RTSP URL",
+                "WebRTC stream creation logs include WebRTC URL",
                 "Robot status changes logged with details",
                 "Error logs include robot identification"
             ]
@@ -133,7 +133,7 @@ def validate_database_schema():
         required_fields = [
             ('name VARCHAR(255) NOT NULL', 'Robot name field'),
             ('type VARCHAR(100) NOT NULL', 'Robot type field'), 
-            ('rtsp_url VARCHAR(500)', 'RTSP URL field'),
+            ('webrtc_url VARCHAR(500)', 'WebRTC URL field'),
             ('code_api_url VARCHAR(500)', 'Code execution URL field'),
             ('status VARCHAR(20) DEFAULT', 'Status field with default'),
             ('created_at TIMESTAMP', 'Creation timestamp'),
@@ -204,7 +204,7 @@ def validate_logging_enhancements():
         required_logs = [
             ('Robot code execution request - User:', 'Robot execution logging'),
             ('Robot status updated - Robot:', 'Status change logging'),
-            ('Creating new RTSP player for robot', 'RTSP player logging'),
+            ('WebRTC connection for robot', 'WebRTC connection logging'),
             ('Created WebRTC offer answer for robot', 'WebRTC logging'),
             ('Failed to connect to robot API for', 'Error logging with robot details')
         ]
@@ -250,7 +250,7 @@ def main():
     if all_passed:
         print("🎉 ALL VALIDATIONS PASSED!")
         print("Robot management and backend integration fully supports")
-        print("both video (RTSP) and code execution endpoints.")
+        print("both WebRTC video streaming and code execution endpoints.")
     else:
         print("❌ Some validations failed!")
         print("Please review the issues above.")

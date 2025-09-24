@@ -140,7 +140,7 @@ class ComprehensiveDataValidator:
             required_tables = {
                 'users': ['id', 'name', 'email', 'password_hash', 'role', 'created_at'],
                 'bookings': ['id', 'user_id', 'robot_type', 'date', 'start_time', 'end_time', 'status', 'created_at'],
-                'robots': ['id', 'name', 'type', 'rtsp_url', 'code_api_url', 'status', 'created_at', 'updated_at'],
+                'robots': ['id', 'name', 'type', 'webrtc_url', 'code_api_url', 'status', 'created_at', 'updated_at'],
                 'sessions': ['id', 'user_id', 'token_hash', 'expires_at', 'created_at'],
                 'messages': ['id', 'name', 'email', 'subject', 'message', 'status', 'created_at'],
                 'announcements': ['id', 'title', 'content', 'priority', 'active', 'created_at', 'updated_at']

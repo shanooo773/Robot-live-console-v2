@@ -1,10 +1,10 @@
 # Robot Management and Backend Integration Implementation
 
-This document describes the implementation of comprehensive robot management and backend database integration that fully supports both video (RTSP) and code execution endpoints.
+This document describes the implementation of comprehensive robot management and backend database integration that fully supports both WebRTC video streaming and code execution endpoints.
 
 ## Overview
 
-The system now provides complete admin management of robots with MySQL database integration, booking validation, error handling, and comprehensive logging for both RTSP video streaming and code execution endpoints.
+The system now provides complete admin management of robots with MySQL database integration, booking validation, error handling, and comprehensive logging for both WebRTC video streaming and code execution endpoints.
 
 ## ✅ Implemented Features
 
@@ -16,7 +16,7 @@ CREATE TABLE robots (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(100) NOT NULL,
-    rtsp_url VARCHAR(500),
+    webrtc_url VARCHAR(500),
     code_api_url VARCHAR(500),
     status VARCHAR(20) DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -26,7 +26,7 @@ CREATE TABLE robots (
 
 **Key Features:**
 - ✅ Robot name/type storage
-- ✅ RTSP URL storage for video streaming
+- ✅ WebRTC URL storage for video streaming
 - ✅ Code execution endpoint URL storage
 - ✅ Status field (active/inactive) for robot availability
 - ✅ Automatic timestamps for tracking
@@ -48,14 +48,14 @@ CREATE TABLE robots (
 class RobotCreate(BaseModel):
     name: str
     type: str
-    rtsp_url: Optional[str] = None
+    webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
     status: str = 'active'
 
 class RobotUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
-    rtsp_url: Optional[str] = None
+    webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
     status: Optional[str] = None
 
@@ -63,7 +63,7 @@ class RobotResponse(BaseModel):
     id: int
     name: str
     type: str
-    rtsp_url: Optional[str] = None
+    webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
     status: str
     created_at: str
@@ -151,7 +151,7 @@ logger.info(f"Robot code execution request - User: {user_id}, Robot: {robot_name
 
 **WebRTC Stream Creation:**
 ```python
-logger.info(f"Created WebRTC offer answer for robot {robot_name} (ID: {robot_id}, Type: {robot_type}), RTSP: {rtsp_url}, peer {peer_id}")
+logger.info(f"Created WebRTC connection for robot {robot_name} (ID: {robot_id}, Type: {robot_type}), WebRTC URL: {webrtc_url}, peer {peer_id}")
 ```
 
 **Robot Status Changes:**
@@ -213,14 +213,14 @@ python validate_robot_management.py
 |-------------|--------|----------------|
 | Admin can add, update, delete robots | ✅ | Complete CRUD endpoints with admin auth |
 | MySQL stores Robot name/type | ✅ | Database schema with required fields |
-| MySQL stores RTSP URL | ✅ | RTSP URL field, used by WebRTC endpoints |
+| MySQL stores WebRTC URL | ✅ | WebRTC URL field, used by WebRTC endpoints |
 | MySQL stores Code execution endpoint URL | ✅ | Code API URL field, used by execution endpoint |
 | MySQL stores Status (active/inactive) | ✅ | Status field with default 'active' |
 | Only registered robots available for booking | ✅ | Active robots filter in get_available_robots() |
 | Backend enforces booking validation for WebRTC | ✅ | has_booking_for_robot() validation |
 | Backend enforces booking validation for code execution | ✅ | Active booking check in execute_robot_code() |
 | Backend error handling for unavailable robots/endpoints | ✅ | Comprehensive error handling with specific codes |
-| Logs include robot ID, RTSP URL, and code execution URL | ✅ | Enhanced logging throughout robot operations |
+| Logs include robot ID, WebRTC URL, and code execution URL | ✅ | Enhanced logging throughout robot operations |
 
 ## 🎯 Usage Examples
 
@@ -232,7 +232,7 @@ POST /admin/robots
 {
   "name": "Lab Robot 1",
   "type": "turtlebot",
-  "rtsp_url": "rtmp://nginx-relay:1935/live/robot1",
+  "webrtc_url": "http://robot1:8080",
   "code_api_url": "http://robot1-api:8080",
   "status": "active"
 }
@@ -290,7 +290,7 @@ Check robot status:
 
 ```sql
 -- All robots
-SELECT id, name, type, status, rtsp_url, code_api_url FROM robots;
+SELECT id, name, type, status, webrtc_url, code_api_url FROM robots;
 
 -- Only active robots
 SELECT id, name, type FROM robots WHERE status = 'active';
