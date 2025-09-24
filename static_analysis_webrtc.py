@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Static code analysis for RTSP-to-WebRTC conversion and browser playback verification.
+Static code analysis for WebRTC streaming verification.
 
 This test analyzes the codebase to verify all requirements are implemented
 without needing to run the actual servers.
@@ -52,12 +52,12 @@ class WebRTCStaticAnalysis:
             "Found RTCPeerConnection, MediaPlayer, MediaRelay imports" if all_imports_found else "Missing some WebRTC imports"
         )
         
-        # Check RTSP to WebRTC conversion logic
-        rtsp_conversion = "get_or_create_rtsp_player" in content and "media_relay.subscribe" in content
+        # Check WebRTC streaming logic
+        webrtc_streaming = "getRobotWebRTCUrl" in content and "sendOfferToRobot" in content
         self.log_result(
-            "Backend converts RTSP to WebRTC via MediaPlayer/MediaRelay",
-            rtsp_conversion,
-            "Found RTSP player creation and media relay subscription" if rtsp_conversion else "Missing RTSP conversion logic"
+            "Backend provides WebRTC robot URL endpoints",
+            webrtc_streaming,
+            "Found robot WebRTC URL retrieval and direct robot communication" if webrtc_streaming else "Missing WebRTC streaming logic"
         )
         
         # Check WebRTC signaling endpoints
@@ -127,10 +127,10 @@ class WebRTCStaticAnalysis:
         """Analyze frontend WebRTC integration."""
         print("\n🔍 Analyzing Frontend WebRTC Integration...")
         
-        # Check RTSPVideoPlayer component
-        rtsp_player = self.base_path / "frontend" / "src" / "components" / "RTSPVideoPlayer.jsx"
-        if rtsp_player.exists():
-            content = rtsp_player.read_text()
+        # Check WebRTCVideoPlayer component
+        webrtc_player = self.base_path / "frontend" / "src" / "components" / "WebRTCVideoPlayer.jsx"
+        if webrtc_player.exists():
+            content = webrtc_player.read_text()
             
             # Check for WebRTC PeerConnection usage
             peer_connection = "RTCPeerConnection" in content or "peerConnection" in content
@@ -164,7 +164,7 @@ class WebRTCStaticAnalysis:
                 "Error handling mechanisms found" if error_handling else "Limited error handling"
             )
         else:
-            self.log_result("RTSPVideoPlayer component exists", False, "Component file not found")
+            self.log_result("WebRTCVideoPlayer component exists", False, "Component file not found")
     
     def analyze_frontend_code_execution(self):
         """Analyze frontend code execution integration."""
@@ -219,7 +219,7 @@ class WebRTCStaticAnalysis:
             content = code_editor.read_text()
             
             # Check if it integrates Theia and video streaming
-            integration = "TheiaIDE" in content and "RTSPVideoPlayer" in content
+            integration = "TheiaIDE" in content and "WebRTCVideoPlayer" in content
             self.log_result(
                 "CodeEditor integrates Theia IDE and video streaming",
                 integration,
@@ -260,7 +260,7 @@ class WebRTCStaticAnalysis:
         database_py = self.base_path / "backend" / "database.py"
         if database_py.exists():
             db_content = database_py.read_text()
-            robot_schema = "robots" in db_content.lower() and ("rtsp_url" in db_content or "code_api_url" in db_content)
+            robot_schema = "robots" in db_content.lower() and ("webrtc_url" in db_content or "code_api_url" in db_content)
             self.log_result(
                 "Database schema supports robot registry",
                 robot_schema,
@@ -316,9 +316,9 @@ class WebRTCStaticAnalysis:
         
         # Map results to requirements
         requirements_mapping = {
-            "Backend converts RTSP (via Nginx relay) to WebRTC using aiortc/GStreamer": [
+            "Backend provides WebRTC robot connectivity": [
                 "Backend imports aiortc/GStreamer components",
-                "Backend converts RTSP to WebRTC via MediaPlayer/MediaRelay"
+                "Backend provides WebRTC robot URL endpoints"
             ],
             "WebRTC signaling endpoints implemented": [
                 "WebRTC endpoint /webrtc/offer implemented",
@@ -345,10 +345,10 @@ class WebRTCStaticAnalysis:
                 "Code execution enforces booking validation",
                 "Booking service integration implemented"
             ],
-            "Error messages for unavailable RTSP streams, failed ICE negotiation, etc.": [
+            "Error messages for unavailable streams, failed connections, etc.": [
                 "Frontend has comprehensive error handling"
             ],
-            "Health checks for RTSP → WebRTC pipelines": [
+            "Health checks for WebRTC streaming": [
                 "WebRTC health check endpoint implemented"
             ]
         }
@@ -378,7 +378,7 @@ class WebRTCStaticAnalysis:
         
         if overall_success:
             print("🎉 ALL REQUIREMENTS FULLY IMPLEMENTED!")
-            print("The RTSP-to-WebRTC conversion and browser playback pipeline")
+            print("The WebRTC streaming and browser playback pipeline")
             print("with code execution is complete and ready for production.")
         else:
             print("⚠️  SOME REQUIREMENTS NEED ATTENTION")
@@ -388,7 +388,7 @@ class WebRTCStaticAnalysis:
     
     def run_analysis(self):
         """Run complete static code analysis."""
-        print("🚀 Starting Static Code Analysis for RTSP-to-WebRTC Pipeline")
+        print("🚀 Starting Static Code Analysis for WebRTC Streaming Pipeline")
         print("="*60)
         
         self.analyze_backend_webrtc_implementation()

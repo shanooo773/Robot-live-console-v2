@@ -8,12 +8,12 @@ This document describes the refactoring of the WebRTC streaming system from a ba
 
 ### Old Architecture (Backend-Mediated)
 ```
-Robot → RTSP Stream → Backend (RTSP→WebRTC conversion) → Frontend
+Robot → Video Stream → Backend (Stream conversion) → Frontend
 ```
 
 **Issues:**
 - Backend becomes a bottleneck for video traffic
-- Requires complex RTSP to WebRTC conversion
+- Requires complex stream conversion processes
 - High resource usage on backend server
 - Latency introduced by conversion process
 - Scaling issues with multiple robots
@@ -50,8 +50,7 @@ Updated robot models to include `webrtc_url`:
 class RobotCreate(BaseModel):
     name: str
     type: str
-    rtsp_url: Optional[str] = None
-    webrtc_url: Optional[str] = None  # NEW
+    webrtc_url: Optional[str] = None  # Primary WebRTC endpoint
     code_api_url: Optional[str] = None
     status: str = 'active'
 ```
@@ -63,9 +62,9 @@ class RobotCreate(BaseModel):
 
 **Before:**
 ```python
-# Complex RTSP to WebRTC conversion
-rtsp_player = await get_or_create_rtsp_player(robot_id)
-video_track = media_relay.subscribe(rtsp_player.video)
+# Complex stream conversion on backend
+stream_player = await get_or_create_stream_player(robot_id)
+video_track = media_relay.subscribe(stream_player.video)
 pc.addTrack(video_track)
 ```
 
@@ -109,7 +108,7 @@ export const sendOfferToRobot = async (webrtcUrl, offer) => {
 ```
 
 #### 2. WebRTC Connection Logic
-Updated RTSPVideoPlayer component:
+Updated WebRTCVideoPlayer component:
 
 **Before:**
 ```javascript
@@ -239,8 +238,7 @@ python robot_webrtc_server.py --port 8081 --camera 1 --verbose
 {
   "name": "Mobile Robot Alpha",
   "type": "turtlebot",
-  "rtsp_url": "rtmp://robot-alpha:1935/live/stream",  // Legacy, still supported
-  "webrtc_url": "http://robot-alpha:8080",           // New direct connection
+  "webrtc_url": "http://robot-alpha:8080",           // Direct WebRTC connection
   "code_api_url": "http://robot-alpha:9000",
   "status": "active"
 }
@@ -268,10 +266,10 @@ Old endpoints return deprecation messages:
 - `POST /webrtc/ice-candidate` → 410 Gone with migration message
 
 ### Fallback Strategy
-If robot webrtc_url is not configured, the system can:
+If robot webrtc_url is not configured, the system will:
 1. Return clear error message to admin
-2. Fall back to RTSP streaming (if rtsp_url is available)
-3. Display configuration guidance
+2. Display configuration guidance for setting up WebRTC
+3. Provide setup instructions for robot WebRTC server
 
 ## Security Considerations
 

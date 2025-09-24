@@ -206,10 +206,8 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }
       peerConnectionRef.current = null;
     }
     
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
+    // Note: socketRef was removed as WebRTC now connects directly to robot
+    // No socket connection cleanup needed for direct robot WebRTC
     
     if (videoRef.current) {
       videoRef.current.src = "";
