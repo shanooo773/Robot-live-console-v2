@@ -19,19 +19,16 @@ fi
 
 echo "✅ Docker is available"
 
-# Build Theia base image
-echo "📦 Building Eclipse Theia base image..."
-cd theia
-docker build -t robot-console-theia:latest . --no-cache
+# Pull Theia prebuilt image
+echo "📦 Pulling Eclipse Theia prebuilt image..."
+docker pull elswork/theia
 
 if [ $? -eq 0 ]; then
-    echo "✅ Theia image built successfully"
+    echo "✅ Theia image pulled successfully"
 else
-    echo "❌ Failed to build Theia image"
+    echo "❌ Failed to pull Theia image - check internet connection"
     exit 1
 fi
-
-cd ..
 
 # Install backend dependencies
 echo "📦 Installing backend dependencies..."

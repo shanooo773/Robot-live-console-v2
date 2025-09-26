@@ -14,14 +14,14 @@ class TheiaContainerManager:
         # Get configuration from environment
         self.base_port = base_port or int(os.getenv('THEIA_BASE_PORT', 3001))
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
-        self.theia_image = os.getenv('THEIA_IMAGE', 'robot-console-theia:latest')
+        self.theia_image = os.getenv('THEIA_IMAGE', 'elswork/theia')  # Use prebuilt image
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
         
         # Paths
         project_path = os.getenv('THEIA_PROJECT_PATH', './projects')
         self.theia_dir = Path(__file__).parent.parent.parent / "theia"
         self.projects_dir = Path(__file__).parent.parent.parent / project_path.lstrip('./')
-        self.container_prefix = "theia-user-"
+        self.container_prefix = "theia-"  # Changed to match problem statement format
         
         # Ensure directories exist
         self.projects_dir.mkdir(exist_ok=True)
@@ -37,7 +37,27 @@ class TheiaContainerManager:
             self.ensure_user_project_dir(user_id)
     
     def get_user_port(self, user_id: int) -> int:
-        """Get unique port for user's Theia container"""
+        """Get dynamic port for user's Theia container"""
+        # Use a more sophisticated port allocation to avoid conflicts
+        import socket
+        
+        # Try to find an available port starting from base_port + (user_id % 1000)
+        base_port = self.base_port + (user_id % 1000)
+        
+        for i in range(100):  # Try up to 100 ports
+            port = base_port + i
+            if port > 65535:  # Wrap around if port number gets too high
+                port = self.base_port + i
+            
+            # Check if port is available
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(('localhost', port))
+                    return port
+                except OSError:
+                    continue
+        
+        # Fallback to original logic if no port found
         return self.base_port + (user_id % 1000)
     
     def get_container_name(self, user_id: int) -> str:
@@ -246,32 +266,38 @@ int main() {
             # Stop existing container if running
             self.stop_container(user_id)
             
-            # Build Theia image if it doesn't exist
+            # Pull the prebuilt Theia image if not available locally
             try:
-                build_result = subprocess.run(
-                    ["docker", "build", "-t", "robot-console-theia:latest", "."],
-                    cwd=self.theia_dir,
+                # Check if image exists locally
+                image_check = subprocess.run(
+                    ["docker", "images", "-q", self.theia_image],
                     capture_output=True,
                     text=True,
-                    timeout=300
+                    timeout=10
                 )
                 
-                if build_result.returncode != 0:
-                    logger.warning(f"Failed to build Theia image, trying to use existing: {build_result.stderr}")
-                    # Check if image exists
-                    image_check = subprocess.run(
-                        ["docker", "images", "-q", "robot-console-theia:latest"],
+                if not image_check.stdout.strip():
+                    logger.info(f"Pulling {self.theia_image} image...")
+                    pull_result = subprocess.run(
+                        ["docker", "pull", self.theia_image],
                         capture_output=True,
                         text=True,
-                        timeout=10
+                        timeout=300
                     )
-                    if not image_check.stdout.strip():
+                    
+                    if pull_result.returncode != 0:
+                        logger.error(f"Failed to pull {self.theia_image}: {pull_result.stderr}")
                         return {
                             "success": False, 
-                            "error": "Theia Docker image not available and failed to build. Please build manually."
+                            "error": f"Failed to pull Theia image {self.theia_image}. Please check internet connection."
                         }
+                    
             except subprocess.TimeoutExpired:
-                logger.warning("Docker build timed out, will try to use existing image")
+                logger.warning("Docker pull timed out, will try to use existing image")
+                return {
+                    "success": False,
+                    "error": "Docker pull operation timed out. Please try again."
+                }
             
             # Create network if it doesn't exist
             try:
@@ -283,14 +309,12 @@ int main() {
             except subprocess.TimeoutExpired:
                 logger.warning("Docker network creation timed out")
             
-            # Start container
+            # Start container using the format specified in problem statement
             cmd = [
                 "docker", "run", "-d",
                 "--name", container_name,
-                "--network", self.docker_network,
                 "-p", f"{port}:3000",
-                "-v", f"{project_dir.absolute()}:/home/project",
-                "--restart", "unless-stopped",
+                "-v", f"{project_dir.absolute()}:/home/project:cached",
                 self.theia_image
             ]
             
