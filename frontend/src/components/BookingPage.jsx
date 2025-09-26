@@ -67,7 +67,16 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   const [availableRobots, setAvailableRobots] = useState({});
   const [slotError, setSlotError] = useState(null);
   const [isAutoFetching, setIsAutoFetching] = useState(false);
+  // Track which booking countdowns have expired to enable "View Booking" button
+  const [expiredCountdowns, setExpiredCountdowns] = useState(new Set());
   const toast = useToast();
+
+  // Handle countdown expiration for a specific booking
+  const handleCountdownExpired = (bookingId) => {
+    setExpiredCountdowns(prev => new Set([...prev, bookingId]));
+    // Reload bookings when countdown expires to update status
+    loadBookings();
+  };
 
   // Booking classification - separate upcoming and past bookings
   const classifiedBookings = useMemo(() => {
@@ -644,8 +653,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                                   targetDate={booking.date}
                                   targetTime={booking.start_time}
                                   onExpired={() => {
-                                    // Reload bookings when countdown expires
-                                    loadBookings();
+                                    handleCountdownExpired(booking.id);
                                   }}
                                 />
                               )}
@@ -654,6 +662,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                                 colorScheme={booking.timeStatus === 'in-progress' ? 'orange' : 'green'}
                                 size="sm"
                                 w="full"
+                                isDisabled={booking.timeStatus === 'scheduled' && !expiredCountdowns.has(booking.id)}
                                 onClick={() => onBooking({
                                   id: `booking_${booking.id}`,
                                   robotType: booking.robot_type,
@@ -665,7 +674,8 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                                   bookedBy: user.name
                                 })}
                               >
-                                {booking.timeStatus === 'in-progress' ? 'Enter Console' : 'View Booking'}
+                                {booking.timeStatus === 'in-progress' ? 'Enter Console' : 
+                                 (booking.timeStatus === 'scheduled' && !expiredCountdowns.has(booking.id) ? 'View Booking (Countdown Active)' : 'View Booking')}
                               </Button>
                             </VStack>
                           </CardBody>
