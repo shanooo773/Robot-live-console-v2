@@ -323,7 +323,7 @@ except Exception as e:
                     return robot
             return None
         
-        def create_robot(self, name: str, robot_type: str, webrtc_url: str = None, upload_endpoint: str = None, code_api_url: str = None, status: str = 'active'):
+        def create_robot(self, name: str, robot_type: str, webrtc_url: str = None, upload_endpoint: str = None, status: str = 'active'):
             """Create a new robot in memory"""
             if not hasattr(self, '_robots'):
                 self._robots = []
@@ -333,16 +333,12 @@ except Exception as e:
             robot_id = self._robot_id_counter
             self._robot_id_counter += 1
             
-            # Use upload_endpoint if provided, otherwise fall back to code_api_url for backward compatibility
-            actual_upload_endpoint = upload_endpoint or code_api_url
-            
             robot = {
                 "id": robot_id,
                 "name": name,
                 "type": robot_type,
                 "webrtc_url": webrtc_url,
-                "code_api_url": code_api_url,
-                "upload_endpoint": actual_upload_endpoint,
+                "upload_endpoint": upload_endpoint,
                 "status": status,
                 "created_at": datetime.now().isoformat(),
                 "updated_at": None
@@ -360,7 +356,7 @@ except Exception as e:
                     return robot
             return None
         
-        def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, webrtc_url: str = None, code_api_url: str = None, upload_endpoint: str = None, status: str = None):
+        def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, webrtc_url: str = None, upload_endpoint: str = None, status: str = None):
             """Update robot in memory"""
             robot = self.get_robot_by_id(robot_id)
             if not robot:
@@ -372,8 +368,6 @@ except Exception as e:
                 robot["type"] = robot_type
             if webrtc_url is not None:
                 robot["webrtc_url"] = webrtc_url
-            if code_api_url is not None:
-                robot["code_api_url"] = code_api_url
             if upload_endpoint is not None:
                 robot["upload_endpoint"] = upload_endpoint
             if status is not None:
@@ -566,7 +560,6 @@ class RobotCreate(BaseModel):
     name: str
     type: str
     webrtc_url: Optional[str] = None
-    code_api_url: Optional[str] = None
     upload_endpoint: Optional[str] = None
     status: str = 'active'
 
@@ -574,7 +567,6 @@ class RobotUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
     webrtc_url: Optional[str] = None
-    code_api_url: Optional[str] = None
     upload_endpoint: Optional[str] = None
     status: Optional[str] = None
 
@@ -586,7 +578,6 @@ class RobotResponse(BaseModel):
     name: str
     type: str
     webrtc_url: Optional[str] = None
-    code_api_url: Optional[str] = None
     upload_endpoint: Optional[str] = None
     status: str
     created_at: str
@@ -840,7 +831,6 @@ async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(req
         name=robot_data.name,
         robot_type=robot_data.type,
         webrtc_url=robot_data.webrtc_url,
-        code_api_url=robot_data.code_api_url,
         upload_endpoint=robot_data.upload_endpoint,
         status=robot_data.status
     )
@@ -882,7 +872,6 @@ async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dic
         name=robot_data.name,
         robot_type=robot_data.type,
         webrtc_url=robot_data.webrtc_url,
-        code_api_url=robot_data.code_api_url,
         upload_endpoint=robot_data.upload_endpoint,
         status=robot_data.status
     )
@@ -1414,7 +1403,7 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
         robot_type = robot.get("type")
     
     # At this point, 'robot' contains the specific robot assigned to the user
-    upload_endpoint = robot.get("upload_endpoint") or robot.get("code_api_url")
+    upload_endpoint = robot.get("upload_endpoint")
     robot_id = robot.get("id")
     robot_name = robot.get("name")
     

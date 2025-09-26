@@ -96,7 +96,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     name: "",
     type: "",
     webrtc_url: "",
-    code_api_url: ""
+    upload_endpoint: ""
   });
   const [isEditingAnnouncement, setIsEditingAnnouncement] = useState(false);
   const [isEditingRobot, setIsEditingRobot] = useState(false);
@@ -349,7 +349,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       await createRobot(robotForm, authToken);
       await loadDashboardData();
       setIsRobotModalOpen(false);
-      setRobotForm({ name: "", type: "", webrtc_url: "", code_api_url: "" });
+      setRobotForm({ name: "", type: "", webrtc_url: "", upload_endpoint: "" });
       setIsEditingRobot(false);
       toast({
         title: "Robot created",
@@ -375,7 +375,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       await updateRobot(selectedRobot.id, robotForm, authToken);
       await loadDashboardData();
       setIsRobotModalOpen(false);
-      setRobotForm({ name: "", type: "", webrtc_url: "", code_api_url: "" });
+      setRobotForm({ name: "", type: "", webrtc_url: "", upload_endpoint: "" });
       setSelectedRobot(null);
       setIsEditingRobot(false);
       toast({
@@ -427,12 +427,12 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
         name: robot.name,
         type: robot.type,
         webrtc_url: robot.webrtc_url || "",
-        code_api_url: robot.code_api_url || ""
+        upload_endpoint: robot.upload_endpoint || ""
       });
       setIsEditingRobot(true);
     } else {
       setSelectedRobot(null);
-      setRobotForm({ name: "", type: "", webrtc_url: "", code_api_url: "" });
+      setRobotForm({ name: "", type: "", webrtc_url: "", upload_endpoint: "" });
       setIsEditingRobot(false);
     }
     setIsRobotModalOpen(true);
@@ -965,7 +965,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                     <Th color="gray.300">Name</Th>
                     <Th color="gray.300">Type</Th>
                     <Th color="gray.300">WebRTC URL</Th>
-                    <Th color="gray.300">Code API URL</Th>
+                    <Th color="gray.300">Upload Endpoint</Th>
                     <Th color="gray.300">Created</Th>
                     <Th color="gray.300">Actions</Th>
                   </Tr>
@@ -996,7 +996,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                           {robot.webrtc_url || 'Not configured'}
                         </Td>
                         <Td color="gray.300" maxW="200px" overflow="hidden" textOverflow="ellipsis">
-                          {robot.code_api_url || 'Not configured'}
+                          {robot.upload_endpoint || 'Not configured'}
                         </Td>
                         <Td color="gray.300">{formatDate(robot.created_at)}</Td>
                         <Td>
@@ -1235,11 +1235,11 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
               </FormControl>
 
               <FormControl>
-                <FormLabel color="gray.200">Code API URL</FormLabel>
+                <FormLabel color="gray.200">Upload Endpoint</FormLabel>
                 <Input
-                  placeholder="http://robot-api:8080"
-                  value={robotForm.code_api_url}
-                  onChange={(e) => setRobotForm({...robotForm, code_api_url: e.target.value})}
+                  placeholder="http://robot-api:8080/upload"
+                  value={robotForm.upload_endpoint}
+                  onChange={(e) => setRobotForm({...robotForm, upload_endpoint: e.target.value})}
                   bg="gray.700"
                   border="1px solid"
                   borderColor="gray.600"
