@@ -51,7 +51,7 @@ class RobotCreate(BaseModel):
     name: str
     type: str
     webrtc_url: Optional[str] = None  # Primary WebRTC endpoint
-    code_api_url: Optional[str] = None
+    upload_endpoint: Optional[str] = None  # Code upload endpoint
     status: str = 'active'
 ```
 
@@ -239,7 +239,7 @@ python robot_webrtc_server.py --port 8081 --camera 1 --verbose
   "name": "Mobile Robot Alpha",
   "type": "turtlebot",
   "webrtc_url": "http://robot-alpha:8080",           // Direct WebRTC connection
-  "code_api_url": "http://robot-alpha:9000",
+  "upload_endpoint": "http://robot-alpha:9000/upload",  // Code upload endpoint
   "status": "active"
 }
 ```
