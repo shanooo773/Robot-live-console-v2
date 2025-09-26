@@ -215,9 +215,9 @@ int main() {
                 
             container_name = self.get_container_name(user_id)
             
-            # Check if container exists
+            # Check if container exists and get its port
             result = subprocess.run(
-                ["docker", "ps", "-a", "-q", "-f", f"name={container_name}"],
+                ["docker", "ps", "-a", "--filter", f"name={container_name}", "--format", "{{.Ports}}"],
                 capture_output=True,
                 text=True,
                 timeout=10
@@ -227,19 +227,36 @@ int main() {
                 return {"status": "not_created", "url": None, "port": None}
             
             # Check if container is running
-            result = subprocess.run(
+            is_running_result = subprocess.run(
                 ["docker", "ps", "-q", "-f", f"name={container_name}"],
                 capture_output=True,
                 text=True,
                 timeout=10
             )
             
-            is_running = bool(result.stdout.strip())
-            port = self.get_user_port(user_id)
+            is_running = bool(is_running_result.stdout.strip())
+            
+            # Extract port from docker ps output (format: 0.0.0.0:4000->3000/tcp)
+            port = None
+            if is_running and result.stdout.strip():
+                port_mapping = result.stdout.strip()
+                if "->" in port_mapping:
+                    try:
+                        # Extract host port from mapping like "0.0.0.0:4000->3000/tcp"
+                        host_part = port_mapping.split("->")[0]
+                        port = int(host_part.split(":")[-1])
+                        # Update our port mapping cache
+                        self._port_mappings[user_id] = port
+                    except (ValueError, IndexError):
+                        logger.warning(f"Could not parse port mapping: {port_mapping}")
+            
+            # If we couldn't get port from docker ps, try the cached mapping
+            if not port and user_id in self._port_mappings:
+                port = self._port_mappings[user_id]
             
             return {
                 "status": "running" if is_running else "stopped",
-                "url": f"http://localhost:{port}" if is_running else None,
+                "url": f"http://localhost:{port}" if is_running and port else None,
                 "port": port if is_running else None,
                 "container_name": container_name
             }
@@ -334,12 +351,13 @@ int main() {
             except subprocess.TimeoutExpired:
                 logger.warning("Docker network creation timed out")
             
-            # Start container using the format specified in problem statement
+            # Start container using a simpler approach to avoid runtime issues
             cmd = [
                 "docker", "run", "-d",
                 "--name", container_name,
                 "-p", f"{port}:3000",
-                "-v", f"{project_dir.absolute()}:/home/project:cached",
+                "-v", f"{project_dir.absolute()}:/home/project",
+                "--rm",  # Auto-remove on exit to prevent conflicts
                 self.theia_image
             ]
             
@@ -399,9 +417,35 @@ int main() {
             return {"success": False, "error": str(e)}
     
     def restart_container(self, user_id: int) -> Dict:
-        """Restart user's Theia container"""
-        self.stop_container(user_id)
-        return self.start_container(user_id)
+        """Restart user's Theia container with better error handling for crashed containers"""
+        try:
+            container_name = self.get_container_name(user_id)
+            
+            # First, try to stop the container gracefully
+            stop_result = self.stop_container(user_id)
+            
+            # If stop failed, force remove the container to handle crashed state
+            if not stop_result.get("success"):
+                logger.warning(f"Graceful stop failed for user {user_id}, forcing container removal")
+                try:
+                    # Force remove the container (handles crashed/stuck containers)
+                    subprocess.run(
+                        ["docker", "rm", "-f", container_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    # Release port mapping after force removal
+                    self.release_user_port(user_id)
+                    logger.info(f"Force removed crashed container {container_name} for user {user_id}")
+                except Exception as force_error:
+                    logger.error(f"Failed to force remove container for user {user_id}: {force_error}")
+            
+            # Start the container
+            return self.start_container(user_id)
+        except Exception as e:
+            logger.error(f"Error restarting container for user {user_id}: {e}")
+            return {"success": False, "error": f"Restart failed: {str(e)}"}
     
     def list_user_containers(self) -> List[Dict]:
         """List all user containers"""

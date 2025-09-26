@@ -1183,6 +1183,22 @@ async def get_theia_status(current_user: dict = Depends(get_current_user)):
     """Get status of user's Theia container"""
     user_id = int(current_user["sub"])
     status = theia_manager.get_container_status(user_id)
+    
+    # Auto-start Theia container for demo users if not running
+    if is_demo_user(current_user):
+        if status.get("status") in ["not_created", "stopped", "error"]:
+            logger.info(f"🎯 Auto-starting Theia container for demo user {user_id}")
+            start_result = theia_manager.start_container(user_id)
+            if start_result.get("success"):
+                logger.info(f"✅ Demo user {user_id} Theia container auto-started successfully")
+                # Return the new status after starting
+                status = theia_manager.get_container_status(user_id)
+            else:
+                logger.error(f"❌ Failed to auto-start Theia for demo user {user_id}: {start_result.get('error')}")
+                # Return status with auto-start attempt info
+                status["auto_start_attempted"] = True
+                status["auto_start_error"] = start_result.get("error")
+    
     return status
 
 @app.post("/theia/start")

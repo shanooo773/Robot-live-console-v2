@@ -24,6 +24,19 @@ const TheiaIDE = ({ user, authToken, onError }) => {
     checkTheiaStatus();
   }, []);
 
+  // Auto-start for demo users - check every 5 seconds if container is starting
+  useEffect(() => {
+    if (user?.isDemoUser || user?.isDemoAdmin || user?.isDemoMode) {
+      const interval = setInterval(() => {
+        if (theiaStatus?.auto_start_attempted && theiaStatus?.status !== "running") {
+          checkTheiaStatus();
+        }
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [theiaStatus, user]);
+
   const checkTheiaStatus = async () => {
     try {
       setIsLoading(true);
@@ -41,6 +54,19 @@ const TheiaIDE = ({ user, authToken, onError }) => {
           const status = JSON.parse(responseText);
           setTheiaStatus(status);
           setError(null);
+          
+          // Show toast for demo user auto-start
+          if (status.auto_start_attempted && status.status === "running") {
+            toast({
+              title: "IDE Auto-Started",
+              description: "Your development environment has been automatically started!",
+              status: "success",
+              duration: 3000,
+              isClosable: true,
+            });
+          } else if (status.auto_start_attempted && status.auto_start_error) {
+            setError(`Auto-start failed: ${status.auto_start_error}`);
+          }
         } catch (jsonError) {
           // Handle JSON parsing errors that might indicate HTML response
           if (responseText.includes('<!doctype') || responseText.includes('<html')) {
@@ -324,7 +350,7 @@ const TheiaIDE = ({ user, authToken, onError }) => {
             p={8} 
             textAlign="center"
           >
-            {theiaStatus?.status === "not_created" && (
+            {theiaStatus?.status === "not_created" && !theiaStatus?.auto_start_attempted && (
               <>
                 <Text fontSize="4xl">🚀</Text>
                 <Text color="gray.300" fontSize="lg" fontWeight="bold">
@@ -344,6 +370,18 @@ const TheiaIDE = ({ user, authToken, onError }) => {
                     <Text fontSize="xs" color="gray.500">🔄 Git version control</Text>
                   </VStack>
                 </VStack>
+              </>
+            )}
+
+            {theiaStatus?.auto_start_attempted && theiaStatus?.status !== "running" && (
+              <>
+                <Spinner size="xl" color="blue.400" />
+                <Text color="gray.300" fontSize="lg" fontWeight="bold">
+                  Auto-Starting IDE...
+                </Text>
+                <Text color="gray.500" fontSize="sm">
+                  Your development environment is being automatically prepared for you.
+                </Text>
               </>
             )}
 
