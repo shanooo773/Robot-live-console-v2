@@ -78,6 +78,15 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     loadBookings();
   };
 
+  // Check if user is a demo user (for unrestricted console access)
+  const isDemoUser = () => {
+    return user?.isDemoUser || user?.isDemoAdmin || 
+           localStorage.getItem('isDemoUser') || 
+           localStorage.getItem('isDemoAdmin') ||
+           localStorage.getItem('isDemoMode') ||
+           (user?.email && (user.email.includes('demo') || user.email.includes('test') || user.email.includes('example')));
+  };
+
   // Booking classification - separate upcoming and past bookings
   const classifiedBookings = useMemo(() => {
     const now = new Date();
@@ -437,6 +446,41 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
           <ServiceStatus showDetails={false} />
         </Box>
 
+        {/* Demo User Direct Access */}
+        {isDemoUser() && (
+          <Card w="full" bg="orange.900" border="1px solid" borderColor="orange.500">
+            <CardBody>
+              <VStack align="start" spacing={4}>
+                <HStack>
+                  <Text fontSize="lg" fontWeight="bold" color="orange.100">
+                    🎯 Demo Mode - Unrestricted Access
+                  </Text>
+                  <Badge colorScheme="orange" size="sm">DEMO</Badge>
+                </HStack>
+                <Text color="orange.200" fontSize="sm">
+                  As a demo user, you have unrestricted access to the robot console. You can access the console immediately without waiting for countdown timers or booking restrictions.
+                </Text>
+                <Button 
+                  colorScheme="orange" 
+                  size="md"
+                  onClick={() => onBooking({
+                    id: `demo_direct_access`,
+                    robotType: 'turtlebot', // Use a valid robot type that exists in the system
+                    date: new Date().toISOString().split('T')[0],
+                    startTime: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+                    endTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+                    bookingId: 'demo_direct',
+                    available: true,
+                    bookedBy: user.name
+                  })}
+                >
+                  🚀 Enter Console Now (Demo Access)
+                </Button>
+              </VStack>
+            </CardBody>
+          </Card>
+        )}
+
         {/* Booking Rules Information */}
         <Card w="full" bg="blue.900" border="1px solid" borderColor="blue.500">
           <CardBody>
@@ -662,7 +706,12 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                                 colorScheme={booking.timeStatus === 'in-progress' ? 'orange' : 'green'}
                                 size="sm"
                                 w="full"
-                                isDisabled={booking.timeStatus === 'scheduled' && !expiredCountdowns.has(booking.id)}
+                                isDisabled={
+                                  // Demo users have unrestricted access
+                                  isDemoUser() ? false : 
+                                  // Regular users need countdown to expire for scheduled bookings
+                                  (booking.timeStatus === 'scheduled' && !expiredCountdowns.has(booking.id))
+                                }
                                 onClick={() => onBooking({
                                   id: `booking_${booking.id}`,
                                   robotType: booking.robot_type,
@@ -675,7 +724,8 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                                 })}
                               >
                                 {booking.timeStatus === 'in-progress' ? 'Enter Console' : 
-                                 (booking.timeStatus === 'scheduled' && !expiredCountdowns.has(booking.id) ? 'View Booking (Countdown Active)' : 'View Booking')}
+                                 (booking.timeStatus === 'scheduled' && !expiredCountdowns.has(booking.id) && !isDemoUser() ? 'View Booking (Countdown Active)' : 
+                                  booking.timeStatus === 'scheduled' && isDemoUser() ? 'Enter Console (Demo Access)' : 'Enter Console')}
                               </Button>
                             </VStack>
                           </CardBody>

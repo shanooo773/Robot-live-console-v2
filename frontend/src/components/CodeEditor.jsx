@@ -261,9 +261,9 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
                     <HStack spacing={4}>
                       <Badge colorScheme="green">Development Session Active</Badge>
                       <HStack>
-                        <Text fontSize="lg">{robotNames[slot.robotType].emoji}</Text>
+                        <Text fontSize="lg">{robotNames[slot.robotType]?.emoji || "🤖"}</Text>
                         <Text color="gray.300">
-                          {robotNames[slot.robotType].name}
+                          {robotNames[slot.robotType]?.name || slot.robotType}
                         </Text>
                       </HStack>
                       <Text color="gray.400">
