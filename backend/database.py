@@ -123,7 +123,7 @@ class DatabaseManager:
                 name VARCHAR(255) NOT NULL,
                 type VARCHAR(100) NOT NULL,
                 webrtc_url VARCHAR(500),
-                code_api_url VARCHAR(500),
+                upload_endpoint VARCHAR(500),
                 status VARCHAR(20) DEFAULT 'active',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -146,6 +146,22 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE robots ADD COLUMN upload_endpoint VARCHAR(500)")
         except pymysql.Error:
             pass
+        
+        # Migration: Copy code_api_url to upload_endpoint if upload_endpoint is empty
+        try:
+            cursor.execute("""
+                UPDATE robots 
+                SET upload_endpoint = code_api_url 
+                WHERE upload_endpoint IS NULL AND code_api_url IS NOT NULL
+            """)
+        except pymysql.Error:
+            pass
+        
+        # Migration: Remove deprecated code_api_url column
+        try:
+            cursor.execute("ALTER TABLE robots DROP COLUMN code_api_url")
+        except pymysql.Error:
+            pass  # Column doesn't exist or already dropped
         
         # Add robot_id column to bookings table for specific robot assignment
         try:
