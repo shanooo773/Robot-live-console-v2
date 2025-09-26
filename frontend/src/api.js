@@ -266,6 +266,35 @@ export const getRobotWebRTCUrl = async (robotType, token) => {
   return response.data;
 };
 
+// Backend WebRTC signaling endpoints (for backend-mediated connections)
+export const sendWebRTCAnswer = async (robotType, answer, token) => {
+  const response = await API.post("/webrtc/answer", {
+    robot_type: robotType,
+    sdp: answer.sdp,
+    type: answer.type
+  }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const sendWebRTCIceCandidate = async (robotType, candidate, token) => {
+  const response = await API.post("/webrtc/ice-candidate", {
+    robot_type: robotType,
+    candidate: candidate.candidate,
+    sdp_mid: candidate.sdpMid,
+    sdp_m_line_index: candidate.sdpMLineIndex
+  }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const getWebRTCHealth = async () => {
+  const response = await API.get("/webrtc/health");
+  return response.data;
+};
+
 // Direct robot WebRTC signaling functions
 export const sendOfferToRobot = async (webrtcUrl, offer) => {
   const response = await fetch(`${webrtcUrl}/offer`, {

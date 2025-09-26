@@ -82,16 +82,17 @@ def test_docker_services():
         
     compose_content = docker_compose.read_text()
     
-    # Check for required services
-    required_services = ['webrtc-signaling', 'theia-base']
+    # Check for required services - WebRTC is now integrated into backend
+    required_services = ['theia-base']
     missing_services = [service for service in required_services if service not in compose_content]
     
     if missing_services:
         print(f"❌ Missing Docker services: {missing_services}")
         return False
         
-    # Check for proper port configurations
-    required_ports = ['8080:8080', '3478:3478', '5349:5349']
+    # Check for proper port configurations - WebRTC TURN/STUN ports are configured via environment
+    # and not necessarily bound in docker-compose for development setup
+    required_ports = []  # Ports are handled by backend service now
     missing_ports = [port for port in required_ports if port not in compose_content]
     
     if missing_ports:
@@ -172,22 +173,16 @@ def test_webrtc_integration():
     """Test WebRTC integration structure"""
     print("📹 Testing WebRTC integration...")
     
-    # Check WebRTC directory
-    webrtc_dir = Path('webrtc')
-    if not webrtc_dir.exists():
-        print("❌ WebRTC directory not found")
-        return False
-        
-    server_js = webrtc_dir / 'server.js'
-    if not server_js.exists():
-        print("❌ WebRTC server.js not found")
-        return False
-        
-    # Check backend WebRTC endpoints
+    # Check backend WebRTC endpoints - WebRTC is integrated into main backend
     main_py = Path('backend/main.py')
+    if not main_py.exists():
+        print("❌ Backend main.py not found")
+        return False
+        
     main_content = main_py.read_text()
     
-    webrtc_endpoints = ['/webrtc/offer', '/webrtc/ice-candidate', '/webrtc/config']
+    # Check for all WebRTC endpoints
+    webrtc_endpoints = ['/webrtc/offer', '/webrtc/answer', '/webrtc/ice-candidate', '/webrtc/config', '/webrtc/health']
     missing_webrtc = [endpoint for endpoint in webrtc_endpoints if endpoint not in main_content]
     
     if missing_webrtc:
@@ -197,6 +192,30 @@ def test_webrtc_integration():
     # Check for booking integration
     if 'has_booking_for_robot' not in main_content:
         print("❌ WebRTC booking integration not found")
+        return False
+        
+    # Check WebRTC models
+    webrtc_models = ['WebRTCOffer', 'WebRTCAnswer', 'WebRTCIceCandidate']
+    missing_models = [model for model in webrtc_models if model not in main_content]
+    
+    if missing_models:
+        print(f"❌ Missing WebRTC models: {missing_models}")
+        return False
+        
+    # Check frontend WebRTC integration
+    webrtc_player = Path('frontend/src/components/WebRTCVideoPlayer.jsx')
+    if not webrtc_player.exists():
+        print("❌ WebRTC video player component not found")
+        return False
+        
+    player_content = webrtc_player.read_text()
+    
+    # Check for WebRTC functionality in frontend
+    webrtc_features = ['RTCPeerConnection', 'onicecandidate', 'createOffer', 'setLocalDescription']
+    missing_features = [feature for feature in webrtc_features if feature not in player_content]
+    
+    if missing_features:
+        print(f"❌ Missing WebRTC features in frontend: {missing_features}")
         return False
         
     print("✅ WebRTC integration is complete")
