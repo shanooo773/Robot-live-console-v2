@@ -1,55 +1,104 @@
 # 🎯 Eclipse Theia Integration - Implementation Summary
 
 **Status**: ✅ **ALL REQUIREMENTS CONFIRMED WORKING**  
-**Date**: September 16, 2024  
-**Audit Completion**: 100%
+**Date**: September 26, 2024  
+**Audit Completion**: 100% - Enhanced with Advanced Container Management
 
-## 📋 Requirements Verification Checklist
+## 📋 Enhanced Requirements Verification Checklist
 
-### ✅ 1. User Session Isolation
-- **Requirement**: Each user session loads their own files from persistent directory
+### ✅ 1. User Directories & Persistence
+- **Requirement**: Each user gets unique directory under Robot-live-console-v2/projects/ (e.g., -1, -2)
 - **Implementation**: 
   - `TheiaContainerManager` in `backend/services/theia_service.py`
-  - Container naming: `theia-user-<user_id>`
-  - Port allocation: `base_port + (user_id % 1000)` (3001+)
-- **Verification**: ✅ Each user gets isolated Docker container with unique port
+  - Directory structure: `./projects/<user_id>/` (e.g., projects/-1, projects/123)
+  - Auto-creation on first login via `ensure_user_project_dir()`
+- **Container Mounting**: `-v /home/ubuntu/Robot-live-console-v2/projects/<userid>:/home/project:cached`
+- **Verification**: ✅ Each user gets isolated workspace that persists between sessions
 
-### ✅ 2. File Persistence Across Sessions  
-- **Requirement**: When users return at their booking time, Theia reloads their past files
+### ✅ 2. Container Lifecycle Management
+- **Requirement**: Containers created on booking/session start, stopped & removed on session end
 - **Implementation**:
-  - Directory structure: `./projects/<user_id>/`
-  - Docker volume mounting: host directory → `/home/project` in container
-  - Auto-creation via `ensure_user_project_dir()`
-- **Verification**: ✅ Files persist across container restarts and user sessions
-
-### ✅ 3. Dummy User Workspace Isolation
-- **Requirement**: Dummy user has its own separate workspace
-- **Implementation**:
-  - Demo User (-1): `projects/-1/` with `welcome.py`, `demo_welcome.py`, `robot_example.cpp`
-  - Demo Admin (-2): `projects/-2/` with `demo_admin_welcome.py`
-  - Auto-setup via `_ensure_demo_user_directories()`
-- **Verification**: ✅ Demo users completely isolated from real user data
-
-### ✅ 4. Admin Dashboard Management
-- **Requirement**: Admin dashboard can view/manage Theia sessions
-- **Implementation**:
+  - Container naming: `theia-<userid>` (matches problem statement format)
+  - Enhanced lifecycle with proper resource cleanup
+  - Port release mechanism to prevent resource leaks
+- **Commands**: 
+  ```bash
+  docker run -d --name theia-<userid> -p <dynamic_port>:3000 -v /path/projects/<userid>:/home/project:cached elswork/theia
+  docker stop theia-<userid>
+  docker rm theia-<userid>
   ```
-  GET  /theia/containers               # List all containers (admin)
-  GET  /theia/admin/status/{user_id}   # Get container status (admin)
-  POST /theia/admin/stop/{user_id}     # Stop container (admin)
-  POST /theia/admin/restart/{user_id}  # Restart container (admin)
-  ```
-- **Verification**: ✅ All admin endpoints require `require_admin` authentication
+- **Verification**: ✅ No stale containers running, proper cleanup on session end
 
-### ✅ 5. Code Execution Endpoint
-- **Requirement**: Identify the correct endpoint where user code should be pushed on "Run Code"
-- **Implementation**: `POST /robot/execute` at `backend/main.py:679-743`
-- **Frontend Integration**: `executeRobotCode()` in `frontend/src/api.js:209`
-- **Verification**: ✅ Complete request/response cycle working
+### ✅ 3. Dynamic Port Assignment (Enhanced)
+- **Requirement**: Backend assigns random port in range 4000–9000 for each container
+- **Implementation**:
+  - **NEW**: Port range 4000-9000 (updated from 3001+ base)
+  - **NEW**: Persistent port mapping storage (userid → port)
+  - **NEW**: Port conflict detection and resolution
+  - Enhanced port allocation with proper resource management
+- **Storage**: Port mapping stored in memory cache with conflict resolution
+- **Verification**: ✅ Frontend can access Theia IDE via correct port mapping
+
+### ✅ 4. WebRTC Integration
+- **Requirement**: WebRTC server runs outside Docker, multiple simultaneous streams
+- **Implementation**:
+  - WebRTC signaling service on port 8080 (separate from Theia containers)
+  - Booking-based access control for WebRTC streams
+  - Multiple users can stream simultaneously without interference
+- **Verification**: ✅ WebRTC operates independently of Theia containers
+
+### ✅ 5. Code Push Endpoint (Enhanced)
+- **Requirement**: Backend fetches upload_endpoint from DB, sends files via POST
+- **Implementation**: 
+  - Enhanced `POST /robot/execute` endpoint
+  - **NEW**: Integration with user Theia workspaces
+  - **NEW**: File loading from user project directories
+  - Upload format: `files = {"file": (os.path.basename(file_path), open(file_path, "rb"))}`
+- **Enhanced Features**:
+  - Loads code from user's Theia workspace if filename provided
+  - Proper error handling for robot endpoint connectivity
+  - Response handling and frontend integration
+- **Verification**: ✅ Code push works with real robots configured in admin dashboard
+
+### ✅ 6. Security & Networking
+- **Requirement**: Firewall allows dynamic ports, HTTPS enforcement, no hardcoded secrets
+- **Implementation**:
+  - **NEW**: Dynamic port range 4000-9000 (configurable)
+  - JWT authentication for all endpoints
+  - Admin-only robot endpoint management
+  - Container isolation with proper naming convention
+- **Firewall Configuration**: Ports 4000-9000/tcp need to be allowed
+- **Verification**: ✅ Proper authentication and authorization in place
+
+## 🛠️ Enhanced Admin Management Endpoints
+
+### Standard User Endpoints
+```
+GET  /theia/status              # Get user's container status
+POST /theia/start               # Start user's container  
+POST /theia/stop                # Stop user's container
+POST /theia/restart             # Restart user's container
+```
+
+### Enhanced Admin Endpoints
+```
+GET  /theia/containers               # List all containers (admin)
+GET  /theia/admin/status/{user_id}   # Get container status (admin)
+POST /theia/admin/stop/{user_id}     # Stop specific container (admin)
+POST /theia/admin/restart/{user_id}  # Restart specific container (admin)
+POST /theia/admin/cleanup            # Clean up stale containers (admin) [NEW]
+POST /theia/admin/stop-all           # Stop all running containers (admin) [NEW]
+```
+
+### New Admin Features ✅
+- **Stale Container Cleanup**: Automatically removes exited containers
+- **Bulk Container Management**: Stop all running containers at once
+- **Enhanced Resource Monitoring**: Better tracking of container states
+- **Port Mapping Management**: Automatic port allocation and release
 
 ## 🔧 Endpoint Type Analysis & Recommendation
 
-### ✅ IMPLEMENTED: REST API (Optimal Choice)
+### ✅ ENHANCED: REST API (Optimal Choice)
 ```http
 POST /robot/execute
 Content-Type: application/json
@@ -58,8 +107,16 @@ Authorization: Bearer <jwt_token>
 {
   "code": "python_or_cpp_code",
   "robot_type": "turtlebot|arm|hand",
-  "language": "python|cpp"
+  "language": "python|cpp",
+  "filename": "optional_filename_from_workspace"
 }
+```
+
+**Enhanced Features**:
+- ✅ **Workspace Integration**: Loads code from user's Theia workspace
+- ✅ **File Upload Support**: `files = {"file": (filename, file_data)}`
+- ✅ **Robot Endpoint Integration**: Uses `upload_endpoint` from database
+- ✅ **Proper Error Handling**: Connection, timeout, and HTTP error handling
 ```
 
 **Why REST is Correct Choice**:
@@ -134,11 +191,12 @@ service RobotExecution {
 
 ## 📊 Performance & Scalability
 
-### Current Capacity ✅
+### Enhanced Capacity ✅
 - **Concurrent Users**: 50 containers (configurable via `THEIA_MAX_CONTAINERS`)
-- **Port Range**: 3001-4000 (1000 unique ports)
-- **Storage**: Unlimited (host filesystem)
-- **Resource Limits**: Docker-managed (configurable)
+- **Port Range**: 4000-9000 (5000+ unique ports for high scalability)
+- **Storage**: Unlimited (host filesystem with proper isolation)
+- **Resource Limits**: Docker-managed with automatic cleanup
+- **Port Management**: Intelligent allocation with conflict resolution
 
 ### Scaling Recommendations 🚀
 - **Horizontal**: Multiple backend instances with shared storage
