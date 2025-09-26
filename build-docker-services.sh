@@ -34,21 +34,19 @@ else
     exit 1
 fi
 
-# Build Theia base image (when network issues are resolved)
-echo "📦 Building Eclipse Theia base image..."
-echo "⚠️  Note: Theia build may fail due to Alpine network issues."
-echo "    If it fails, the existing script will build it separately."
-
-# Try to build Theia image
-COMPOSE_PROFILES=build-only docker compose build theia-base 2>/dev/null || {
-    echo "⚠️  Docker compose build failed, trying traditional build..."
-    cd theia
-    docker build -t robot-console-theia:latest . --no-cache 2>/dev/null || {
-        echo "⚠️  Traditional build also failed - will use existing image or build manually"
-        echo "    Run: cd theia && docker build -t robot-console-theia:latest ."
-    }
-    cd ..
+# Pull Theia prebuilt image
+echo "📦 Pulling Eclipse Theia prebuilt image..."
+docker pull elswork/theia 2>/dev/null || {
+    echo "⚠️  Failed to pull elswork/theia - will try to use local copy if available"
 }
+
+# Check if image is available
+if docker images elswork/theia | grep -q elswork/theia; then
+    echo "✅ Theia image available: elswork/theia"
+else
+    echo "❌ Theia image not available. Please ensure internet connection and try again."
+    echo "    Manual command: docker pull elswork/theia"
+fi
 
 # Create projects directory if it doesn't exist
 mkdir -p projects
@@ -60,8 +58,8 @@ echo ""
 echo "🎉 Build completed successfully!"
 echo ""
 echo "✅ Services Status:"
-echo "   📡 WebRTC Signaling: http://localhost:8080/health"
-echo "   🏗️ Theia Base Image: robot-console-theia:latest"
+echo "   📡 WebRTC Signaling: http://localhost:8080/health" 
+echo "   🏗️ Theia Image: elswork/theia (prebuilt)"
 echo "   📁 User Projects: ./projects/"
 echo ""
 echo "🔧 Next Steps:"
