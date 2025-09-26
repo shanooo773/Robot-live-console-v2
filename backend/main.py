@@ -107,8 +107,9 @@ except Exception as e:
                     "id": 1,
                     "name": "Demo TurtleBot",
                     "type": "turtlebot",
-                    "webrtc_url": "http://localhost:8080/webrtc",
+                    "webrtc_url": "wss://robot1.brainswarmrobotics.com/stream",
                     "code_api_url": None,
+                    "upload_endpoint": "https://robot1.brainswarmrobotics.com/upload",
                     "status": "active",
                     "created_at": datetime.now().isoformat(),
                     "updated_at": None
@@ -117,8 +118,9 @@ except Exception as e:
                     "id": 2,
                     "name": "Demo Robot Arm",
                     "type": "arm",
-                    "webrtc_url": "http://localhost:8081/webrtc",
+                    "webrtc_url": "wss://robot2.brainswarmrobotics.com/stream",
                     "code_api_url": None,
+                    "upload_endpoint": "https://robot2.brainswarmrobotics.com/upload",
                     "status": "active",
                     "created_at": datetime.now().isoformat(),
                     "updated_at": None
@@ -127,8 +129,9 @@ except Exception as e:
                     "id": 3,
                     "name": "Demo Dexterous Hand",
                     "type": "hand",
-                    "webrtc_url": "http://localhost:8082/webrtc",
+                    "webrtc_url": "wss://robot3.brainswarmrobotics.com/stream",
                     "code_api_url": None,
+                    "upload_endpoint": "https://robot3.brainswarmrobotics.com/upload",
                     "status": "active",
                     "created_at": datetime.now().isoformat(),
                     "updated_at": None
@@ -320,7 +323,7 @@ except Exception as e:
                     return robot
             return None
         
-        def create_robot(self, name: str, robot_type: str, webrtc_url: str = None, code_api_url: str = None, status: str = 'active'):
+        def create_robot(self, name: str, robot_type: str, webrtc_url: str = None, upload_endpoint: str = None, code_api_url: str = None, status: str = 'active'):
             """Create a new robot in memory"""
             if not hasattr(self, '_robots'):
                 self._robots = []
@@ -330,12 +333,16 @@ except Exception as e:
             robot_id = self._robot_id_counter
             self._robot_id_counter += 1
             
+            # Use upload_endpoint if provided, otherwise fall back to code_api_url for backward compatibility
+            actual_upload_endpoint = upload_endpoint or code_api_url
+            
             robot = {
                 "id": robot_id,
                 "name": name,
                 "type": robot_type,
                 "webrtc_url": webrtc_url,
                 "code_api_url": code_api_url,
+                "upload_endpoint": actual_upload_endpoint,
                 "status": status,
                 "created_at": datetime.now().isoformat(),
                 "updated_at": None
@@ -353,7 +360,7 @@ except Exception as e:
                     return robot
             return None
         
-        def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, webrtc_url: str = None, code_api_url: str = None, status: str = None):
+        def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, webrtc_url: str = None, code_api_url: str = None, upload_endpoint: str = None, status: str = None):
             """Update robot in memory"""
             robot = self.get_robot_by_id(robot_id)
             if not robot:
@@ -367,6 +374,8 @@ except Exception as e:
                 robot["webrtc_url"] = webrtc_url
             if code_api_url is not None:
                 robot["code_api_url"] = code_api_url
+            if upload_endpoint is not None:
+                robot["upload_endpoint"] = upload_endpoint
             if status is not None:
                 robot["status"] = status
             
@@ -558,6 +567,7 @@ class RobotCreate(BaseModel):
     type: str
     webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
+    upload_endpoint: Optional[str] = None
     status: str = 'active'
 
 class RobotUpdate(BaseModel):
@@ -565,6 +575,7 @@ class RobotUpdate(BaseModel):
     type: Optional[str] = None
     webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
+    upload_endpoint: Optional[str] = None
     status: Optional[str] = None
 
 class RobotStatusUpdate(BaseModel):
@@ -576,6 +587,7 @@ class RobotResponse(BaseModel):
     type: str
     webrtc_url: Optional[str] = None
     code_api_url: Optional[str] = None
+    upload_endpoint: Optional[str] = None
     status: str
     created_at: str
     updated_at: Optional[str] = None
@@ -829,6 +841,7 @@ async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(req
         robot_type=robot_data.type,
         webrtc_url=robot_data.webrtc_url,
         code_api_url=robot_data.code_api_url,
+        upload_endpoint=robot_data.upload_endpoint,
         status=robot_data.status
     )
     return RobotResponse(**robot)
@@ -870,6 +883,7 @@ async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dic
         robot_type=robot_data.type,
         webrtc_url=robot_data.webrtc_url,
         code_api_url=robot_data.code_api_url,
+        upload_endpoint=robot_data.upload_endpoint,
         status=robot_data.status
     )
     
@@ -1391,16 +1405,17 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
             detail=f"Active robot of type {robot_type} not found in registry or robot is inactive."
         )
     
-    code_api_url = robot.get("code_api_url")
+    # Get robot's upload endpoint (preferred) or fallback to code_api_url
+    upload_endpoint = robot.get("upload_endpoint") or robot.get("code_api_url")
     robot_id = robot.get("id")
     robot_name = robot.get("name")
     
     # Enhanced logging with robot details
-    logger.info(f"Robot code execution request - User: {user_id}, Robot: {robot_name} (ID: {robot_id}, Type: {robot_type}), Code API: {code_api_url}")
+    logger.info(f"Robot code execution request - User: {user_id}, Robot: {robot_name} (ID: {robot_id}, Type: {robot_type}), Upload Endpoint: {upload_endpoint}")
     
-    if not code_api_url:
-        # Fallback to simulation mode if no code API URL is configured
-        logger.warning(f"No code_api_url configured for robot {robot_name} (ID: {robot_id}, Type: {robot_type}), using fallback simulation")
+    if not upload_endpoint:
+        # Fallback to simulation mode if no upload endpoint is configured
+        logger.warning(f"No upload_endpoint configured for robot {robot_name} (ID: {robot_id}, Type: {robot_type}), using fallback simulation")
         return await _fallback_simulation(request, user_id, robot_type)
     
     try:
@@ -1414,66 +1429,50 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
         if len(request.code) > 100000:  # 100KB limit
             raise HTTPException(status_code=413, detail="Code too large (max 100KB)")
         
-        # Execute code via external robot API
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-            # Upload code
-            upload_payload = {
-                "filename": filename,
-                "content": request.code,
-                "language": request.language
-            }
+        # Execute code via external robot API using file upload as specified
+        try:
+            # Create a temporary file for upload as specified in problem statement
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp_file:
+                temp_file.write(request.code)
+                temp_file_path = temp_file.name
             
             try:
-                async with session.post(f"{code_api_url}/upload", json=upload_payload) as upload_response:
-                    if upload_response.status != 200:
-                        upload_text = await upload_response.text()
-                        logger.error(f"Failed to upload code to robot {robot_name} (ID: {robot_id}) at {code_api_url}/upload: {upload_response.status} - {upload_text}")
+                # Upload code using file upload as specified: files = {"file": (os.path.basename(file_path), f)}
+                with open(temp_file_path, 'rb') as f:
+                    files = {"file": (os.path.basename(temp_file_path), f)}
+                    
+                    # Use requests instead of aiohttp for file upload as specified in problem statement
+                    import requests
+                    resp = requests.post(upload_endpoint, files=files, timeout=120)
+                    
+                    if resp.status_code != 200:
+                        logger.error(f"Failed to upload code to robot {robot_name} (ID: {robot_id}) at {upload_endpoint}: {resp.status_code} - {resp.text}")
                         raise HTTPException(
                             status_code=502,
-                            detail=f"Failed to upload code to robot: HTTP {upload_response.status}"
+                            detail=f"Failed to upload code to robot: HTTP {resp.status_code}"
                         )
-                    upload_result = await upload_response.json()
-            except aiohttp.ClientConnectorError:
-                logger.error(f"Failed to connect to robot API for {robot_name} (ID: {robot_id}) at {code_api_url}")
+                    
+                    upload_result = resp.json() if resp.headers.get('content-type', '').startswith('application/json') else {"status": "uploaded"}
+                    
+            except requests.exceptions.ConnectionError:
+                logger.error(f"Failed to connect to robot API for {robot_name} (ID: {robot_id}) at {upload_endpoint}")
                 raise HTTPException(
                     status_code=503,
                     detail="Robot API is unreachable. Please try again later."
                 )
-            except asyncio.TimeoutError:
-                logger.error(f"Timeout connecting to robot API for {robot_name} (ID: {robot_id}) at {code_api_url}")
+            except requests.exceptions.Timeout:
+                logger.error(f"Timeout connecting to robot API for {robot_name} (ID: {robot_id}) at {upload_endpoint}")
                 raise HTTPException(
                     status_code=504,
                     detail="Robot API timeout. Please try again later."
                 )
-            
-            # Execute code
-            execute_payload = {
-                "filename": filename,
-                "language": request.language
-            }
-            
-            try:
-                async with session.post(f"{code_api_url}/run", json=execute_payload) as execute_response:
-                    if execute_response.status != 200:
-                        execute_text = await execute_response.text()
-                        logger.error(f"Failed to execute code on {code_api_url}/run: {execute_response.status} - {execute_text}")
-                        raise HTTPException(
-                            status_code=502,
-                            detail=f"Failed to execute code on robot: HTTP {execute_response.status}"
-                        )
-                    execute_result = await execute_response.json()
-            except aiohttp.ClientConnectorError:
-                logger.error(f"Failed to connect to robot API at {code_api_url}")
-                raise HTTPException(
-                    status_code=503,
-                    detail="Robot API is unreachable. Please try again later."
-                )
-            except asyncio.TimeoutError:
-                logger.error(f"Timeout executing code on robot API at {code_api_url}")
-                raise HTTPException(
-                    status_code=504,
-                    detail="Robot execution timeout. Please try again later."
-                )
+            finally:
+                # Clean up temporary file
+                if 'temp_file_path' in locals():
+                    os.unlink(temp_file_path)
         
         # Generate execution ID
         execution_id = f"exec_{user_id}_{int(time.time())}"
@@ -1487,8 +1486,7 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
             "language": request.language,
             "timestamp": time.time(),
             "upload_result": upload_result,
-            "execute_result": execute_result,
-            "simulation_type": "external_api"
+            "simulation_type": "robot_upload"
         }
         
     except HTTPException:

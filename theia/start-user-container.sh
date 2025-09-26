@@ -90,15 +90,13 @@ docker rm "$CONTAINER_NAME" 2>/dev/null || true
 # Create network if it doesn't exist
 docker network create "$NETWORK_NAME" 2>/dev/null || true
 
-# Start new container
+# Start new container using prebuilt elswork/theia image
 echo "Starting Theia container for user $USER_ID on port $PORT..."
 docker run -d \
     --name "$CONTAINER_NAME" \
-    --network "$NETWORK_NAME" \
     -p "$PORT:3000" \
-    -v "$(pwd)/$PROJECT_DIR:/home/project" \
-    --restart unless-stopped \
-    robot-console-theia:latest
+    -v "$(pwd)/$PROJECT_DIR:/home/project:cached" \
+    elswork/theia
 
 echo "Container $CONTAINER_NAME started successfully!"
 echo "Theia IDE will be available at: http://localhost:$PORT"
