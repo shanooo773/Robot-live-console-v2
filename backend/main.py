@@ -1302,6 +1302,38 @@ async def admin_get_theia_status(user_id: int, current_user: dict = Depends(requ
     status = theia_manager.get_container_status(user_id)
     return {"user_id": user_id, **status}
 
+@app.post("/theia/admin/cleanup")
+async def admin_cleanup_stale_containers(current_user: dict = Depends(require_admin)):
+    """Clean up stale containers (admin only)"""
+    result = theia_manager.cleanup_stale_containers()
+    
+    if result.get("success"):
+        return {
+            "message": f"Cleanup completed: {result.get('cleaned_count', 0)} stale containers removed",
+            "containers": result.get("containers", [])
+        }
+    else:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to cleanup containers: {result.get('error', 'Unknown error')}"
+        )
+
+@app.post("/theia/admin/stop-all")
+async def admin_stop_all_containers(current_user: dict = Depends(require_admin)):
+    """Stop all running Theia containers (admin only)"""
+    result = theia_manager.stop_all_user_containers()
+    
+    if result.get("success"):
+        return {
+            "message": f"Stopped {result.get('stopped_count', 0)} running containers",
+            "containers": result.get("containers", [])
+        }
+    else:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to stop all containers: {result.get('error', 'Unknown error')}"
+        )
+
 # WebSocket endpoint for future robot communication
 @app.websocket("/ws/robot/{user_id}")
 async def robot_websocket(websocket, user_id: int):
@@ -1424,12 +1456,28 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
             raise HTTPException(status_code=413, detail="Code too large (max 100KB)")
         
         # Execute code via external robot API using file upload as specified
+        # If filename is provided, try to load from user's Theia workspace first
+        code_to_execute = request.code
+        
+        if request.filename and hasattr(theia_manager, 'get_user_project_dir'):
+            user_project_dir = theia_manager.get_user_project_dir(user_id)
+            file_path = user_project_dir / request.filename
+            
+            # If the file exists in user's workspace, use its content
+            if file_path.exists():
+                try:
+                    code_to_execute = file_path.read_text()
+                    logger.info(f"Loaded code from user workspace: {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to read file from workspace {file_path}: {e}")
+                    # Fall back to provided code
+        
         # Create a temporary file for upload as specified in problem statement
         import tempfile
         import os
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp_file:
-            temp_file.write(request.code)
+            temp_file.write(code_to_execute)
             temp_file_path = temp_file.name
         
         try:
