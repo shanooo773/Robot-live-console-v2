@@ -100,7 +100,43 @@ except Exception as e:
             self._user_id_counter = 1
             self._bookings = []
             self._booking_id_counter = 1
-            logger.info("MockDatabaseManager initialized with in-memory user storage")
+            
+            # Initialize demo robots for demo user access
+            self._robots = [
+                {
+                    "id": 1,
+                    "name": "Demo TurtleBot",
+                    "type": "turtlebot",
+                    "webrtc_url": "http://localhost:8080/webrtc",
+                    "code_api_url": None,
+                    "status": "active",
+                    "created_at": datetime.now().isoformat(),
+                    "updated_at": None
+                },
+                {
+                    "id": 2,
+                    "name": "Demo Robot Arm",
+                    "type": "arm",
+                    "webrtc_url": "http://localhost:8081/webrtc",
+                    "code_api_url": None,
+                    "status": "active",
+                    "created_at": datetime.now().isoformat(),
+                    "updated_at": None
+                },
+                {
+                    "id": 3,
+                    "name": "Demo Dexterous Hand",
+                    "type": "hand",
+                    "webrtc_url": "http://localhost:8082/webrtc",
+                    "code_api_url": None,
+                    "status": "active",
+                    "created_at": datetime.now().isoformat(),
+                    "updated_at": None
+                }
+            ]
+            self._robot_id_counter = 4  # Next available ID
+            
+            logger.info("MockDatabaseManager initialized with in-memory user storage and demo robots")
         
         def _hash_password(self, password: str) -> str:
             """Hash a password using SHA-256 with salt"""
