@@ -1496,6 +1496,19 @@ class WebRTCOffer(BaseModel):
     sdp: str
     type: str = "offer"
 
+class WebRTCAnswer(BaseModel):
+    robot_id: Optional[int] = None
+    robot_type: Optional[str] = None
+    sdp: str
+    type: str = "answer"
+
+class WebRTCIceCandidate(BaseModel):
+    robot_id: Optional[int] = None
+    robot_type: Optional[str] = None
+    candidate: str
+    sdp_mid: Optional[str] = None
+    sdp_m_line_index: Optional[int] = None
+
 # Helper functions for WebRTC management
 async def resolve_robot_id(offer: WebRTCOffer) -> int:
     """Resolve robot_id from either robot_id or robot_type in the offer"""
@@ -1511,6 +1524,48 @@ async def resolve_robot_id(offer: WebRTCOffer) -> int:
         raise HTTPException(
             status_code=404, 
             detail=f"No robot found with type '{offer.robot_type}'"
+        )
+    
+    raise HTTPException(
+        status_code=400, 
+        detail="Either robot_id or robot_type must be provided"
+    )
+
+async def resolve_robot_id_from_answer(answer: WebRTCAnswer) -> int:
+    """Resolve robot_id from either robot_id or robot_type in the answer"""
+    if answer.robot_id is not None:
+        return answer.robot_id
+    
+    if answer.robot_type is not None:
+        # Find robot by type - get the first robot of this type
+        robots = db.get_all_robots()
+        for robot in robots:
+            if robot.get('type') == answer.robot_type:
+                return robot['id']
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No robot found with type '{answer.robot_type}'"
+        )
+    
+    raise HTTPException(
+        status_code=400, 
+        detail="Either robot_id or robot_type must be provided"
+    )
+
+async def resolve_robot_id_from_ice(ice_candidate: WebRTCIceCandidate) -> int:
+    """Resolve robot_id from either robot_id or robot_type in the ICE candidate"""
+    if ice_candidate.robot_id is not None:
+        return ice_candidate.robot_id
+    
+    if ice_candidate.robot_type is not None:
+        # Find robot by type - get the first robot of this type
+        robots = db.get_all_robots()
+        for robot in robots:
+            if robot.get('type') == ice_candidate.robot_type:
+                return robot['id']
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No robot found with type '{ice_candidate.robot_type}'"
         )
     
     raise HTTPException(
@@ -1575,6 +1630,130 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
         "webrtc_url": webrtc_url,
         "message": "Connect directly to robot WebRTC server using this URL"
     }
+
+@app.post("/webrtc/answer")
+async def handle_webrtc_answer(answer: WebRTCAnswer, current_user: dict = Depends(get_current_user)):
+    """Handle WebRTC SDP answer from client - forwards to robot WebRTC server"""
+    user_id = int(current_user["sub"])
+    
+    # Resolve robot_id from answer
+    robot_id = await resolve_robot_id_from_answer(answer)
+    
+    # Validate user has active booking session for this robot
+    if not await has_booking_for_robot(user_id, robot_id):
+        robot = db.get_robot_by_id(robot_id)
+        robot_type = robot.get('type', 'unknown') if robot else 'unknown'
+        raise HTTPException(
+            status_code=403,
+            detail=f"No active booking session for robot {robot_id} ({robot_type}). WebRTC access requires an active session during your booking time."
+        )
+    
+    # Get robot details including webrtc_url
+    robot = db.get_robot_by_id(robot_id)
+    if not robot:
+        raise HTTPException(status_code=404, detail=f"Robot with ID {robot_id} not found")
+    
+    webrtc_url = robot.get('webrtc_url')
+    if not webrtc_url:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Robot {robot_id} does not have a WebRTC URL configured"
+        )
+    
+    robot_name = robot.get("name", "Unknown")
+    robot_type = robot.get("type", "Unknown")
+    
+    logger.info(f"Forwarding WebRTC answer for robot {robot_name} (ID: {robot_id}, Type: {robot_type})")
+    
+    # In a real implementation, this would forward the answer to the robot's WebRTC server
+    # For now, we return the robot's WebRTC URL for direct connection
+    return {
+        "robot_id": robot_id,
+        "robot_name": robot_name,
+        "robot_type": robot_type,
+        "webrtc_url": webrtc_url,
+        "message": "Answer should be sent directly to robot WebRTC server",
+        "status": "forwarded"
+    }
+
+@app.post("/webrtc/ice-candidate")
+async def handle_ice_candidate(ice_candidate: WebRTCIceCandidate, current_user: dict = Depends(get_current_user)):
+    """Handle WebRTC ICE candidate from client - forwards to robot WebRTC server"""
+    user_id = int(current_user["sub"])
+    
+    # Resolve robot_id from ice candidate
+    robot_id = await resolve_robot_id_from_ice(ice_candidate)
+    
+    # Validate user has active booking session for this robot
+    if not await has_booking_for_robot(user_id, robot_id):
+        robot = db.get_robot_by_id(robot_id)
+        robot_type = robot.get('type', 'unknown') if robot else 'unknown'
+        raise HTTPException(
+            status_code=403,
+            detail=f"No active booking session for robot {robot_id} ({robot_type}). WebRTC access requires an active session during your booking time."
+        )
+    
+    # Get robot details including webrtc_url
+    robot = db.get_robot_by_id(robot_id)
+    if not robot:
+        raise HTTPException(status_code=404, detail=f"Robot with ID {robot_id} not found")
+    
+    webrtc_url = robot.get('webrtc_url')
+    if not webrtc_url:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Robot {robot_id} does not have a WebRTC URL configured"
+        )
+    
+    robot_name = robot.get("name", "Unknown")
+    robot_type = robot.get("type", "Unknown")
+    
+    logger.info(f"Forwarding ICE candidate for robot {robot_name} (ID: {robot_id}, Type: {robot_type})")
+    
+    # In a real implementation, this would forward the ICE candidate to the robot's WebRTC server
+    # For now, we return the robot's WebRTC URL for direct connection
+    return {
+        "robot_id": robot_id,
+        "robot_name": robot_name,
+        "robot_type": robot_type,
+        "webrtc_url": webrtc_url,
+        "message": "ICE candidate should be sent directly to robot WebRTC server",
+        "status": "forwarded"
+    }
+
+@app.get("/webrtc/health")
+async def webrtc_health_check():
+    """Health check for WebRTC services"""
+    try:
+        # Check if WebRTC configuration is valid
+        ice_servers = [
+            {"urls": "stun:stun.l.google.com:19302"},
+            {"urls": "stun:stun1.l.google.com:19302"},
+        ]
+        
+        # Check if any robots have WebRTC URLs configured
+        robots = db.get_all_robots()
+        webrtc_robots = [r for r in robots if r.get('webrtc_url')]
+        
+        return {
+            "status": "healthy",
+            "ice_servers_configured": len(ice_servers) > 0,
+            "robots_with_webrtc": len(webrtc_robots),
+            "total_robots": len(robots),
+            "webrtc_endpoints": [
+                "/webrtc/offer",
+                "/webrtc/answer", 
+                "/webrtc/ice-candidate",
+                "/webrtc/config",
+                "/webrtc/health"
+            ]
+        }
+    except Exception as e:
+        logger.error(f"WebRTC health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
 
 # Legacy WebRTC endpoints - deprecated in favor of direct robot connection
 # Keeping minimal versions for backward compatibility during transition

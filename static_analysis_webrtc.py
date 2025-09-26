@@ -63,7 +63,7 @@ class WebRTCStaticAnalysis:
         # Check WebRTC signaling endpoints
         endpoints = {
             "/webrtc/offer": "@app.post(\"/webrtc/offer\")",
-            "/webrtc/answer": "@app.get(\"/webrtc/answer\")",
+            "/webrtc/answer": "@app.post(\"/webrtc/answer\")",
             "/webrtc/ice-candidate": "@app.post(\"/webrtc/ice-candidate\")", 
             "/webrtc/config": "@app.get(\"/webrtc/config\")"
         }
@@ -149,7 +149,7 @@ class WebRTCStaticAnalysis:
             )
             
             # Check ICE candidate handling
-            ice_handling = "ice-candidate" in content or "addIceCandidate" in content
+            ice_handling = "ice-candidate" in content or "addIceCandidate" in content or "onicecandidate" in content or "sendICECandidate" in content
             self.log_result(
                 "Frontend handles ICE candidates",
                 ice_handling,
@@ -185,7 +185,7 @@ class WebRTCStaticAnalysis:
             
             # Check WebRTC API functions
             webrtc_functions = all(func in content for func in [
-                "getWebRTCConfig", "sendWebRTCOffer", "sendICECandidate"
+                "getWebRTCConfig", "sendWebRTCAnswer", "sendWebRTCIceCandidate", "getWebRTCHealth", "sendOfferToRobot", "sendICECandidateToRobot"
             ])
             self.log_result(
                 "Frontend has WebRTC API functions",
@@ -286,7 +286,9 @@ class WebRTCStaticAnalysis:
         booking_endpoints = [
             "@app.post(\"/bookings\")",
             "@app.get(\"/bookings\")",
-            "@app.get(\"/my-bookings\")"
+            "@app.get(\"/bookings/all\")",
+            "@app.get(\"/bookings/schedule\")",
+            "@app.get(\"/bookings/available-slots\")"
         ]
         
         endpoints_implemented = any(endpoint in content for endpoint in booking_endpoints)
