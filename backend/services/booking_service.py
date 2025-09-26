@@ -127,26 +127,7 @@ class BookingService:
                 logger.error(f"❌ BOOKING REJECTED - Invalid user ID: {user_id}")
                 raise HTTPException(status_code=400, detail="Invalid user authentication")
             
-            # Check for conflicting bookings with PROPER overlap detection
-            existing_bookings = self.db.get_bookings_for_date_range(date, date)
-            conflicts = []
-            
-            for existing in existing_bookings:
-                if (existing["robot_type"] == robot_type and 
-                    existing["status"] == "active"):
-                    
-                    # Check for ANY overlap, not just exact matches
-                    if self._times_overlap(start_time, end_time, 
-                                         existing["start_time"], existing["end_time"]):
-                        conflict_msg = f"Time slot conflicts with existing booking from {existing['start_time']} to {existing['end_time']}"
-                        conflicts.append(conflict_msg)
-                        logger.warning(f"❌ BOOKING CONFLICT - User {user_id} conflict with booking ID {existing.get('id')}: {conflict_msg}")
-            
-            # Reject if any conflicts found
-            if conflicts:
-                raise HTTPException(status_code=400, detail=conflicts[0])
-            
-            # Create the booking
+            # Create the booking (database layer will handle robot assignment and conflict detection)
             booking = self.db.create_booking(
                 user_id=user_id,
                 robot_type=robot_type,
@@ -201,6 +182,43 @@ class BookingService:
             
         except Exception as e:
             logger.error(f"Error checking active session: {e}")
+            return False
+    
+    def has_active_robot_session(self, user_id: int, robot_id: int) -> bool:
+        """Check if user has an active booking session for a specific robot"""
+        try:
+            # Get current time
+            now = datetime.now()
+            current_date = now.strftime("%Y-%m-%d")
+            current_time_obj = now.time()
+            
+            # Get user's bookings for today
+            bookings = self.get_user_bookings(user_id)
+            
+            # Check for active booking that matches current time and specific robot
+            for booking in bookings:
+                if (booking["date"] == current_date and 
+                    booking["robot_id"] == robot_id and
+                    booking["status"] == "active"):
+                    
+                    try:
+                        # Parse booking times using proper time objects
+                        start_time_obj = self._parse_time_string(booking["start_time"])
+                        end_time_obj = self._parse_time_string(booking["end_time"])
+                        
+                        # Check if current time is within booking window using time objects
+                        if start_time_obj <= current_time_obj <= end_time_obj:
+                            logger.info(f"Active session found for user {user_id}, robot {robot_id} from {booking['start_time']} to {booking['end_time']}")
+                            return True
+                    except ValueError as e:
+                        logger.error(f"Error parsing booking times: {e}")
+                        continue
+            
+            logger.debug(f"No active session for user {user_id}, robot {robot_id} at {current_time_obj}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking active robot session: {e}")
             return False
     
     def get_user_bookings(self, user_id: int) -> List[Dict[str, Any]]:

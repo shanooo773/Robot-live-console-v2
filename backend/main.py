@@ -1369,43 +1369,51 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
         logger.info(f"🎯 Demo user {user_id} executing robot code without booking restrictions")
         # For demo users, use the requested robot_type or default to 'turtlebot'
         robot_type = request.robot_type or 'turtlebot'
+        # Get the first available robot of the requested type for demo users
+        robot = db.get_active_robot_by_type(robot_type)
+        if not robot:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No active {robot_type} robot available for demo access."
+            )
     else:
         # Get user's active bookings for regular users
         bookings = booking_service.get_user_bookings(user_id)
-        active_bookings = [booking for booking in bookings if booking["status"] == "active"]
         
-        if not active_bookings:
+        # Find current active booking
+        now = datetime.now()
+        current_date = now.strftime("%Y-%m-%d")
+        current_time_obj = now.time()
+        
+        active_booking = None
+        for booking in bookings:
+            if (booking["date"] == current_date and booking["status"] == "active" and booking.get("robot_id")):
+                try:
+                    start_time_obj = datetime.strptime(booking["start_time"], "%H:%M").time()
+                    end_time_obj = datetime.strptime(booking["end_time"], "%H:%M").time()
+                    if start_time_obj <= current_time_obj <= end_time_obj:
+                        active_booking = booking
+                        break
+                except ValueError:
+                    continue
+        
+        if not active_booking:
             raise HTTPException(
-                status_code=403, 
-                detail="You need an active booking to execute robot code."
+                status_code=403,
+                detail="You need an active booking session to execute robot code."
             )
         
-        # If robot_type is provided, verify user has booking for it
-        # If not provided, use the first active booking
-        if request.robot_type:
-            has_active_booking = any(
-                booking["robot_type"] == request.robot_type
-                for booking in active_bookings
+        # Get the specific robot assigned to this user
+        robot = db.get_robot_by_id(active_booking["robot_id"])
+        if not robot:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Assigned robot (ID: {active_booking['robot_id']}) not found."
             )
-            if not has_active_booking:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"You don't have an active booking for {request.robot_type} robot."
-                )
-            robot_type = request.robot_type
-        else:
-            # Use the first active booking
-            robot_type = active_bookings[0]["robot_type"]
+        
+        robot_type = robot.get("type")
     
-    # Get active robot details from database
-    robot = db.get_active_robot_by_type(robot_type)
-    if not robot:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Active robot of type {robot_type} not found in registry or robot is inactive."
-        )
-    
-    # Get robot's upload endpoint (preferred) or fallback to code_api_url
+    # At this point, 'robot' contains the specific robot assigned to the user
     upload_endpoint = robot.get("upload_endpoint") or robot.get("code_api_url")
     robot_id = robot.get("id")
     robot_name = robot.get("name")
@@ -1430,49 +1438,48 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
             raise HTTPException(status_code=413, detail="Code too large (max 100KB)")
         
         # Execute code via external robot API using file upload as specified
+        # Create a temporary file for upload as specified in problem statement
+        import tempfile
+        import os
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp_file:
+            temp_file.write(request.code)
+            temp_file_path = temp_file.name
+        
         try:
-            # Create a temporary file for upload as specified in problem statement
-            import tempfile
-            import os
-            
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp_file:
-                temp_file.write(request.code)
-                temp_file_path = temp_file.name
-            
-            try:
-                # Upload code using file upload as specified: files = {"file": (os.path.basename(file_path), f)}
-                with open(temp_file_path, 'rb') as f:
-                    files = {"file": (os.path.basename(temp_file_path), f)}
-                    
-                    # Use requests instead of aiohttp for file upload as specified in problem statement
-                    import requests
-                    resp = requests.post(upload_endpoint, files=files, timeout=120)
-                    
-                    if resp.status_code != 200:
-                        logger.error(f"Failed to upload code to robot {robot_name} (ID: {robot_id}) at {upload_endpoint}: {resp.status_code} - {resp.text}")
-                        raise HTTPException(
-                            status_code=502,
-                            detail=f"Failed to upload code to robot: HTTP {resp.status_code}"
-                        )
-                    
-                    upload_result = resp.json() if resp.headers.get('content-type', '').startswith('application/json') else {"status": "uploaded"}
-                    
-            except requests.exceptions.ConnectionError:
-                logger.error(f"Failed to connect to robot API for {robot_name} (ID: {robot_id}) at {upload_endpoint}")
-                raise HTTPException(
-                    status_code=503,
-                    detail="Robot API is unreachable. Please try again later."
-                )
-            except requests.exceptions.Timeout:
-                logger.error(f"Timeout connecting to robot API for {robot_name} (ID: {robot_id}) at {upload_endpoint}")
-                raise HTTPException(
-                    status_code=504,
-                    detail="Robot API timeout. Please try again later."
-                )
-            finally:
-                # Clean up temporary file
-                if 'temp_file_path' in locals():
-                    os.unlink(temp_file_path)
+            # Upload code using file upload as specified: files = {"file": (os.path.basename(file_path), f)}
+            with open(temp_file_path, 'rb') as f:
+                files = {"file": (os.path.basename(temp_file_path), f)}
+                
+                # Use requests instead of aiohttp for file upload as specified in problem statement
+                import requests
+                resp = requests.post(upload_endpoint, files=files, timeout=120)
+                
+                if resp.status_code != 200:
+                    logger.error(f"Failed to upload code to robot {robot_name} (ID: {robot_id}) at {upload_endpoint}: {resp.status_code} - {resp.text}")
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Failed to upload code to robot: HTTP {resp.status_code}"
+                    )
+                
+                upload_result = resp.json() if resp.headers.get('content-type', '').startswith('application/json') else {"status": "uploaded"}
+                
+        except requests.exceptions.ConnectionError:
+            logger.error(f"Failed to connect to robot API for {robot_name} (ID: {robot_id}) at {upload_endpoint}")
+            raise HTTPException(
+                status_code=503,
+                detail="Robot API is unreachable. Please try again later."
+            )
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout connecting to robot API for {robot_name} (ID: {robot_id}) at {upload_endpoint}")
+            raise HTTPException(
+                status_code=504,
+                detail="Robot API timeout. Please try again later."
+            )
+        finally:
+            # Clean up temporary file
+            if 'temp_file_path' in locals():
+                os.unlink(temp_file_path)
         
         # Generate execution ID
         execution_id = f"exec_{user_id}_{int(time.time())}"
@@ -1638,7 +1645,7 @@ def is_demo_user(current_user: dict) -> bool:
     return False
 
 async def has_booking_for_robot(user_id: int, robot_id: int, current_user: dict = None) -> bool:
-    """Check if user has active booking for the robot"""
+    """Check if user has active booking for the specific robot"""
     # Demo users have unrestricted access - bypass booking validation
     if current_user and is_demo_user(current_user):
         logger.info(f"🎯 Demo user {user_id} granted unrestricted robot access (robot_id: {robot_id})")
@@ -1646,16 +1653,8 @@ async def has_booking_for_robot(user_id: int, robot_id: int, current_user: dict 
     
     booking_service = service_manager.get_booking_service()
     
-    # Get robot info to determine robot type
-    robot = db.get_robot_by_id(robot_id)
-    if not robot:
-        return False
-    
-    robot_type = robot.get('type')
-    if not robot_type:
-        return False
-    
-    return booking_service.has_active_session(user_id, robot_type)
+    # Check if user has active session for this specific robot
+    return booking_service.has_active_robot_session(user_id, robot_id)
 
 @app.post("/webrtc/offer")
 async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(get_current_user)):

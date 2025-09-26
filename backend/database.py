@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import json
 from dotenv import load_dotenv
+from fastapi import HTTPException
 
 # Load environment variables
 load_dotenv()
@@ -146,11 +147,11 @@ class DatabaseManager:
         except pymysql.Error:
             pass
         
-        # Migrate existing code_api_url to upload_endpoint if needed
+        # Add robot_id column to bookings table for specific robot assignment
         try:
-            cursor.execute("UPDATE robots SET upload_endpoint = code_api_url WHERE upload_endpoint IS NULL AND code_api_url IS NOT NULL")
+            cursor.execute("ALTER TABLE bookings ADD COLUMN robot_id INTEGER")
         except pymysql.Error:
-            pass
+            pass  # Column already exists
         
         # Create default admin user if none exists
         self._create_default_admin(cursor, conn)
@@ -268,17 +269,90 @@ class DatabaseManager:
             }
         return None
     
+    def _find_available_robot(self, robot_type: str, date: str, start_time: str, end_time: str, cursor) -> Optional[Dict[str, Any]]:
+        """Find an available robot of the specified type for the given time slot"""
+        placeholder = self._get_placeholder()
+        
+        # Get all active robots of the requested type
+        cursor.execute(f"""
+            SELECT id, name, type, webrtc_url, code_api_url, upload_endpoint, status, created_at, updated_at
+            FROM robots WHERE type = {placeholder} AND status = 'active'
+            ORDER BY created_at ASC
+        """, (robot_type,))
+        
+        robots = cursor.fetchall()
+        
+        for robot_row in robots:
+            robot = {
+                "id": robot_row[0],
+                "name": robot_row[1],
+                "type": robot_row[2],
+                "webrtc_url": robot_row[3],
+                "code_api_url": robot_row[4],
+                "upload_endpoint": robot_row[5],
+                "status": robot_row[6],
+                "created_at": robot_row[7].isoformat() if robot_row[7] else None,
+                "updated_at": robot_row[8].isoformat() if robot_row[8] else None
+            }
+            
+            # Check if this robot is available for the requested time slot
+            if self._is_robot_available(robot["id"], date, start_time, end_time, cursor):
+                return robot
+        
+        return None
+    
+    def _is_robot_available(self, robot_id: int, date: str, start_time: str, end_time: str, cursor) -> bool:
+        """Check if a specific robot is available for the given time slot"""
+        placeholder = self._get_placeholder()
+        
+        # Get existing bookings for this robot on the same date
+        cursor.execute(f"""
+            SELECT start_time, end_time FROM bookings 
+            WHERE robot_id = {placeholder} AND date = {placeholder} AND status = 'active'
+        """, (robot_id, date))
+        
+        existing_bookings = cursor.fetchall()
+        
+        # Check for time conflicts using the same logic as booking service
+        from datetime import time
+        
+        def parse_time_string(time_str: str) -> time:
+            return datetime.strptime(time_str.strip(), "%H:%M").time()
+        
+        def times_overlap(start1: str, end1: str, start2: str, end2: str) -> bool:
+            t1_start = parse_time_string(start1)
+            t1_end = parse_time_string(end1)
+            t2_start = parse_time_string(start2)
+            t2_end = parse_time_string(end2)
+            return t1_start < t2_end and t2_start < t1_end
+        
+        for existing_start, existing_end in existing_bookings:
+            if times_overlap(start_time, end_time, existing_start, existing_end):
+                return False
+        
+        return True
+    
     def create_booking(self, user_id: int, robot_type: str, date: str, start_time: str, end_time: str) -> Dict[str, Any]:
-        """Create a new booking"""
+        """Create a new booking with specific robot assignment"""
         conn = self.get_connection()
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
         
         try:
+            # Find an available robot of the requested type
+            robot = self._find_available_robot(robot_type, date, start_time, end_time, cursor)
+            if not robot:
+                raise HTTPException(
+                    status_code=409, 
+                    detail=f"No available {robot_type} robots for the requested time slot"
+                )
+            
+            robot_id = robot['id']
+            
             cursor.execute(f"""
-                INSERT INTO bookings (user_id, robot_type, date, start_time, end_time)
-                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
-            """, (user_id, robot_type, date, start_time, end_time))
+                INSERT INTO bookings (user_id, robot_type, robot_id, date, start_time, end_time)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+            """, (user_id, robot_type, robot_id, date, start_time, end_time))
             
             booking_id = cursor.lastrowid
             
@@ -286,6 +360,8 @@ class DatabaseManager:
                 "id": booking_id,
                 "user_id": user_id,
                 "robot_type": robot_type,
+                "robot_id": robot_id,
+                "robot_name": robot.get('name', 'Unknown'),
                 "date": date,
                 "start_time": start_time,
                 "end_time": end_time,
@@ -296,13 +372,17 @@ class DatabaseManager:
             conn.close()
     
     def get_user_bookings(self, user_id: int) -> List[Dict[str, Any]]:
-        """Get all bookings for a user"""
+        """Get all bookings for a user with robot information"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute(f"""
-            SELECT id, user_id, robot_type, date, start_time, end_time, status, created_at
-            FROM bookings WHERE user_id = {self._get_placeholder()} ORDER BY date DESC, start_time DESC
+            SELECT b.id, b.user_id, b.robot_type, b.robot_id, b.date, b.start_time, b.end_time, b.status, b.created_at,
+                   r.name as robot_name
+            FROM bookings b
+            LEFT JOIN robots r ON b.robot_id = r.id
+            WHERE b.user_id = {self._get_placeholder()} 
+            ORDER BY b.date DESC, b.start_time DESC
         """, (user_id,))
         
         bookings = cursor.fetchall()
@@ -313,25 +393,28 @@ class DatabaseManager:
                 "id": booking[0],
                 "user_id": booking[1],
                 "robot_type": booking[2],
-                "date": booking[3],
-                "start_time": booking[4],
-                "end_time": booking[5],
-                "status": booking[6],
-                "created_at": booking[7].isoformat() if booking[7] else None
+                "robot_id": booking[3],
+                "date": booking[4],
+                "start_time": booking[5],
+                "end_time": booking[6],
+                "status": booking[7],
+                "created_at": booking[8].isoformat() if booking[8] else None,
+                "robot_name": booking[9] or "Unknown"
             }
             for booking in bookings
         ]
     
     def get_all_bookings(self) -> List[Dict[str, Any]]:
-        """Get all bookings (admin only)"""
+        """Get all bookings (admin only) with robot information"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT b.id, b.user_id, u.name, u.email, b.robot_type, b.date, 
-                   b.start_time, b.end_time, b.status, b.created_at
+            SELECT b.id, b.user_id, u.name, u.email, b.robot_type, b.robot_id, b.date, 
+                   b.start_time, b.end_time, b.status, b.created_at, r.name as robot_name
             FROM bookings b
             JOIN users u ON b.user_id = u.id
+            LEFT JOIN robots r ON b.robot_id = r.id
             ORDER BY b.date DESC, b.start_time DESC
         """)
         
@@ -345,11 +428,13 @@ class DatabaseManager:
                 "user_name": booking[2],
                 "user_email": booking[3],
                 "robot_type": booking[4],
-                "date": booking[5],
-                "start_time": booking[6],
-                "end_time": booking[7],
-                "status": booking[8],
-                "created_at": booking[9].isoformat() if booking[9] else None
+                "robot_id": booking[5],
+                "date": booking[6],
+                "start_time": booking[7],
+                "end_time": booking[8],
+                "status": booking[9],
+                "created_at": booking[10].isoformat() if booking[10] else None,
+                "robot_name": booking[11] or "Unknown"
             }
             for booking in bookings
         ]
@@ -405,15 +490,16 @@ class DatabaseManager:
         return deleted
     
     def get_bookings_for_date_range(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
-        """Get bookings within a date range"""
+        """Get bookings within a date range with robot information"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute(f"""
-            SELECT b.id, b.user_id, u.name, b.robot_type, b.date, 
-                   b.start_time, b.end_time, b.status
+            SELECT b.id, b.user_id, u.name, b.robot_type, b.robot_id, b.date, 
+                   b.start_time, b.end_time, b.status, r.name as robot_name
             FROM bookings b
             JOIN users u ON b.user_id = u.id
+            LEFT JOIN robots r ON b.robot_id = r.id  
             WHERE b.date >= {self._get_placeholder()} AND b.date <= {self._get_placeholder()} AND b.status = 'active'
             ORDER BY b.date, b.start_time
         """, (start_date, end_date))
@@ -427,10 +513,12 @@ class DatabaseManager:
                 "user_id": booking[1],
                 "user_name": booking[2],
                 "robot_type": booking[3],
-                "date": booking[4],
-                "start_time": booking[5],
-                "end_time": booking[6],
-                "status": booking[7]
+                "robot_id": booking[4],
+                "date": booking[5],
+                "start_time": booking[6],
+                "end_time": booking[7],
+                "status": booking[8],
+                "robot_name": booking[9] or "Unknown"
             }
             for booking in bookings
         ]
