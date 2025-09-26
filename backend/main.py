@@ -1188,23 +1188,27 @@ async def get_theia_status(current_user: dict = Depends(get_current_user)):
 @app.post("/theia/start")
 async def start_theia_container(current_user: dict = Depends(get_current_user)):
     """Start user's Theia container"""
-    # Check if user has access (completed booking)
     booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
     
-    # Get user's bookings
-    bookings = booking_service.get_user_bookings(user_id)
-    
-    # Check if user has at least one completed booking
-    has_completed_booking = any(
-        booking["status"] == "completed" for booking in bookings
-    )
-    
-    if not has_completed_booking:
-        raise HTTPException(
-            status_code=403, 
-            detail="You need to complete a booking before accessing the development environment"
+    # Demo users have unrestricted access - skip booking validation
+    if is_demo_user(current_user):
+        logger.info(f"🎯 Demo user {user_id} starting Theia container without booking restrictions")
+    else:
+        # Check if user has access (completed booking) for regular users
+        # Get user's bookings
+        bookings = booking_service.get_user_bookings(user_id)
+        
+        # Check if user has at least one completed booking
+        has_completed_booking = any(
+            booking["status"] == "completed" for booking in bookings
         )
+        
+        if not has_completed_booking:
+            raise HTTPException(
+                status_code=403, 
+                detail="You need to complete a booking before accessing the development environment"
+            )
     
     result = theia_manager.start_container(user_id)
     
@@ -1337,7 +1341,7 @@ class RobotExecuteRequest(BaseModel):
     language: str = "python"
     filename: Optional[str] = None  # Optional filename for the code
 
-@app.post("/robot/execute")
+@app.post("/robot/execute")  
 async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = Depends(get_current_user)):
     """Execute robot code and return simulation results"""
     import aiohttp
@@ -1346,32 +1350,38 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
     booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
     
-    # Get user's active bookings
-    bookings = booking_service.get_user_bookings(user_id)
-    active_bookings = [booking for booking in bookings if booking["status"] == "active"]
-    
-    if not active_bookings:
-        raise HTTPException(
-            status_code=403, 
-            detail="You need an active booking to execute robot code."
-        )
-    
-    # If robot_type is provided, verify user has booking for it
-    # If not provided, use the first active booking
-    if request.robot_type:
-        has_active_booking = any(
-            booking["robot_type"] == request.robot_type
-            for booking in active_bookings
-        )
-        if not has_active_booking:
-            raise HTTPException(
-                status_code=403,
-                detail=f"You don't have an active booking for {request.robot_type} robot."
-            )
-        robot_type = request.robot_type
+    # Demo users have unrestricted access - skip booking validation
+    if is_demo_user(current_user):
+        logger.info(f"🎯 Demo user {user_id} executing robot code without booking restrictions")
+        # For demo users, use the requested robot_type or default to 'turtlebot'
+        robot_type = request.robot_type or 'turtlebot'
     else:
-        # Use the first active booking
-        robot_type = active_bookings[0]["robot_type"]
+        # Get user's active bookings for regular users
+        bookings = booking_service.get_user_bookings(user_id)
+        active_bookings = [booking for booking in bookings if booking["status"] == "active"]
+        
+        if not active_bookings:
+            raise HTTPException(
+                status_code=403, 
+                detail="You need an active booking to execute robot code."
+            )
+        
+        # If robot_type is provided, verify user has booking for it
+        # If not provided, use the first active booking
+        if request.robot_type:
+            has_active_booking = any(
+                booking["robot_type"] == request.robot_type
+                for booking in active_bookings
+            )
+            if not has_active_booking:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"You don't have an active booking for {request.robot_type} robot."
+                )
+            robot_type = request.robot_type
+        else:
+            # Use the first active booking
+            robot_type = active_bookings[0]["robot_type"]
     
     # Get active robot details from database
     robot = db.get_active_robot_by_type(robot_type)
@@ -1609,8 +1619,33 @@ async def resolve_robot_id_from_ice(ice_candidate: WebRTCIceCandidate) -> int:
         detail="Either robot_id or robot_type must be provided"
     )
 
-async def has_booking_for_robot(user_id: int, robot_id: int) -> bool:
+def is_demo_user(current_user: dict) -> bool:
+    """Check if the current user is a demo user"""
+    user_id = int(current_user.get("sub", 0))
+    user_email = current_user.get("email", "")
+    
+    # Check for demo user flags in token
+    if current_user.get("isDemoUser") or current_user.get("isDemoAdmin"):
+        return True
+    
+    # Check for demo user IDs (negative IDs are used for demo users)
+    if user_id in [-1, -2]:
+        return True
+    
+    # Check for demo user email patterns
+    demo_indicators = ['demo', 'test', 'example']
+    if any(indicator in user_email.lower() for indicator in demo_indicators):
+        return True
+    
+    return False
+
+async def has_booking_for_robot(user_id: int, robot_id: int, current_user: dict = None) -> bool:
     """Check if user has active booking for the robot"""
+    # Demo users have unrestricted access - bypass booking validation
+    if current_user and is_demo_user(current_user):
+        logger.info(f"🎯 Demo user {user_id} granted unrestricted robot access (robot_id: {robot_id})")
+        return True
+    
     booking_service = service_manager.get_booking_service()
     
     # Get robot info to determine robot type
@@ -1633,7 +1668,7 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
     robot_id = await resolve_robot_id(offer)
     
     # Validate user has active booking session for this robot
-    if not await has_booking_for_robot(user_id, robot_id):
+    if not await has_booking_for_robot(user_id, robot_id, current_user):
         robot = db.get_robot_by_id(robot_id)
         robot_type = robot.get('type', 'unknown') if robot else 'unknown'
         raise HTTPException(
@@ -1676,7 +1711,7 @@ async def handle_webrtc_answer(answer: WebRTCAnswer, current_user: dict = Depend
     robot_id = await resolve_robot_id_from_answer(answer)
     
     # Validate user has active booking session for this robot
-    if not await has_booking_for_robot(user_id, robot_id):
+    if not await has_booking_for_robot(user_id, robot_id, current_user):
         robot = db.get_robot_by_id(robot_id)
         robot_type = robot.get('type', 'unknown') if robot else 'unknown'
         raise HTTPException(
@@ -1721,7 +1756,7 @@ async def handle_ice_candidate(ice_candidate: WebRTCIceCandidate, current_user: 
     robot_id = await resolve_robot_id_from_ice(ice_candidate)
     
     # Validate user has active booking session for this robot
-    if not await has_booking_for_robot(user_id, robot_id):
+    if not await has_booking_for_robot(user_id, robot_id, current_user):
         robot = db.get_robot_by_id(robot_id)
         robot_type = robot.get('type', 'unknown') if robot else 'unknown'
         raise HTTPException(
