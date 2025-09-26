@@ -67,6 +67,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   const [availableRobots, setAvailableRobots] = useState({});
   const [slotError, setSlotError] = useState(null);
   const [isAutoFetching, setIsAutoFetching] = useState(false);
+  // Track which booking countdowns have expired to enable "View Booking" button
   const [expiredCountdowns, setExpiredCountdowns] = useState(new Set());
   const toast = useToast();
 
