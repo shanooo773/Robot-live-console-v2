@@ -12,10 +12,15 @@ class TheiaContainerManager:
     
     def __init__(self, base_port: int = None):
         # Get configuration from environment
-        self.base_port = base_port or int(os.getenv('THEIA_BASE_PORT', 3001))
+        # Use 4000-9000 range as specified in requirements
+        self.base_port = base_port or int(os.getenv('THEIA_BASE_PORT', 4000))
+        self.max_port = int(os.getenv('THEIA_MAX_PORT', 9000))
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
         self.theia_image = os.getenv('THEIA_IMAGE', 'elswork/theia')  # Use prebuilt image
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
+        
+        # Port mapping storage (userid → port)
+        self._port_mappings = {}
         
         # Paths
         project_path = os.getenv('THEIA_PROJECT_PATH', './projects')
@@ -37,28 +42,48 @@ class TheiaContainerManager:
             self.ensure_user_project_dir(user_id)
     
     def get_user_port(self, user_id: int) -> int:
-        """Get dynamic port for user's Theia container"""
-        # Use a more sophisticated port allocation to avoid conflicts
+        """Get dynamic port for user's Theia container (4000-9000 range)"""
         import socket
         
-        # Try to find an available port starting from base_port + (user_id % 1000)
-        base_port = self.base_port + (user_id % 1000)
+        # Check if user already has a port assigned
+        if user_id in self._port_mappings:
+            # Verify the port is still available
+            port = self._port_mappings[user_id]
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(('localhost', port))
+                    s.close()
+                    return port
+                except OSError:
+                    # Port is in use, remove from mapping and find a new one
+                    del self._port_mappings[user_id]
         
-        for i in range(100):  # Try up to 100 ports
-            port = base_port + i
-            if port > 65535:  # Wrap around if port number gets too high
-                port = self.base_port + i
-            
+        # Find an available port in the 4000-9000 range
+        for port in range(self.base_port, self.max_port + 1):
+            # Skip ports already assigned to other users
+            if port in self._port_mappings.values():
+                continue
+                
             # Check if port is available
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
                     s.bind(('localhost', port))
+                    s.close()
+                    # Store the mapping
+                    self._port_mappings[user_id] = port
+                    logger.info(f"Assigned port {port} to user {user_id}")
                     return port
                 except OSError:
                     continue
         
-        # Fallback to original logic if no port found
-        return self.base_port + (user_id % 1000)
+        # Fallback if no port found in range
+        raise Exception(f"No available ports in range {self.base_port}-{self.max_port}")
+    
+    def release_user_port(self, user_id: int) -> None:
+        """Release port mapping when container is stopped"""
+        if user_id in self._port_mappings:
+            port = self._port_mappings.pop(user_id)
+            logger.info(f"Released port {port} for user {user_id}")
     
     def get_container_name(self, user_id: int) -> str:
         """Get container name for user"""
@@ -355,7 +380,7 @@ int main() {
                 timeout=30
             )
             
-            # Remove container
+            # Remove container to free VPS resources
             subprocess.run(
                 ["docker", "rm", container_name],
                 capture_output=True,
@@ -363,6 +388,10 @@ int main() {
                 timeout=30
             )
             
+            # Release port mapping
+            self.release_user_port(user_id)
+            
+            logger.info(f"Container {container_name} stopped and removed for user {user_id}")
             return {"success": True, "status": "stopped"}
             
         except Exception as e:
@@ -410,3 +439,71 @@ int main() {
         except Exception as e:
             logger.error(f"Error listing containers: {e}")
             return []
+    
+    def cleanup_stale_containers(self) -> Dict:
+        """Clean up stale containers that should not be running"""
+        try:
+            containers = self.list_user_containers()
+            stale_containers = []
+            cleaned_count = 0
+            
+            for container in containers:
+                # A container is considered stale if it's been stopped but not removed
+                if "Exited" in container["status"]:
+                    try:
+                        user_id = int(container["user_id"])
+                        result = self.stop_container(user_id)  # This will remove the container
+                        if result.get("success"):
+                            cleaned_count += 1
+                        stale_containers.append({
+                            "user_id": user_id,
+                            "container_name": container["container_name"],
+                            "status": "cleaned" if result.get("success") else "failed"
+                        })
+                    except ValueError:
+                        # Skip if user_id is not a valid integer
+                        continue
+            
+            logger.info(f"Cleanup completed: {cleaned_count} stale containers removed")
+            return {
+                "success": True,
+                "cleaned_count": cleaned_count,
+                "containers": stale_containers
+            }
+            
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def stop_all_user_containers(self) -> Dict:
+        """Stop all running user containers (admin function)"""
+        try:
+            containers = self.list_user_containers()
+            stopped_count = 0
+            results = []
+            
+            for container in containers:
+                if "Up" in container["status"]:  # Only stop running containers
+                    try:
+                        user_id = int(container["user_id"])
+                        result = self.stop_container(user_id)
+                        if result.get("success"):
+                            stopped_count += 1
+                        results.append({
+                            "user_id": user_id,
+                            "container_name": container["container_name"],
+                            "status": "stopped" if result.get("success") else "failed"
+                        })
+                    except ValueError:
+                        continue
+            
+            logger.info(f"Stopped {stopped_count} running containers")
+            return {
+                "success": True,
+                "stopped_count": stopped_count,
+                "containers": results
+            }
+            
+        except Exception as e:
+            logger.error(f"Error stopping all containers: {e}")
+            return {"success": False, "error": str(e)}
