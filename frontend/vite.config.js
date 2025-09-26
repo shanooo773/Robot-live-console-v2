@@ -6,7 +6,46 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    host: true // Allow external access for local testing
+    host: true, // Allow external access for local testing
+    proxy: {
+      // Proxy API calls to backend during development
+      '/theia': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false
+      },
+      // Add other API endpoints as needed
+      '/auth': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/bookings': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/robots': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/health': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/announcements': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false
+      }
+    }
   },
   build: {
     // Production optimizations

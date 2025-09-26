@@ -1178,7 +1178,7 @@ async def get_available_videos(current_user: dict = Depends(get_current_user)):
 
 # Eclipse Theia Container Management Endpoints
 
-@app.get("/theia/status")
+@app.get("/theia/status")  
 async def get_theia_status(current_user: dict = Depends(get_current_user)):
     """Get status of user's Theia container"""
     user_id = int(current_user["sub"])
@@ -1198,6 +1198,30 @@ async def get_theia_status(current_user: dict = Depends(get_current_user)):
                 # Return status with auto-start attempt info
                 status["auto_start_attempted"] = True
                 status["auto_start_error"] = start_result.get("error")
+    
+    return status
+
+@app.get("/theia/demo/status")
+async def get_demo_theia_status():
+    """Get status of demo user Theia container (bypasses auth for demo purposes)"""
+    user_id = -1  # Demo user ID
+    logger.info(f"🎯 Demo endpoint accessed - checking Theia status for user {user_id}")
+    
+    status = theia_manager.get_container_status(user_id)
+    
+    # Auto-start Theia container for demo user if not running
+    if status.get("status") in ["not_created", "stopped", "error"]:
+        logger.info(f"🎯 Auto-starting Theia container for demo user {user_id}")
+        start_result = theia_manager.start_container(user_id)
+        if start_result.get("success"):
+            logger.info(f"✅ Demo user {user_id} Theia container auto-started successfully")
+            # Return the new status after starting
+            status = theia_manager.get_container_status(user_id)
+        else:
+            logger.error(f"❌ Failed to auto-start Theia for demo user {user_id}: {start_result.get('error')}")
+            # Return status with auto-start attempt info
+            status["auto_start_attempted"] = True
+            status["auto_start_error"] = start_result.get("error")
     
     return status
 
