@@ -40,12 +40,15 @@ const TheiaIDE = ({ user, authToken, onError }) => {
   const checkTheiaStatus = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/theia/status', {
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      
+      // Use demo endpoint for demo users, regular endpoint for authenticated users
+      const isDemoUser = user?.isDemoUser || user?.isDemoAdmin || user?.isDemoMode;
+      const endpoint = isDemoUser ? '/theia/demo/status' : '/theia/status';
+      const headers = isDemoUser ? 
+        { 'Content-Type': 'application/json' } :
+        { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' };
+      
+      const response = await fetch(endpoint, { headers });
 
       if (response.ok) {
         // Read response text first to avoid "body stream already read" error
