@@ -258,7 +258,7 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }
           
           {!isConnected ? (
             <Button
-              colorScheme="blue"
+              variant="solid"
               size="sm"
               onClick={handleConnect}
               isLoading={isLoading}
@@ -269,7 +269,7 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }
             </Button>
           ) : (
             <Button
-              colorScheme="red"
+              variant="neonPill"
               size="sm"
               onClick={handleDisconnect}
             >
@@ -278,13 +278,14 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }
           )}
           
           {isConnected && (
-            <Badge colorScheme="green" fontSize="xs">
+            <Badge variant="neonPill" colorScheme="green" fontSize="xs">
               LIVE
             </Badge>
           )}
           
           {streamType === "webrtc" && webrtcStatus !== "disconnected" && (
             <Badge 
+              variant="neonPill"
               colorScheme={webrtcStatus === "connected" ? "green" : "yellow"} 
               fontSize="xs"
             >

@@ -286,7 +286,7 @@ const TheiaIDE = ({ user, authToken, onError }) => {
             ) : (
               <Button 
                 size="sm" 
-                colorScheme="green" 
+                variant="solid"
                 onClick={startTheiaContainer}
                 isLoading={isStarting}
                 loadingText="Starting..."

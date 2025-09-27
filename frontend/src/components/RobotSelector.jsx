@@ -33,18 +33,32 @@ const RobotSelector = ({ robot, onSelect, availableRobots = [] }) => {
         Robot Type:
       </Text>
       <Menu isLazy>
-        <MenuButton as={Button} variant="outline" color="gray.400" bg="#110f1c" _hover={{ bg: "#1e1e2e" }}>
+        <MenuButton 
+          as={Button} 
+          variant="solid"
+          color="rgba(0, 255, 200, 0.9)" 
+          bg="rgba(0, 0, 0, 0.3)"
+          border="1px solid rgba(0, 255, 200, 0.4)"
+          _hover={{ 
+            bg: "rgba(0, 255, 200, 0.1)",
+            border: "1px solid rgba(0, 255, 200, 0.7)"
+          }}
+        >
           {ROBOT_NAMES[robot] || "Select Robot"}
         </MenuButton>
-        <MenuList bg="#110f1c" border="1px solid #333">
+        <MenuList 
+          bg="rgba(10, 15, 35, 0.9)" 
+          border="1px solid rgba(0, 255, 200, 0.3)"
+          backdropFilter="blur(12px)"
+        >
           {availableRobotEntries.map(([robotType, displayName]) => (
             <MenuItem
               key={robotType}
-              color={robotType === robot ? "blue.400" : "gray.400"}
-              bg={robotType === robot ? "#1e1e2e" : "transparent"}
+              color={robotType === robot ? "rgba(0, 255, 200, 1)" : "rgba(255, 255, 255, 0.7)"}
+              bg={robotType === robot ? "rgba(0, 255, 200, 0.1)" : "transparent"}
               _hover={{
-                color: "blue.400",
-                bg: "#1e1e2e",
+                color: "rgba(0, 255, 200, 1)",
+                bg: "rgba(0, 255, 200, 0.1)",
               }}
               onClick={() => onSelect(robotType)}
             >
