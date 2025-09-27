@@ -3,7 +3,7 @@ import { Box } from "@chakra-ui/react";
 import LandingPage from "./components/LandingPage";
 import AuthPage from "./components/AuthPage";
 import BookingPage from "./components/BookingPage";
-import CodeEditor from "./components/CodeEditor";
+import NeonRobotConsole from "./components/NeonRobotConsole";
 import AdminDashboard from "./components/AdminDashboard";
 import { getCurrentUser } from "./api";
 
@@ -108,7 +108,7 @@ function App() {
         />
       )}
       {currentPage === "editor" && (
-        <CodeEditor 
+        <NeonRobotConsole 
           user={user} 
           slot={selectedSlot} 
           authToken={authToken}
