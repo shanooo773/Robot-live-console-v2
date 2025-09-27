@@ -10,37 +10,71 @@ logger = logging.getLogger(__name__)
 class TheiaContainerManager:
     """Manages Eclipse Theia containers for users"""
     
-    def __init__(self, base_port: int = None):
+    def __init__(self, base_port: int = None, db_manager=None):
+        # Database manager for port persistence
+        self.db_manager = db_manager
+        
         # Get configuration from environment
         # Use 4000-9000 range as specified in requirements
         self.base_port = base_port or int(os.getenv('THEIA_BASE_PORT', 4000))
         self.max_port = int(os.getenv('THEIA_MAX_PORT', 9000))
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
-        self.theia_image = os.getenv('THEIA_IMAGE', 'elswork/theia')  # Use prebuilt image
+        self.theia_image = os.getenv('THEIA_IMAGE', 'theiaide/theia:latest')  # Use official image as per requirement
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
         
         # Container lifecycle configuration
         self.idle_timeout_hours = int(os.getenv('THEIA_IDLE_TIMEOUT_HOURS', 2))  # 2 hours idle timeout
         self.logout_grace_period_minutes = int(os.getenv('THEIA_LOGOUT_GRACE_MINUTES', 5))  # 5 minutes grace period
         
-        # Port mapping storage (userid → port)
+        # Port mapping storage (userid → port) - now backed by database
         self._port_mappings = {}
         
         # Container activity tracking (userid → last_activity_timestamp)
         self._last_activity = {}
         
         # Paths
-        project_path = os.getenv('THEIA_PROJECT_PATH', './projects')
+        project_path = os.getenv('THEIA_PROJECT_PATH', './projects')  # Default to local for development
         self.theia_dir = Path(__file__).parent.parent.parent / "theia"
-        self.projects_dir = Path(__file__).parent.parent.parent / project_path.lstrip('./')
+        
+        # Handle absolute vs relative paths
+        if project_path.startswith('/'):
+            self.projects_dir = Path(project_path)
+        else:
+            self.projects_dir = Path(__file__).parent.parent.parent / project_path.lstrip('./')
+            
         self.container_prefix = "theia-"  # Changed to match problem statement format
         
         # Ensure directories exist
-        self.projects_dir.mkdir(exist_ok=True)
+        try:
+            self.projects_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            logger.error(f"Permission denied creating directory {self.projects_dir}. Using fallback.")
+            # Fallback to local directory if can't create the configured path
+            self.projects_dir = Path(__file__).parent.parent.parent / "projects"
+            self.projects_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Load existing port mappings from database on startup
+        self._load_port_mappings_from_db()
         
         # Ensure demo user directories exist
         self._ensure_demo_user_directories()
         
+    def _load_port_mappings_from_db(self):
+        """Load existing port mappings from database on startup"""
+        if not self.db_manager:
+            logger.warning("No database manager available for port persistence")
+            return
+            
+        try:
+            assigned_ports = self.db_manager.get_all_assigned_ports()
+            logger.info(f"Loaded {len(assigned_ports)} port assignments from database")
+            
+            # We don't load the full mapping here because we need to verify ports are still available
+            # The get_user_port method will check database first and validate availability
+            
+        except Exception as e:
+            logger.error(f"Failed to load port mappings from database: {e}")
+    
     def _ensure_demo_user_directories(self):
         """Ensure demo user directories exist with welcome files"""
         demo_users = [-1, -2]  # Demo user and demo admin IDs from auth service
@@ -49,36 +83,79 @@ class TheiaContainerManager:
             self.ensure_user_project_dir(user_id)
     
     def get_user_port(self, user_id: int) -> int:
-        """Get dynamic port for user's Theia container (4000-9000 range)"""
+        """Get dynamic port for user's Theia container (4000-9000 range) with database persistence"""
         import socket
         
-        # Check if user already has a port assigned
+        # First check database for existing port assignment
+        if self.db_manager:
+            try:
+                existing_port = self.db_manager.get_user_theia_port(user_id)
+                if existing_port:
+                    # Verify the port is still available
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        try:
+                            s.bind(('0.0.0.0', existing_port))  # Use 0.0.0.0 to bind all interfaces
+                            s.close()
+                            # Port is available, update cache and return
+                            self._port_mappings[user_id] = existing_port
+                            logger.info(f"Reusing port {existing_port} for user {user_id} from database")
+                            return existing_port
+                        except OSError:
+                            # Port is in use, clear from database and find a new one
+                            logger.warning(f"Port {existing_port} for user {user_id} is no longer available, finding new port")
+                            self.db_manager.clear_user_theia_port(user_id)
+                            if user_id in self._port_mappings:
+                                del self._port_mappings[user_id]
+            except Exception as e:
+                logger.error(f"Error checking database port for user {user_id}: {e}")
+        
+        # Check if user already has a port assigned in memory cache
         if user_id in self._port_mappings:
             # Verify the port is still available
             port = self._port_mappings[user_id]
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(('172.232.105.47', port))
+                    s.bind(('0.0.0.0', port))
                     s.close()
                     return port
                 except OSError:
                     # Port is in use, remove from mapping and find a new one
                     del self._port_mappings[user_id]
         
+        # Get all assigned ports from database to avoid conflicts
+        assigned_ports = set()
+        if self.db_manager:
+            try:
+                assigned_ports = set(self.db_manager.get_all_assigned_ports())
+            except Exception as e:
+                logger.error(f"Error getting assigned ports from database: {e}")
+        
+        # Also add ports from memory cache
+        assigned_ports.update(self._port_mappings.values())
+        
         # Find an available port in the 4000-9000 range
         for port in range(self.base_port, self.max_port + 1):
             # Skip ports already assigned to other users
-            if port in self._port_mappings.values():
+            if port in assigned_ports:
                 continue
                 
             # Check if port is available
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(('172.232.105.47', port))
+                    s.bind(('0.0.0.0', port))
                     s.close()
-                    # Store the mapping
+                    # Store the mapping in both memory and database
                     self._port_mappings[user_id] = port
-                    logger.info(f"Assigned port {port} to user {user_id}")
+                    if self.db_manager:
+                        try:
+                            self.db_manager.set_user_theia_port(user_id, port)
+                            logger.info(f"Assigned port {port} to user {user_id} and saved to database")
+                        except Exception as e:
+                            logger.error(f"Failed to save port assignment to database: {e}")
+                            # Continue with memory-only assignment
+                            logger.info(f"Assigned port {port} to user {user_id} (memory only)")
+                    else:
+                        logger.info(f"Assigned port {port} to user {user_id} (no database available)")
                     return port
                 except OSError:
                     continue
@@ -91,6 +168,14 @@ class TheiaContainerManager:
         if user_id in self._port_mappings:
             port = self._port_mappings.pop(user_id)
             logger.info(f"Released port {port} for user {user_id}")
+            
+            # Also clear from database
+            if self.db_manager:
+                try:
+                    self.db_manager.clear_user_theia_port(user_id)
+                    logger.info(f"Cleared port assignment for user {user_id} from database")
+                except Exception as e:
+                    logger.error(f"Failed to clear port assignment from database: {e}")
     
     def get_container_name(self, user_id: int) -> str:
         """Get container name for user"""
@@ -261,9 +346,12 @@ int main() {
             if not port and user_id in self._port_mappings:
                 port = self._port_mappings[user_id]
             
+            # Get server host from environment or use localhost
+            server_host = os.getenv('SERVER_HOST', 'localhost')
+            
             return {
                 "status": "running" if is_running else "stopped",
-                "url": f"http://172.232.105.47:{port}" if is_running and port else None,
+                "url": f"http://{server_host}:{port}" if is_running and port else None,
                 "port": port if is_running else None,
                 "container_name": container_name
             }
@@ -358,23 +446,26 @@ int main() {
             except subprocess.TimeoutExpired:
                 logger.warning("Docker network creation timed out")
             
-            # Start container using a simpler approach to avoid runtime issues
+            # Start container using the exact command format from requirements
+            # docker run -d --name theia-${USERID} -p ${ASSIGNED_PORT}:3000 -v /data/users/${USERID}:/home/project theiaide/theia:latest
             cmd = [
                 "docker", "run", "-d",
                 "--name", container_name,
                 "-p", f"{port}:3000",
                 "-v", f"{project_dir.absolute()}:/home/project",
-                "--rm",  # Auto-remove on exit to prevent conflicts
                 self.theia_image
             ]
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             
             if result.returncode == 0:
+                # Get server host from environment or use localhost  
+                server_host = os.getenv('SERVER_HOST', 'localhost')
+                
                 return {
                     "success": True,
                     "status": "running",
-                    "url": f"http://172.232.105.47:{port}",
+                    "url": f"http://{server_host}:{port}",
                     "port": port,
                     "container_name": container_name
                 }

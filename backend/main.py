@@ -387,7 +387,7 @@ except Exception as e:
 # Initialize service manager with fallback
 if SERVICES_AVAILABLE:
     service_manager = AdminServiceManager(db)
-    theia_manager = TheiaContainerManager()
+    theia_manager = TheiaContainerManager(db_manager=db)
 else:
     # Create simple fallback service manager
     class FallbackServiceManager:
