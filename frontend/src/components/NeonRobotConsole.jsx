@@ -495,16 +495,42 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
           
           {/* Right side - Main actions (simplified to two main buttons) */}
           <HStack spacing={3}>
-            <Button
-              size="sm"
-              colorScheme={userMode === "preview" ? "orange" : "green"}
-              onClick={userMode === "preview" ? onBack : handleRunCode}
-              isLoading={codeLoading}
-              loadingText="Running..."
-              disabled={userMode === "preview" && codeLoading}
-            >
-              {userMode === "preview" ? "📅 Book for Robot Access" : "🚀 Run Code on Robot"}
-            </Button>
+            {userMode === "preview" ? (
+              <>
+                <Tooltip 
+                  label="👉 Code execution on robot requires booking."
+                  placement="top"
+                  bg="orange.500"
+                >
+                  <Button
+                    size="sm"
+                    colorScheme="gray"
+                    onClick={handleRunCode}
+                    isDisabled={true}
+                  >
+                    🚀 Run Code (Booking Required)
+                  </Button>
+                </Tooltip>
+                <Button
+                  size="sm"
+                  colorScheme="orange"
+                  onClick={onBack}
+                >
+                  📅 Book Service
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                colorScheme="green"
+                onClick={handleRunCode}
+                isLoading={codeLoading}
+                loadingText="Running..."
+                disabled={codeLoading}
+              >
+                🚀 Run Code on Robot
+              </Button>
+            )}
             
             <Button
               size="sm"

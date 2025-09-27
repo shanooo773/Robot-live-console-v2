@@ -289,63 +289,14 @@ const TheiaIDE = ({ user, authToken, onError }) => {
             p={8} 
             textAlign="center"
           >
-            {theiaStatus?.status === "not_created" && !theiaStatus?.auto_start_attempted && (
-              <>
-                <Text fontSize="4xl">🚀</Text>
-                <Text color="gray.300" fontSize="lg" fontWeight="bold">
-                  Eclipse Theia IDE
-                </Text>
-                <Text color="gray.500" fontSize="sm" maxW="md">
-                  Your development environment is ready to start. 
-                  Use "Run Code" to auto-launch your workspace.
-                </Text>
-              </>
-            )}
-
-            {theiaStatus?.auto_start_attempted && theiaStatus?.status !== "running" && (
-              <>
-                <Spinner size="xl" color="blue.400" />
-                <Text color="gray.300" fontSize="lg" fontWeight="bold">
-                  Starting IDE...
-                </Text>
-                <Text color="gray.500" fontSize="sm">
-                  Your development environment is being prepared.
-                </Text>
-              </>
-            )}
-
-            {theiaStatus?.status === "stopped" && (
-              <>
-                <Text fontSize="4xl">⏸️</Text>
-                <Text color="gray.300" fontSize="lg" fontWeight="bold">
-                  IDE Stopped
-                </Text>
-                <Text color="gray.500" fontSize="sm" maxW="md">
-                  Click "Run Code" to restart your development environment.
-                </Text>
-              </>
-            )}
-
-            {isStarting && (
-              <>
-                <Spinner size="xl" color="blue.400" />
-                <Text color="gray.300" fontSize="lg" fontWeight="bold">
-                  Starting IDE...
-                </Text>
-                <Text color="gray.500" fontSize="sm">
-                  Please wait while your container starts.
-                </Text>
-              </>
-            )}
-
-            {isLoading && !theiaStatus && (
-              <>
-                <Spinner size="lg" color="blue.400" />
-                <Text color="gray.300" fontSize="md">
-                  Checking IDE status...
-                </Text>
-              </>
-            )}
+            {/* Always show starting state for non-running containers - removed the startup message */}
+            <Spinner size="xl" color="blue.400" />
+            <Text color="gray.300" fontSize="lg" fontWeight="bold">
+              Starting IDE...
+            </Text>
+            <Text color="gray.500" fontSize="sm">
+              Your development environment is being prepared.
+            </Text>
           </VStack>
         )}
       </Box>
