@@ -662,7 +662,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
         )}
 
         {/* Code Preview Access - Always Available */}
-        {authToken && !isDemoMode() && (
+        {authToken && !isDemoUser() && (
           <Card w="full" bg="gray.800" border="1px solid" borderColor="blue.500">
             <CardBody>
               <VStack spacing={4}>
