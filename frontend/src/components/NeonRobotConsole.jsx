@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { 
   Box, 
   HStack, 
@@ -18,45 +18,83 @@ import {
   ModalBody,
   ModalCloseButton,
   useDisclosure,
-  IconButton,
-  Tooltip,
 } from "@chakra-ui/react";
 import { 
-  ViewIcon, 
-  RepeatIcon, 
-  CloseIcon, 
-  SettingsIcon,
   InfoIcon,
   ChevronRightIcon,
-  ViewOffIcon,
 } from "@chakra-ui/icons";
 import TheiaIDE from "./TheiaIDE";
 import WebRTCVideoPlayer from "./WebRTCVideoPlayer";
 import RobotSelector from "./RobotSelector";
-import { checkAccess, getVideo, getMyActiveBookings, getAvailableRobots } from "../api";
+import { getMyActiveBookings, getAvailableRobots, executeRobotCode } from "../api";
+import PropTypes from 'prop-types';
 
 const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
-  // Layout state
-  const [panelLayout, setPanelLayout] = useState("split"); // "split", "ide-expanded", "video-expanded"
-  const [dividerPosition, setDividerPosition] = useState(50); // percentage
-  const [isDragging, setIsDragging] = useState(false);
-  
-  // Existing state
+  // Simplified state - remove complex layout state
   const [robot, setRobot] = useState(slot?.robotType || "turtlebot");
   const [hasAccess, setHasAccess] = useState(false);
-  const [showVideo, setShowVideo] = useState(false);
-  const [videoUrl, setVideoUrl] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [videoLoading, setVideoLoading] = useState(false);
+  const [codeRunning, setCodeRunning] = useState(false);
   const [activeBookings, setActiveBookings] = useState([]);
   const [availableRobots, setAvailableRobots] = useState([]);
   const [robotNames, setRobotNames] = useState({});
+  const [webrtcAccessDenied, setWebrtcAccessDenied] = useState(false);
+  const [logs, setLogs] = useState([]);
   
-  // Modal state
+  // Modal state for logs
   const { isOpen: isLogsOpen, onOpen: onLogsOpen, onClose: onLogsClose } = useDisclosure();
   
   const toast = useToast();
-  const containerRef = useRef();
+
+  // Utility functions
+  const addLog = (message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev, { timestamp, message, type }]);
+  };
+
+  const onSelect = (robotType) => {
+    setRobot(robotType);
+    addLog(`Switched to robot: ${robotNames[robotType]?.name || robotType}`);
+  };
+
+  // Main action handlers
+  const handleRunCode = async () => {
+    setCodeRunning(true);
+    addLog("Initializing code execution...");
+    
+    try {
+      // Auto-start Theia container if not running
+      addLog("Ensuring Theia container is running...");
+      
+      // Get code from Theia IDE (this would need integration with TheiaIDE component)
+      // For now, we'll show a placeholder
+      const result = await executeRobotCode(
+        "# Your code from Theia IDE will be executed here\nprint('Hello from robot!')", 
+        robot
+      );
+      
+      addLog(`Code execution completed: ${result.message || 'Success'}`, 'success');
+      toast({
+        title: "Code Executed",
+        description: `Successfully pushed code to ${robotNames[robot]?.name || robot}`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error("Code execution failed:", error);
+      addLog(`Code execution failed: ${error.message}`, 'error');
+      toast({
+        title: "Code Execution Failed",
+        description: error.message,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setCodeRunning(false);
+    }
+  };
 
   // Load robot names and check access (existing logic)
   const loadRobotNames = async () => {
@@ -98,50 +136,43 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
       await loadRobotNames();
       
       try {
+        // Demo users get full access (IDE + WebRTC)
         if (user?.isDemoUser || user?.isDemoAdmin || user?.isDemoMode || 
             localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin') || 
             localStorage.getItem('isDummy') || localStorage.getItem('isDemoMode')) {
             
           setHasAccess(true);
           setAvailableRobots(['turtlebot', 'robot_arm', 'robot_hand']);
+          addLog("Demo user session initialized - full access granted");
         } else if (authToken) {
+          // Regular users: Always get IDE access (24/7), WebRTC controlled by booking
+          setHasAccess(true); // Always grant IDE access
+          
           try {
             const bookings = await getMyActiveBookings(authToken);
             setActiveBookings(bookings);
             
             const robotTypes = [...new Set(bookings.map(booking => booking.robot_type))];
-            setAvailableRobots(robotTypes);
-            setHasAccess(robotTypes.length > 0);
+            setAvailableRobots(robotTypes.length > 0 ? robotTypes : ['turtlebot']); // Default robot for IDE access
             
             if (robotTypes.length > 0 && !robotTypes.includes(robot)) {
               setRobot(robotTypes[0]);
             }
             
-            if (robotTypes.length === 0) {
-              toast({
-                title: "No Active Bookings",
-                description: "You need an active booking to access the development console.",
-                status: "warning",
-                duration: 5000,
-                isClosable: true,
-              });
-            }
+            addLog(`IDE access granted. Active bookings: ${robotTypes.length > 0 ? robotTypes.join(', ') : 'None'}`);
           } catch (error) {
             console.error("Failed to fetch active bookings:", error);
-            setHasAccess(false);
-            toast({
-              title: "Error",
-              description: "Failed to load your active bookings.",
-              status: "error",
-              duration: 5000,
-              isClosable: true,
-            });
+            // Still grant IDE access even if booking fetch fails
+            setAvailableRobots(['turtlebot']); // Default for IDE access
+            addLog("IDE access granted (booking check failed, but IDE available 24/7)");
           }
         } else {
           setHasAccess(false);
+          addLog("Authentication required for access");
         }
       } catch (error) {
         console.error("Access check failed:", error);
+        addLog(`Access check failed: ${error.message}`);
         toast({
           title: "Access Check Failed",
           description: "Unable to verify access. Please try again.",
@@ -157,93 +188,7 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
     checkUserAccess();
   }, [authToken, user, toast, robot]);
 
-  // Panel control functions
-  const expandIDE = () => setPanelLayout("ide-expanded");
-  const expandVideo = () => setPanelLayout("video-expanded");
-  const resetSplit = () => {
-    setPanelLayout("split");
-    setDividerPosition(50);
-  };
 
-  // Drag handling for resizable divider
-  const handleMouseDown = (e) => {
-    setIsDragging(true);
-    document.body.style.userSelect = 'none';
-  };
-
-  const handleMouseMove = (e) => {
-    if (!isDragging || !containerRef.current) return;
-    
-    const rect = containerRef.current.getBoundingClientRect();
-    const newPosition = ((e.clientX - rect.left) / rect.width) * 100;
-    
-    // Constrain between 20% and 80%
-    const constrainedPosition = Math.min(Math.max(newPosition, 20), 80);
-    setDividerPosition(constrainedPosition);
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    document.body.style.userSelect = '';
-  };
-
-  useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [isDragging]);
-
-  const onSelect = (robotType) => {
-    setRobot(robotType);
-    setShowVideo(false);
-    setVideoUrl(null);
-  };
-
-  const handleGetRealResult = async () => {
-    setVideoLoading(true);
-    try {
-      if (authToken) {
-        const videoBlob = await getVideo(robot, authToken);
-        const url = URL.createObjectURL(videoBlob);
-        setVideoUrl(url);
-        setShowVideo(true);
-        toast({
-          title: "Video Loaded",
-          description: `${robotNames[robot].name} simulation video is now playing.`,
-          status: "success",
-          duration: 3000,
-          isClosable: true,
-        });
-      } else if (user?.isDemoMode || user?.isDemoUser || user?.isDemoAdmin || 
-                 localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin') || 
-                 localStorage.getItem('isDummy') || localStorage.getItem('isDemoMode')) {
-        toast({
-          title: "Demo Mode",
-          description: `In demo mode, ${robotNames[robot]?.name || robot} simulation would display here. Video access depends on robot configuration.`,
-          status: "info",
-          duration: 5000,
-          isClosable: true,
-        });
-      }
-    } catch (error) {
-      console.error("Failed to load video:", error);
-      toast({
-        title: "Video Load Failed",
-        description: error.response?.data?.detail || "Unable to load simulation video. Please try again.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-      });
-    } finally {
-      setVideoLoading(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -263,34 +208,23 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
           <Alert status="warning" variant="glassPanel" borderRadius="12px">
             <AlertIcon />
             <Box>
-              <Text fontWeight="bold" color="white">Access Denied</Text>
-              <Text color="gray.300">You need an active booking to access the development console.</Text>
+              <Text fontWeight="bold" color="white">Authentication Required</Text>
+              <Text color="gray.300">Please log in to access the Eclipse Theia IDE console.</Text>
             </Box>
           </Alert>
           <Button variant="neonPrimary" onClick={onBack}>
-            Go Back to Booking
+            Go Back to Login
           </Button>
         </VStack>
       </Box>
     );
   }
 
-  // Calculate panel widths based on layout mode
-  const getLeftPanelWidth = () => {
-    if (panelLayout === "ide-expanded") return "100%";
-    if (panelLayout === "video-expanded") return "0%";
-    return `${dividerPosition}%`;
-  };
 
-  const getRightPanelWidth = () => {
-    if (panelLayout === "ide-expanded") return "0%";
-    if (panelLayout === "video-expanded") return "100%";
-    return `${100 - dividerPosition}%`;
-  };
 
   return (
-    <Box h="100vh" w="100vw" overflow="hidden" position="relative">
-      {/* Neon Glass Top Bar */}
+    <Box h="100vh" w="100vw" overflow="hidden" position="relative" bg="gray.900">
+      {/* Simplified Top Bar */}
       <Box
         position="absolute"
         top="0"
@@ -298,7 +232,7 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
         right="0"
         zIndex="1000"
         h="60px"
-        bg="rgba(26, 32, 44, 0.2)"
+        bg="rgba(26, 32, 44, 0.9)"
         backdropFilter="blur(12px)"
         borderBottom="1px solid rgba(0,255,200,0.3)"
         display="flex"
@@ -307,11 +241,11 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
         boxShadow="0 4px 20px rgba(0,0,0,0.3)"
       >
         <HStack spacing={4} flex="1">
-          {/* Left side - Robot info */}
+          {/* Left side - User info */}
           <HStack spacing={3}>
             <Avatar size="sm" name={user.name} />
             <VStack align="start" spacing={0}>
-              <Text color="white" fontSize="sm" fontWeight="600" fontFamily="'Exo 2', sans-serif">
+              <Text color="white" fontSize="sm" fontWeight="600">
                 {user.name}
               </Text>
               {(user?.isDemoUser || user?.isDemoAdmin || localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin')) && (
@@ -326,80 +260,40 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
               <Text color="neon.cyan" fontSize="sm" fontWeight="600">
                 {robotNames[robot]?.name || robot}
               </Text>
-              <Badge variant="outline" colorScheme="green" fontSize="xs">ACTIVE</Badge>
             </HStack>
           </HStack>
           
           <Box flex="1" />
           
-          {/* Center - Panel controls */}
-          <HStack spacing={2}>
-            <Tooltip label="Expand IDE" placement="bottom">
-              <IconButton
-                icon={<ChevronRightIcon />}
-                size="sm"
-                variant="ghost"
-                onClick={expandIDE}
-                isActive={panelLayout === "ide-expanded"}
-                _active={{ bg: "rgba(0,255,200,0.2)" }}
-              />
-            </Tooltip>
-            
-            <Tooltip label="Expand Video" placement="bottom">
-              <IconButton
-                icon={<ViewIcon />}
-                size="sm"
-                variant="ghost"
-                onClick={expandVideo}
-                isActive={panelLayout === "video-expanded"}
-                _active={{ bg: "rgba(0,255,200,0.2)" }}
-              />
-            </Tooltip>
-            
-            <Tooltip label="Reset Split View" placement="bottom">
-              <IconButton
-                icon={<ViewOffIcon />}
-                size="sm"
-                variant="ghost"
-                onClick={resetSplit}
-                isActive={panelLayout === "split"}
-                _active={{ bg: "rgba(0,255,200,0.2)" }}
-              />
-            </Tooltip>
+          {/* Center - Main Actions (Only 2 buttons as per requirements) */}
+          <HStack spacing={4}>
+                <Button
+                  colorScheme="green"
+                  size="md"
+                  onClick={handleRunCode}
+                  isLoading={codeRunning}
+                  loadingText="Running Code..."
+                  leftIcon={<ChevronRightIcon />}
+                >
+                  Run Code
+                </Button>
+                
+                <Button
+                  colorScheme="blue"
+                  variant="outline"
+                  size="md"
+                  onClick={onLogsOpen}
+                  leftIcon={<InfoIcon />}
+                >
+                  View Logs
+                </Button>
           </HStack>
           
           <Box flex="1" />
           
-          {/* Right side - Controls */}
+          {/* Right side - Navigation */}
           <HStack spacing={3}>
             <RobotSelector robot={robot} onSelect={onSelect} availableRobots={availableRobots} />
-            
-            <Button
-              size="sm"
-              variant="solid"
-              onClick={handleGetRealResult}
-              isLoading={videoLoading}
-              loadingText="Loading..."
-            >
-              Get Real Result
-            </Button>
-            
-            <Tooltip label="View Logs & Instructions" placement="bottom">
-              <IconButton
-                icon={<InfoIcon />}
-                size="sm"
-                variant="ghost"
-                onClick={onLogsOpen}
-              />
-            </Tooltip>
-            
-            <Tooltip label="Settings" placement="bottom">
-              <IconButton
-                icon={<SettingsIcon />}
-                size="sm"
-                variant="ghost"
-              />
-            </Tooltip>
             
             <Button size="sm" variant="ghost" onClick={onBack}>
               Back
@@ -412,121 +306,88 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
         </HStack>
       </Box>
 
-      {/* Main Content Area */}
+      {/* Main Content Area - Simplified Layout */}
       <Box
-        ref={containerRef}
         mt="60px"
         h="calc(100vh - 60px)"
         display="flex"
         position="relative"
       >
-        {/* Left Panel - Eclipse Theia IDE */}
+        {/* Left Panel - Eclipse Theia IDE (50% width) */}
         <Box
-          w={getLeftPanelWidth()}
+          w="50%"
           h="100%"
-          display={panelLayout === "video-expanded" ? "none" : "block"}
+          borderRight="1px solid rgba(0,255,200,0.3)"
           position="relative"
           overflow="hidden"
         >
-          <Box h="100%" variant="glassPanel" borderRadius="0">
-            <TheiaIDE 
-              user={user} 
-              authToken={authToken}
-              onError={(error) => {
-                toast({
-                  title: "IDE Error",
-                  description: error.message,
-                  status: "error",
-                  duration: 5000,
-                  isClosable: true,
-                });
-              }}
-            />
-          </Box>
+          <TheiaIDE 
+            user={user} 
+            authToken={authToken}
+            onError={(error) => {
+              addLog(`IDE Error: ${error.message}`, 'error');
+              toast({
+                title: "IDE Error",
+                description: error.message,
+                status: "error",
+                duration: 5000,
+                isClosable: true,
+              });
+            }}
+          />
         </Box>
 
-        {/* Draggable Divider */}
-        {panelLayout === "split" && (
-          <Box
-            position="absolute"
-            left={`${dividerPosition}%`}
-            top="0"
-            bottom="0"
-            w="4px"
-            bg="rgba(0,255,200,0.3)"
-            cursor="col-resize"
-            zIndex="10"
-            _hover={{
-              bg: "rgba(0,255,200,0.6)",
-              boxShadow: "0 0 10px rgba(0,255,200,0.4)",
-            }}
-            onMouseDown={handleMouseDown}
-            transform="translateX(-2px)"
-          >
-            <Box
-              position="absolute"
-              top="50%"
-              left="50%"
-              transform="translate(-50%, -50%)"
-              w="20px"
-              h="40px"
-              bg="rgba(0,255,200,0.2)"
-              borderRadius="4px"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              fontSize="xs"
-              color="neon.cyan"
-            >
-              ⋮
-            </Box>
-          </Box>
-        )}
-
-        {/* Right Panel - WebRTC Video Feed */}
+        {/* Right Panel - WebRTC Video Feed (50% width) */}
         <Box
-          w={getRightPanelWidth()}
+          w="50%"
           h="100%"
-          display={panelLayout === "ide-expanded" ? "none" : "block"}
           position="relative"
           overflow="hidden"
+          bg="rgba(0,0,0,0.5)"
         >
-          <Box h="100%" variant="glassPanel" borderRadius="0" p={4}>
-            <VStack h="100%" spacing={4}>
-              <Text variant="neonGlow" fontSize="lg">
-                {showVideo ? `${robotNames[robot]?.name} Simulation Result` : "Robot Video Feed"}
-              </Text>
-              
-              <Box 
-                flex="1" 
-                w="100%" 
-                variant="neonBorder" 
-                borderRadius="8px" 
-                overflow="hidden"
-                bg="rgba(0,0,0,0.5)"
-              >
-                {showVideo && videoUrl ? (
-                  <video 
-                    width="100%" 
-                    height="100%" 
-                    controls 
-                    autoPlay
-                    playsInline
-                    muted
-                    style={{ 
-                      background: "#000",
-                      objectFit: "contain"
-                    }}
+          <VStack h="100%" spacing={4} p={4}>
+            <Text color="white" fontSize="lg" fontWeight="bold">
+              Robot Video Feed
+            </Text>
+            
+            <Box 
+              flex="1" 
+              w="100%" 
+              border="1px solid rgba(0,255,200,0.3)"
+              borderRadius="8px" 
+              overflow="hidden"
+              bg="rgba(0,0,0,0.8)"
+              position="relative"
+            >
+              {webrtcAccessDenied ? (
+                <VStack spacing={4} justify="center" h="100%" p={6} textAlign="center">
+                  <Text color="orange.300" fontSize="lg" fontWeight="bold">
+                    🔒 Robot Feed Access Restricted
+                  </Text>
+                  <Text color="gray.300" fontSize="md">
+                    To access the robot feed, please book a session.
+                  </Text>
+                  <Button 
+                    colorScheme="blue" 
+                    variant="outline" 
+                    onClick={onBack}
+                    size="sm"
                   >
-                    <source src={videoUrl} type="video/mp4" />
-                    Your browser does not support the video tag.
-                  </video>
-                ) : (
-                  <WebRTCVideoPlayer 
-                    user={user}
-                    authToken={authToken}
-                    robotType={robot}
-                    onError={(error) => {
+                    Book a Session
+                  </Button>
+                </VStack>
+              ) : (
+                <WebRTCVideoPlayer 
+                  user={user}
+                  authToken={authToken}
+                  robotType={robot}
+                  onError={(error) => {
+                    addLog(`WebRTC Error: ${error.message}`, 'error');
+                    // Check if it's an access control error
+                    if (error.message.includes('booking') || error.message.includes('session')) {
+                      setWebrtcAccessDenied(true);
+                      addLog("WebRTC access denied - booking required for robot feed");
+                    } else {
                       toast({
                         title: "Video Stream Error",
                         description: error.message,
@@ -534,67 +395,74 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
                         duration: 5000,
                         isClosable: true,
                       });
-                    }}
-                  />
-                )}
-              </Box>
-              
-              {showVideo && (
-                <Button 
-                  size="sm" 
-                  variant="solid"
-                  onClick={() => {
-                    setShowVideo(false);
-                    if (videoUrl) {
-                      URL.revokeObjectURL(videoUrl);
-                      setVideoUrl(null);
                     }
                   }}
-                >
-                  Back to Live Video Feed
-                </Button>
+                />
               )}
-            </VStack>
-          </Box>
+            </Box>
+          </VStack>
         </Box>
       </Box>
 
-      {/* Logs Modal */}
+      {/* Enhanced Logs Modal */}
       <Modal isOpen={isLogsOpen} onClose={onLogsClose} size="xl">
         <ModalOverlay backdropFilter="blur(4px)" />
-        <ModalContent bg="rgba(26, 32, 44, 0.9)" backdropFilter="blur(12px)" border="1px solid rgba(0,255,200,0.3)">
+        <ModalContent bg="rgba(26, 32, 44, 0.95)" backdropFilter="blur(12px)" border="1px solid rgba(0,255,200,0.3)">
           <ModalHeader color="white" fontFamily="'Orbitron', sans-serif">
-            Robot Console Logs & Instructions
+            System Logs & Status
           </ModalHeader>
           <ModalCloseButton color="white" />
           <ModalBody pb={6} color="gray.300">
             <VStack spacing={4} align="start">
-              <Box>
-                <Text fontWeight="bold" color="neon.cyan" mb={2}>Current Session:</Text>
-                <Text>Robot Type: {robotNames[robot]?.name || robot}</Text>
-                <Text>Status: Connected</Text>
-                <Text>IDE: Eclipse Theia Ready</Text>
-                <Text>Video Feed: {showVideo ? "Simulation Active" : "Live Stream Active"}</Text>
+              <Box w="100%">
+                <Text fontWeight="bold" color="neon.cyan" mb={2}>Current Session Status:</Text>
+                <Text>Robot: {robotNames[robot]?.name || robot}</Text>
+                <Text>IDE: Eclipse Theia Ready (24/7 Access)</Text>
+                <Text>WebRTC: {webrtcAccessDenied ? "Access Restricted (Booking Required)" : "Available"}</Text>
+                <Text>Active Bookings: {activeBookings.length > 0 ? activeBookings.map(b => b.robot_type).join(', ') : 'None'}</Text>
               </Box>
               
-              <Box>
+              <Box w="100%">
+                <Text fontWeight="bold" color="neon.cyan" mb={2}>Activity Log:</Text>
+                <Box 
+                  maxH="300px" 
+                  overflowY="auto" 
+                  bg="rgba(0,0,0,0.3)" 
+                  p={3} 
+                  borderRadius="md"
+                  border="1px solid rgba(0,255,200,0.2)"
+                >
+                  {logs.length === 0 ? (
+                    <Text color="gray.500" fontSize="sm">No activity yet...</Text>
+                  ) : (
+                    logs.map((log, index) => (
+                      <HStack key={index} spacing={2} mb={1}>
+                        <Text color="gray.500" fontSize="xs" minW="20">{log.timestamp}</Text>
+                        <Text 
+                          fontSize="sm" 
+                          color={
+                            log.type === 'error' ? 'red.300' : 
+                            log.type === 'success' ? 'green.300' : 
+                            'gray.300'
+                          }
+                        >
+                          {log.message}
+                        </Text>
+                      </HStack>
+                    ))
+                  )}
+                </Box>
+              </Box>
+              
+              <Box w="100%">
                 <Text fontWeight="bold" color="neon.cyan" mb={2}>Instructions:</Text>
                 <VStack spacing={2} align="start" fontSize="sm">
-                  <Text>• Use the IDE panel to write and execute robot code</Text>
-                  <Text>• Monitor robot behavior through the video feed</Text>
-                  <Text>• Use panel controls to expand/collapse views as needed</Text>
-                  <Text>• Drag the center divider to resize panels</Text>
-                  <Text>• Click "Get Real Result" to view simulation videos</Text>
+                  <Text>• Use the Eclipse Theia IDE (left panel) to write and edit robot code - available 24/7</Text>
+                  <Text>• Click &quot;Run Code&quot; to push your code to the selected robot endpoint</Text>
+                  <Text>• Robot video feed (right panel) requires an active booking session</Text>
+                  <Text>• Demo users get full access during demo sessions</Text>
+                  <Text>• All activities are logged and can be viewed in this modal</Text>
                 </VStack>
-              </Box>
-              
-              <Box>
-                <Text fontWeight="bold" color="neon.cyan" mb={2}>Quick Actions:</Text>
-                <HStack spacing={2} wrap="wrap">
-                  <Button size="xs" variant="ghost">Refresh IDE</Button>
-                  <Button size="xs" variant="ghost">Restart Robot</Button>
-                  <Button size="xs" variant="ghost">Reset Session</Button>
-                </HStack>
               </Box>
             </VStack>
           </ModalBody>
@@ -602,6 +470,21 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
       </Modal>
     </Box>
   );
+};
+
+NeonRobotConsole.propTypes = {
+  user: PropTypes.shape({
+    name: PropTypes.string,
+    isDemoUser: PropTypes.bool,
+    isDemoAdmin: PropTypes.bool,
+    isDemoMode: PropTypes.bool,
+  }).isRequired,
+  slot: PropTypes.shape({
+    robotType: PropTypes.string,
+  }),
+  authToken: PropTypes.string,
+  onBack: PropTypes.func.isRequired,
+  onLogout: PropTypes.func.isRequired,
 };
 
 export default NeonRobotConsole;

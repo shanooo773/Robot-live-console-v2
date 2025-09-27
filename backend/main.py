@@ -1105,9 +1105,10 @@ async def get_video(robot_type: str, current_user: dict = Depends(get_current_us
         # Also check for admin access
         is_admin = current_user.get("role") == "admin"
         if not is_admin:
+            logger.warning(f"Video access denied for user {user_id}: No active booking for {robot_type}")
             raise HTTPException(
                 status_code=403, 
-                detail=f"Access denied. Video access requires an active booking session for {robot_type} robot during your scheduled time."
+                detail="To access the robot feed, please book a session."
             )
     
     # Define video file mapping
@@ -1180,24 +1181,23 @@ async def get_available_videos(current_user: dict = Depends(get_current_user)):
 
 @app.get("/theia/status")  
 async def get_theia_status(current_user: dict = Depends(get_current_user)):
-    """Get status of user's Theia container"""
+    """Get status of user's Theia container with 24/7 auto-start"""
     user_id = int(current_user["sub"])
     status = theia_manager.get_container_status(user_id)
     
-    # Auto-start Theia container for demo users if not running
-    if is_demo_user(current_user):
-        if status.get("status") in ["not_created", "stopped", "error"]:
-            logger.info(f"🎯 Auto-starting Theia container for demo user {user_id}")
-            start_result = theia_manager.start_container(user_id)
-            if start_result.get("success"):
-                logger.info(f"✅ Demo user {user_id} Theia container auto-started successfully")
-                # Return the new status after starting
-                status = theia_manager.get_container_status(user_id)
-            else:
-                logger.error(f"❌ Failed to auto-start Theia for demo user {user_id}: {start_result.get('error')}")
-                # Return status with auto-start attempt info
-                status["auto_start_attempted"] = True
-                status["auto_start_error"] = start_result.get("error")
+    # Auto-start Theia container for ALL users if not running (24/7 IDE access)
+    if status.get("status") in ["not_created", "stopped", "error"]:
+        logger.info(f"🎯 Auto-starting Theia container for user {user_id} (24/7 IDE access)")
+        start_result = theia_manager.start_container(user_id)
+        if start_result.get("success"):
+            logger.info(f"✅ User {user_id} Theia container auto-started successfully")
+            # Return the new status after starting
+            status = theia_manager.get_container_status(user_id)
+        else:
+            logger.error(f"❌ Failed to auto-start Theia for user {user_id}: {start_result.get('error')}")
+            # Return status with auto-start attempt info
+            status["auto_start_attempted"] = True
+            status["auto_start_error"] = start_result.get("error")
     
     return status
 
@@ -1742,9 +1742,10 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
     if not await has_booking_for_robot(user_id, robot_id, current_user):
         robot = db.get_robot_by_id(robot_id)
         robot_type = robot.get('type', 'unknown') if robot else 'unknown'
+        logger.warning(f"WebRTC access denied for user {user_id}: No active booking for robot {robot_id} ({robot_type})")
         raise HTTPException(
             status_code=403,
-            detail=f"No active booking session for robot {robot_id} ({robot_type}). Video access requires an active session during your booking time."
+            detail="To access the robot feed, please book a session."
         )
     
     # Get robot details including webrtc_url
@@ -1785,9 +1786,10 @@ async def handle_webrtc_answer(answer: WebRTCAnswer, current_user: dict = Depend
     if not await has_booking_for_robot(user_id, robot_id, current_user):
         robot = db.get_robot_by_id(robot_id)
         robot_type = robot.get('type', 'unknown') if robot else 'unknown'
+        logger.warning(f"WebRTC answer access denied for user {user_id}: No active booking for robot {robot_id} ({robot_type})")
         raise HTTPException(
             status_code=403,
-            detail=f"No active booking session for robot {robot_id} ({robot_type}). WebRTC access requires an active session during your booking time."
+            detail="To access the robot feed, please book a session."
         )
     
     # Get robot details including webrtc_url
@@ -1830,9 +1832,10 @@ async def handle_ice_candidate(ice_candidate: WebRTCIceCandidate, current_user: 
     if not await has_booking_for_robot(user_id, robot_id, current_user):
         robot = db.get_robot_by_id(robot_id)
         robot_type = robot.get('type', 'unknown') if robot else 'unknown'
+        logger.warning(f"WebRTC ICE candidate access denied for user {user_id}: No active booking for robot {robot_id} ({robot_type})")
         raise HTTPException(
             status_code=403,
-            detail=f"No active booking session for robot {robot_id} ({robot_type}). WebRTC access requires an active session during your booking time."
+            detail="To access the robot feed, please book a session."
         )
     
     # Get robot details including webrtc_url
