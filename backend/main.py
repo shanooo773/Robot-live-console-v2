@@ -1910,9 +1910,9 @@ async def get_webrtc_config(current_user: dict = Depends(get_current_user)):
         {"urls": "stun:stun1.l.google.com:19302"},
         {"urls": "stun:stun2.l.google.com:19302"},
         # Local STUN/TURN server (configured in docker-compose)
-        {"urls": f"stun:{os.getenv('VPS_URL', 'localhost').replace('http://', '').replace('https://', '')}:3478"},
+        {"urls": f"stun:{os.getenv('VPS_URL', '174.232.105.47').replace('http://', '').replace('https://', '')}:3478"},
         {
-            "urls": f"turn:{os.getenv('VPS_URL', 'localhost').replace('http://', '').replace('https://', '')}:5349",
+            "urls": f"turn:{os.getenv('VPS_URL', '174.232.105.47').replace('http://', '').replace('https://', '')}:5349",
             "username": "robotuser",
             "credential": "robotpass"
         }
