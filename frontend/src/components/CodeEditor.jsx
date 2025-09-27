@@ -7,15 +7,13 @@ import {
   Button, 
   Avatar, 
   Badge,
-  Container,
-  Card,
-  CardBody,
-  CardHeader,
-  Divider,
   useToast,
   Spinner,
   Alert,
-  AlertIcon
+  AlertIcon,
+  Divider,
+  Flex,
+  Tooltip
 } from "@chakra-ui/react";
 import TheiaIDE from "./TheiaIDE";
 import WebRTCVideoPlayer from "./WebRTCVideoPlayer";
@@ -32,7 +30,61 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
   const [activeBookings, setActiveBookings] = useState([]);
   const [availableRobots, setAvailableRobots] = useState([]);
   const [robotNames, setRobotNames] = useState({});
+  
+  // New state for panel management
+  const [leftPanelWidth, setLeftPanelWidth] = useState(50); // percentage
+  const [isDragging, setIsDragging] = useState(false);
+  const [panelView, setPanelView] = useState("split"); // "split", "ide-only", "video-only"
+  
+  const dividerRef = useRef(null);
+  const containerRef = useRef(null);
   const toast = useToast();
+
+  // Panel resize handlers
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging || !containerRef.current) return;
+    
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+    
+    // Constrain between 20% and 80%
+    const constrainedWidth = Math.max(20, Math.min(80, newLeftWidth));
+    setLeftPanelWidth(constrainedWidth);
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging]);
+
+  // Panel view handlers
+  const handleExpandIDE = () => {
+    setPanelView("ide-only");
+  };
+
+  const handleExpandVideo = () => {
+    setPanelView("video-only");
+  };
+
+  const handleResetSplit = () => {
+    setPanelView("split");
+    setLeftPanelWidth(50);
+  };
 
   const loadRobotNames = async () => {
     try {
@@ -57,8 +109,13 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
       setRobotNames(formattedRobots);
     } catch (error) {
       console.error('Error loading robot names:', error);
-      // Set empty robot names for non-demo users
-      setRobotNames({});
+      // Set fallback robot names for demo users or when API fails
+      const fallbackRobotNames = {
+        turtlebot: { name: "TurtleBot Navigation", emoji: "🤖" },
+        robot_arm: { name: "6-DOF Robot Arm", emoji: "🦾" },
+        dexterous_hand: { name: "Dexterous Hand", emoji: "🤲" }
+      };
+      setRobotNames(fallbackRobotNames);
     }
   };
 
@@ -77,25 +134,34 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
         
         // Check for demo user access - give immediate access but only for admin-created robots
         if (isDemoUser || isDemoAdmin || isDummy || isDemoMode || user?.isDemoUser || user?.isDemoAdmin || user?.isDemoMode) {
-          // Demo users get access to all available admin-created robots
-          const robotData = await getAvailableRobots();
-          const availableRobotTypes = robotData.robots || [];
-          
-          setAvailableRobots(availableRobotTypes);
-          setHasAccess(availableRobotTypes.length > 0);
-          
-          if (availableRobotTypes.length > 0 && !availableRobotTypes.includes(robot)) {
-            setRobot(availableRobotTypes[0]);
-          }
-          
-          if (availableRobotTypes.length === 0) {
-            toast({
-              title: "No Robots Available",
-              description: "No robots have been configured by admin yet.",
-              status: "info",
-              duration: 5000,
-              isClosable: true,
-            });
+          try {
+            // Demo users get access to all available admin-created robots
+            const robotData = await getAvailableRobots();
+            const availableRobotTypes = robotData.robots || [];
+            
+            setAvailableRobots(availableRobotTypes);
+            setHasAccess(availableRobotTypes.length > 0);
+            
+            if (availableRobotTypes.length > 0 && !availableRobotTypes.includes(robot)) {
+              setRobot(availableRobotTypes[0]);
+            }
+            
+            if (availableRobotTypes.length === 0) {
+              toast({
+                title: "No Robots Available",
+                description: "No robots have been configured by admin yet.",
+                status: "info",
+                duration: 5000,
+                isClosable: true,
+              });
+            }
+          } catch (error) {
+            // If API fails in demo mode, provide fallback demo robots
+            console.warn("API failed in demo mode, using fallback robots:", error);
+            const fallbackRobots = ["turtlebot", "robot_arm", "dexterous_hand"];
+            setAvailableRobots(fallbackRobots);
+            setHasAccess(true);
+            setRobot(fallbackRobots[0]);
           }
         } else if (authToken) {
           // Regular access check for authenticated users
@@ -205,194 +271,460 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
 
   if (loading) {
     return (
-      <Container maxW="7xl" py={8}>
-        <VStack spacing={6} justify="center" minH="60vh">
-          <Spinner size="xl" color="blue.500" />
-          <Text color="white">Checking access permissions...</Text>
+      <Box 
+        height="100vh" 
+        width="100vw" 
+        display="flex" 
+        alignItems="center" 
+        justifyContent="center"
+        bg="linear-gradient(135deg, #0a0f23 0%, #1a1a2e 50%, #16213e 100%)"
+      >
+        <VStack spacing={6}>
+          <Spinner 
+            size="xl" 
+            color="rgba(0, 255, 200, 0.8)"
+            thickness="4px"
+            speed="0.8s"
+          />
+          <Text 
+            color="rgba(0, 255, 200, 0.9)" 
+            fontSize="lg"
+            fontFamily="'Orbitron', sans-serif"
+            animation="neonGlow 2s ease-in-out infinite alternate"
+          >
+            Initializing Neural Interface...
+          </Text>
         </VStack>
-      </Container>
+      </Box>
     );
   }
 
   if (!hasAccess) {
     return (
-      <Container maxW="7xl" py={8}>
-        <VStack spacing={6}>
-          <Alert status="warning" bg="orange.900" borderRadius="md">
-            <AlertIcon />
+      <Box 
+        height="100vh" 
+        width="100vw" 
+        display="flex" 
+        alignItems="center" 
+        justifyContent="center"
+        bg="linear-gradient(135deg, #0a0f23 0%, #1a1a2e 50%, #16213e 100%)"
+      >
+        <VStack spacing={6} maxW="md" textAlign="center">
+          <Alert 
+            status="warning" 
+            bg="rgba(255, 165, 0, 0.1)" 
+            border="1px solid rgba(255, 165, 0, 0.3)"
+            borderRadius="16px"
+            backdropFilter="blur(12px)"
+          >
+            <AlertIcon color="orange.300" />
             <Box>
-              <Text fontWeight="bold">Access Denied</Text>
-              <Text>You need an active booking to access the development console.</Text>
+              <Text fontWeight="bold" color="orange.300">Neural Link Denied</Text>
+              <Text color="orange.200">Active booking required for console access.</Text>
             </Box>
           </Alert>
-          <Button colorScheme="blue" onClick={onBack}>
-            Go Back to Booking
+          <Button 
+            variant="neonPill" 
+            onClick={onBack}
+            leftIcon={<FaHome />}
+          >
+            Return to Base
           </Button>
         </VStack>
-      </Container>
+      </Box>
     );
   }
 
   return (
-    <Container maxW="7xl" py={8}>
-      <VStack spacing={6}>
-        {/* Session Header */}
-        <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
-          <CardHeader>
-            <VStack spacing={4}>
-              <HStack justify="space-between" w="full">
-                <VStack align="start" spacing={2}>
-                  <HStack>
-                    <Avatar size="sm" name={user.name} />
-                    <VStack align="start" spacing={0}>
-                      <HStack spacing={2}>
-                        <Text color="white" fontWeight="bold">{user.name}</Text>
-                        {(user?.isDemoUser || user?.isDemoAdmin || localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin')) && (
-                          <Badge colorScheme="orange" fontSize="xs">
-                            DEMO MODE
-                          </Badge>
-                        )}
-                      </HStack>
-                      <Text color="gray.400" fontSize="sm">{user.email}</Text>
-                    </VStack>
-                  </HStack>
-                  
-                  {slot && (
-                    <HStack spacing={4}>
-                      <Badge colorScheme="green">Development Session Active</Badge>
-                      <HStack>
-                        <Text fontSize="lg">{robotNames[slot.robotType]?.emoji || "🤖"}</Text>
-                        <Text color="gray.300">
-                          {robotNames[slot.robotType]?.name || slot.robotType}
-                        </Text>
-                      </HStack>
-                      <Text color="gray.400">
-                        {new Date(slot.date).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric' 
-                        })} at {slot.startTime}
-                      </Text>
-                    </HStack>
-                  )}
-                </VStack>
-                
-                <HStack>
-                  <Button variant="ghost" onClick={onBack} color="gray.400">
-                    ← Back to Booking
-                  </Button>
-                  <Button variant="ghost" onClick={onLogout} color="gray.400">
-                    Logout
-                  </Button>
-                </HStack>
-              </HStack>
-            </VStack>
-          </CardHeader>
-        </Card>
+    <Box 
+      height="100vh" 
+      width="100vw" 
+      overflow="hidden"
+      bg="linear-gradient(135deg, #0a0f23 0%, #1a1a2e 50%, #16213e 100%)"
+      position="relative"
+    >
+      {/* Animated Background */}
+      <Box
+        position="absolute"
+        top="0"
+        left="0"
+        right="0"
+        bottom="0"
+        opacity="0.05"
+        background="linear-gradient(-45deg, rgba(0, 255, 200, 0.1), rgba(0, 191, 255, 0.1), rgba(138, 43, 226, 0.1), rgba(255, 20, 147, 0.1))"
+        backgroundSize="400% 400%"
+        animation="neonWave 15s ease infinite"
+        zIndex="0"
+      />
 
-        {/* Main IDE and Video Panel */}
-        <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
-          <CardHeader>
-            <HStack justify="space-between" align="center">
-              <VStack align="start" spacing={1}>
-                <Text fontSize="xl" fontWeight="bold" color="white">
-                  Development Console - Robot Control Interface
-                </Text>
-                <HStack spacing={4}>
-                  <RobotSelector robot={robot} onSelect={onSelect} availableRobots={availableRobots} />
-                  <Badge colorScheme="blue" fontSize="xs">
-                    Eclipse Theia IDE + Robot Video Feed
-                  </Badge>
+      {/* Top Navigation Bar */}
+      <Box
+        position="relative"
+        zIndex="10"
+        bg="rgba(10, 15, 35, 0.8)"
+        backdropFilter="blur(16px)"
+        borderBottom="1px solid rgba(0, 255, 200, 0.3)"
+        boxShadow="0 4px 20px rgba(0, 255, 200, 0.1)"
+        px={6}
+        py={4}
+      >
+        <Flex justify="space-between" align="center">
+          {/* Left: Session Info */}
+          <HStack spacing={6}>
+            <HStack spacing={3}>
+              <Avatar 
+                size="sm" 
+                name={user.name}
+                bg="rgba(0, 255, 200, 0.2)"
+                color="rgba(0, 255, 200, 1)"
+              />
+              <VStack align="start" spacing={0}>
+                <HStack spacing={2}>
+                  <Text 
+                    color="rgba(0, 255, 200, 0.9)" 
+                    fontWeight="bold"
+                    fontSize="sm"
+                    fontFamily="'Orbitron', sans-serif"
+                  >
+                    {user.name}
+                  </Text>
+                  {(user?.isDemoUser || user?.isDemoAdmin || localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin')) && (
+                    <Badge variant="neonPill" colorScheme="orange">
+                      DEMO
+                    </Badge>
+                  )}
                 </HStack>
+                <Text color="rgba(255, 255, 255, 0.6)" fontSize="xs">
+                  Neural Link Active
+                </Text>
               </VStack>
+            </HStack>
+
+            <Divider orientation="vertical" h="40px" borderColor="rgba(0, 255, 200, 0.3)" />
+
+            {/* Robot Info */}
+            <HStack spacing={3}>
+              <Text fontSize="lg">{robotNames[robot]?.emoji || "🤖"}</Text>
+              <VStack align="start" spacing={0}>
+                <Text 
+                  color="rgba(0, 255, 200, 0.9)" 
+                  fontWeight="600"
+                  fontSize="sm"
+                  fontFamily="'Orbitron', sans-serif"
+                >
+                  {robotNames[robot]?.name || robot}
+                </Text>
+                <Badge variant="neonPill" colorScheme="green">
+                  ONLINE
+                </Badge>
+              </VStack>
+            </HStack>
+          </HStack>
+
+          {/* Center: Main Controls */}
+          <HStack spacing={3}>
+            <RobotSelector 
+              robot={robot} 
+              onSelect={onSelect} 
+              availableRobots={availableRobots} 
+            />
+            
+            <Tooltip label="Execute Simulation">
               <Button 
-                colorScheme="green" 
+                variant="solid"
                 onClick={handleGetRealResult}
                 isLoading={videoLoading}
-                loadingText="Loading Video..."
-                disabled={videoLoading}
+                loadingText="Executing..."
+                size="sm"
               >
-                Get Real Result
+                ▶ Execute
               </Button>
-            </HStack>
-          </CardHeader>
-          <CardBody>
-            <HStack spacing={6} align="start">
-              {/* Left Panel - Eclipse Theia IDE */}
-              <Box w="50%">
-                <TheiaIDE 
-                  user={user} 
-                  authToken={authToken}
-                  onError={(error) => {
-                    toast({
-                      title: "IDE Error",
-                      description: error.message,
-                      status: "error",
-                      duration: 5000,
-                      isClosable: true,
-                    });
-                  }}
-                />
-              </Box>
+            </Tooltip>
+
+            <Tooltip label="Connect Video Feed">
+              <Button
+                variant="solid"
+                size="sm"
+                aria-label="Video Feed"
+              >
+                📹
+              </Button>
+            </Tooltip>
+
+            <Tooltip label="Refresh Console">
+              <Button
+                variant="solid"
+                size="sm"
+                aria-label="Refresh"
+              >
+                🔄
+              </Button>
+            </Tooltip>
+          </HStack>
+
+          {/* Right: Panel & System Controls */}
+          <HStack spacing={3}>
+            {/* Panel View Controls */}
+            <HStack spacing={1}>
+              <Tooltip label="Expand IDE">
+                <Button
+                  variant={panelView === "ide-only" ? "solid" : "ghost"}
+                  size="sm"
+                  onClick={handleExpandIDE}
+                  aria-label="Expand IDE"
+                >
+                  ⬅
+                </Button>
+              </Tooltip>
               
-              {/* Right Panel - Robot Video Feed */}
-              <Box w="50%">
-                <VStack spacing={4} align="start" h="100%">
-                  <Text fontSize="lg" color="white" fontWeight="bold">
-                    {showVideo ? `${robotNames[robot].name} Simulation Result` : "Robot Video Feed"}
+              <Tooltip label="Reset Split View">
+                <Button
+                  variant={panelView === "split" ? "solid" : "ghost"}
+                  size="sm"
+                  onClick={handleResetSplit}
+                  aria-label="Split View"
+                >
+                  ↔
+                </Button>
+              </Tooltip>
+              
+              <Tooltip label="Expand Video">
+                <Button
+                  variant={panelView === "video-only" ? "solid" : "ghost"}
+                  size="sm"
+                  onClick={handleExpandVideo}
+                  aria-label="Expand Video"
+                >
+                  ➡
+                </Button>
+              </Tooltip>
+            </HStack>
+
+            <Divider orientation="vertical" h="40px" borderColor="rgba(0, 255, 200, 0.3)" />
+
+            <Button 
+              variant="ghost" 
+              onClick={onBack}
+              size="sm"
+            >
+              🏠 Base
+            </Button>
+            
+            <Button 
+              variant="ghost" 
+              onClick={onLogout}
+              size="sm"
+            >
+              🚪 Logout
+            </Button>
+          </HStack>
+        </Flex>
+      </Box>
+
+      {/* Main Content Area */}
+      <Box
+        position="relative"
+        height="calc(100vh - 80px)"
+        width="100%"
+        ref={containerRef}
+        display="flex"
+        zIndex="5"
+      >
+        {/* Left Panel - IDE */}
+        <Box
+          width={
+            panelView === "ide-only" ? "100%" :
+            panelView === "video-only" ? "0%" :
+            `${leftPanelWidth}%`
+          }
+          height="100%"
+          overflow="hidden"
+          transition="width 0.3s ease"
+          bg="rgba(10, 15, 35, 0.4)"
+          backdropFilter="blur(8px)"
+          border="1px solid rgba(0, 255, 200, 0.2)"
+          borderRight={panelView === "split" ? "none" : "1px solid rgba(0, 255, 200, 0.2)"}
+        >
+          {(panelView === "ide-only" || panelView === "split") && (
+            <Box height="100%" p={4}>
+              <VStack spacing={4} height="100%">
+                <HStack justify="space-between" width="100%">
+                  <Text 
+                    fontSize="lg" 
+                    fontWeight="600"
+                    color="rgba(0, 255, 200, 0.9)"
+                    fontFamily="'Orbitron', sans-serif"
+                    textShadow="0 0 10px rgba(0, 255, 200, 0.5)"
+                  >
+                    Neural Development Interface
                   </Text>
-                  <Box w="full" h="75vh" border="1px solid" borderColor="gray.600" borderRadius="md" overflow="hidden">
-                    {showVideo && videoUrl ? (
-                      <video 
-                        width="100%" 
-                        height="100%" 
-                        controls 
-                        autoPlay
-                        playsInline
-                        muted
-                        style={{ background: "#000" }}
-                      >
-                        <source src={videoUrl} type="video/mp4" />
-                        Your browser does not support the video tag.
-                      </video>
-                    ) : (
-                      <WebRTCVideoPlayer 
-                        user={user}
-                        authToken={authToken}
-                        robotType={robot}
-                        onError={(error) => {
-                          toast({
-                            title: "Video Stream Error",
-                            description: error.message,
-                            status: "error",
-                            duration: 5000,
-                            isClosable: true,
-                          });
-                        }}
-                      />
-                    )}
-                  </Box>
-                  {showVideo && (
-                    <Button 
-                      size="sm" 
-                      colorScheme="blue" 
-                      onClick={() => {
-                        setShowVideo(false);
-                        if (videoUrl) {
-                          URL.revokeObjectURL(videoUrl);
-                          setVideoUrl(null);
-                        }
+                  <Badge variant="neonPill">
+                    Theia IDE
+                  </Badge>
+                </HStack>
+                
+                <Box 
+                  width="100%" 
+                  height="calc(100% - 60px)"
+                  bg="rgba(0, 0, 0, 0.3)"
+                  border="1px solid rgba(0, 255, 200, 0.3)"
+                  borderRadius="12px"
+                  overflow="hidden"
+                  position="relative"
+                >
+                  <TheiaIDE 
+                    user={user} 
+                    authToken={authToken}
+                    onError={(error) => {
+                      toast({
+                        title: "Neural Interface Error",
+                        description: error.message,
+                        status: "error",
+                        duration: 5000,
+                        isClosable: true,
+                      });
+                    }}
+                  />
+                </Box>
+              </VStack>
+            </Box>
+          )}
+        </Box>
+
+        {/* Draggable Divider */}
+        {panelView === "split" && (
+          <Box
+            ref={dividerRef}
+            width="4px"
+            height="100%"
+            bg="rgba(0, 255, 200, 0.3)"
+            cursor="col-resize"
+            onMouseDown={handleMouseDown}
+            _hover={{
+              bg: "rgba(0, 255, 200, 0.5)",
+              boxShadow: "0 0 10px rgba(0, 255, 200, 0.4)"
+            }}
+            transition="all 0.2s ease"
+            position="relative"
+            zIndex="10"
+          >
+            <Box
+              position="absolute"
+              top="50%"
+              left="50%"
+              transform="translate(-50%, -50%)"
+              width="20px"
+              height="40px"
+              bg="rgba(0, 255, 200, 0.2)"
+              borderRadius="full"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              fontSize="12px"
+              color="rgba(0, 255, 200, 0.8)"
+            >
+              ↔
+            </Box>
+          </Box>
+        )}
+
+        {/* Right Panel - Video Feed */}
+        <Box
+          width={
+            panelView === "video-only" ? "100%" :
+            panelView === "ide-only" ? "0%" :
+            `${100 - leftPanelWidth}%`
+          }
+          height="100%"
+          overflow="hidden"
+          transition="width 0.3s ease"
+          bg="rgba(10, 15, 35, 0.4)"
+          backdropFilter="blur(8px)"
+          border="1px solid rgba(0, 255, 200, 0.2)"
+          borderLeft={panelView === "split" ? "none" : "1px solid rgba(0, 255, 200, 0.2)"}
+        >
+          {(panelView === "video-only" || panelView === "split") && (
+            <Box height="100%" p={4}>
+              <VStack spacing={4} height="100%">
+                <HStack justify="space-between" width="100%">
+                  <Text 
+                    fontSize="lg" 
+                    fontWeight="600"
+                    color="rgba(0, 255, 200, 0.9)"
+                    fontFamily="'Orbitron', sans-serif"
+                    textShadow="0 0 10px rgba(0, 255, 200, 0.5)"
+                  >
+                    {showVideo ? `${robotNames[robot]?.name} Neural Feed` : "Robot Visual Interface"}
+                  </Text>
+                  <Badge variant="neonPill">
+                    WebRTC
+                  </Badge>
+                </HStack>
+                
+                <Box 
+                  width="100%" 
+                  height="calc(100% - 60px)"
+                  bg="rgba(0, 0, 0, 0.3)"
+                  border="1px solid rgba(0, 255, 200, 0.3)"
+                  borderRadius="12px"
+                  overflow="hidden"
+                  position="relative"
+                >
+                  {showVideo && videoUrl ? (
+                    <video 
+                      width="100%" 
+                      height="100%" 
+                      controls 
+                      autoPlay
+                      playsInline
+                      muted
+                      style={{ 
+                        background: "#000",
+                        borderRadius: "12px"
                       }}
                     >
-                      Back to Live Video Feed
-                    </Button>
+                      <source src={videoUrl} type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                  ) : (
+                    <WebRTCVideoPlayer 
+                      user={user}
+                      authToken={authToken}
+                      robotType={robot}
+                      onError={(error) => {
+                        toast({
+                          title: "Video Neural Link Error",
+                          description: error.message,
+                          status: "error",
+                          duration: 5000,
+                          isClosable: true,
+                        });
+                      }}
+                    />
                   )}
-                </VStack>
-              </Box>
-            </HStack>
-          </CardBody>
-        </Card>
-      </VStack>
-    </Container>
+                </Box>
+                
+                {showVideo && (
+                  <Button 
+                    variant="neonPill"
+                    size="sm"
+                    onClick={() => {
+                      setShowVideo(false);
+                      if (videoUrl) {
+                        URL.revokeObjectURL(videoUrl);
+                        setVideoUrl(null);
+                      }
+                    }}
+                  >
+                    Return to Live Feed
+                  </Button>
+                )}
+              </VStack>
+            </Box>
+          )}
+        </Box>
+      </Box>
+    </Box>
   );
 };
 
