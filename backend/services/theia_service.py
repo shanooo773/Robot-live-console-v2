@@ -19,8 +19,15 @@ class TheiaContainerManager:
         self.theia_image = os.getenv('THEIA_IMAGE', 'elswork/theia')  # Use prebuilt image
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
         
+        # Container lifecycle configuration
+        self.idle_timeout_hours = int(os.getenv('THEIA_IDLE_TIMEOUT_HOURS', 2))  # 2 hours idle timeout
+        self.logout_grace_period_minutes = int(os.getenv('THEIA_LOGOUT_GRACE_MINUTES', 5))  # 5 minutes grace period
+        
         # Port mapping storage (userid → port)
         self._port_mappings = {}
+        
+        # Container activity tracking (userid → last_activity_timestamp)
+        self._last_activity = {}
         
         # Paths
         project_path = os.getenv('THEIA_PROJECT_PATH', './projects')
@@ -550,4 +557,82 @@ int main() {
             
         except Exception as e:
             logger.error(f"Error stopping all containers: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def update_user_activity(self, user_id: int) -> None:
+        """Update last activity timestamp for user (called when user accesses their container)"""
+        import time
+        self._last_activity[user_id] = time.time()
+        logger.debug(f"Updated activity for user {user_id}")
+    
+    def schedule_logout_cleanup(self, user_id: int) -> Dict:
+        """Schedule container cleanup after logout grace period"""
+        try:
+            import threading
+            import time
+            
+            def delayed_cleanup():
+                # Wait for grace period
+                time.sleep(self.logout_grace_period_minutes * 60)
+                
+                # Check if user is still inactive and container exists
+                container_name = self.get_container_name(user_id)
+                status = self.get_container_status(user_id)
+                
+                if status.get("status") == "running":
+                    logger.info(f"Cleaning up container for user {user_id} after logout grace period")
+                    self.stop_container(user_id)
+            
+            # Start cleanup thread
+            cleanup_thread = threading.Thread(target=delayed_cleanup)
+            cleanup_thread.daemon = True
+            cleanup_thread.start()
+            
+            logger.info(f"Scheduled cleanup for user {user_id} in {self.logout_grace_period_minutes} minutes")
+            return {"success": True, "message": f"Cleanup scheduled for {self.logout_grace_period_minutes} minutes"}
+            
+        except Exception as e:
+            logger.error(f"Error scheduling cleanup for user {user_id}: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def cleanup_idle_containers(self) -> Dict:
+        """Clean up containers that have been idle for longer than the configured timeout"""
+        try:
+            import time
+            current_time = time.time()
+            timeout_seconds = self.idle_timeout_hours * 3600
+            
+            containers = self.list_user_containers()
+            cleaned_count = 0
+            results = []
+            
+            for container in containers:
+                if "Up" in container["status"]:  # Only check running containers
+                    try:
+                        user_id = int(container["user_id"])
+                        last_activity = self._last_activity.get(user_id, 0)
+                        
+                        # If no activity recorded or idle for too long
+                        if current_time - last_activity > timeout_seconds:
+                            logger.info(f"Container for user {user_id} idle for {(current_time - last_activity)/3600:.1f} hours - cleaning up")
+                            result = self.stop_container(user_id)
+                            if result.get("success"):
+                                cleaned_count += 1
+                            results.append({
+                                "user_id": user_id,
+                                "idle_hours": (current_time - last_activity) / 3600,
+                                "status": "cleaned" if result.get("success") else "failed"
+                            })
+                    except ValueError:
+                        continue
+            
+            logger.info(f"Idle cleanup completed: {cleaned_count} containers cleaned")
+            return {
+                "success": True,
+                "cleaned_count": cleaned_count,
+                "containers": results
+            }
+            
+        except Exception as e:
+            logger.error(f"Error during idle cleanup: {e}")
             return {"success": False, "error": str(e)}

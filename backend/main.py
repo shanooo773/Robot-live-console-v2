@@ -1182,6 +1182,10 @@ async def get_available_videos(current_user: dict = Depends(get_current_user)):
 async def get_theia_status(current_user: dict = Depends(get_current_user)):
     """Get status of user's Theia container - Auto-start for all authenticated users"""
     user_id = int(current_user["sub"])
+    
+    # Update user activity for cleanup tracking
+    theia_manager.update_user_activity(user_id)
+    
     status = theia_manager.get_container_status(user_id)
     
     # Auto-start Theia container for all users if not running (IDE access is always available)
@@ -1324,22 +1328,23 @@ async def schedule_container_cleanup(current_user: dict = Depends(get_current_us
     """Schedule container cleanup on user logout with timeout to save resources"""
     user_id = int(current_user["sub"])
     
-    # For now, we'll implement immediate cleanup but could be extended to scheduled cleanup
-    # In a production environment, you might want to implement a background task scheduler
-    
     try:
-        # Schedule cleanup after a delay (e.g., 30 minutes of inactivity)
-        # For this implementation, we'll mark it for potential cleanup but not stop immediately
-        # to allow users to quickly return to their work
+        # Use the new logout cleanup functionality
+        result = theia_manager.schedule_logout_cleanup(user_id)
         
-        logger.info(f"Scheduled container cleanup for user {user_id} on logout")
-        
-        return {
-            "message": "Container cleanup scheduled successfully",
-            "user_id": user_id,
-            "cleanup_scheduled": True,
-            "note": "Container will be cleaned up after inactivity timeout to save resources"
-        }
+        if result.get("success"):
+            logger.info(f"Scheduled container cleanup for user {user_id} on logout")
+            return {
+                "message": "Container cleanup scheduled successfully",
+                "user_id": user_id,
+                "cleanup_scheduled": True,
+                "note": f"Container will be cleaned up after {theia_manager.logout_grace_period_minutes} minutes of inactivity"
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to schedule container cleanup: {result.get('error')}"
+            )
         
     except Exception as e:
         logger.error(f"Failed to schedule cleanup for user {user_id}: {e}")
@@ -1406,6 +1411,23 @@ async def admin_cleanup_stale_containers(current_user: dict = Depends(require_ad
         raise HTTPException(
             status_code=500, 
             detail=f"Failed to cleanup containers: {result.get('error', 'Unknown error')}"
+        )
+
+@app.post("/theia/admin/cleanup-idle")
+async def admin_cleanup_idle_containers(current_user: dict = Depends(require_admin)):
+    """Clean up idle containers (admin only)"""
+    result = theia_manager.cleanup_idle_containers()
+    
+    if result.get("success"):
+        return {
+            "message": f"Idle cleanup completed: {result.get('cleaned_count', 0)} idle containers removed",
+            "containers": result.get("containers", []),
+            "timeout_hours": theia_manager.idle_timeout_hours
+        }
+    else:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to cleanup idle containers: {result.get('error', 'Unknown error')}"
         )
 
 @app.post("/theia/admin/stop-all")
