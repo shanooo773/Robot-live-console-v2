@@ -53,6 +53,8 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
   const [activeBookings, setActiveBookings] = useState([]);
   const [availableRobots, setAvailableRobots] = useState([]);
   const [robotNames, setRobotNames] = useState({});
+  const [userMode, setUserMode] = useState("preview"); // "preview" or "booking"
+  const [hasActiveBooking, setHasActiveBooking] = useState(false);
   
   // Modal state
   const { isOpen: isLogsOpen, onOpen: onLogsOpen, onClose: onLogsClose } = useDisclosure();
@@ -94,48 +96,91 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
     }
   };
 
+  const checkTheiaStatusAndMode = async () => {
+    try {
+      const response = await fetch('/theia/status', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const status = await response.json();
+        setTheiaStatus(status);
+        setUserMode(status.user_mode || "preview");
+        setHasActiveBooking(status.has_active_booking || false);
+        
+        console.log('User mode:', status.user_mode, 'Has active booking:', status.has_active_booking);
+        return status;
+      }
+    } catch (error) {
+      console.error('Error checking Theia status:', error);
+    }
+    return null;
+  };
+
   useEffect(() => {
-    const checkUserAccess = async () => {
+    const checkUserAccessAndMode = async () => {
       setLoading(true);
       await loadRobotNames();
       
       try {
+        // Check Theia status and user mode - IDE access is now always available
+        await checkTheiaStatusAndMode();
+        
         if (user?.isDemoUser || user?.isDemoAdmin || user?.isDemoMode || 
             localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin') || 
             localStorage.getItem('isDummy') || localStorage.getItem('isDemoMode')) {
             
+          // Demo users always have access
           setHasAccess(true);
           setAvailableRobots(['turtlebot', 'robot_arm', 'robot_hand']);
         } else if (authToken) {
+          // Regular users - IDE access is always available
+          setHasAccess(true);
+          
           try {
             const bookings = await getMyActiveBookings(authToken);
             setActiveBookings(bookings);
             
+            // Get robot types from all bookings (not just active ones)
             const robotTypes = [...new Set(bookings.map(booking => booking.robot_type))];
-            setAvailableRobots(robotTypes);
-            setHasAccess(robotTypes.length > 0);
+            setAvailableRobots(robotTypes.length > 0 ? robotTypes : ['turtlebot']);
             
             if (robotTypes.length > 0 && !robotTypes.includes(robot)) {
               setRobot(robotTypes[0]);
             }
             
-            if (robotTypes.length === 0) {
+            // Show mode-specific welcome message
+            if (userMode === "preview") {
               toast({
-                title: "No Active Bookings",
-                description: "You need an active booking to access the development console.",
-                status: "warning",
-                duration: 5000,
+                title: "Preview Mode Active",
+                description: "IDE ready for code editing. Book a session for robot execution and live video.",
+                status: "info",
+                duration: 4000,
+                isClosable: true,
+              });
+            } else {
+              toast({
+                title: "Booking Mode Active", 
+                description: "Full robot access enabled - code execution and live video available.",
+                status: "success",
+                duration: 3000,
                 isClosable: true,
               });
             }
+            
           } catch (error) {
             console.error("Failed to fetch active bookings:", error);
-            setHasAccess(false);
+            // Even if booking check fails, IDE access is still available
+            setAvailableRobots(['turtlebot']);
             toast({
-              title: "Error",
-              description: "Failed to load your active bookings.",
-              status: "error",
-              duration: 5000,
+              title: "IDE Ready",
+              description: "Development environment loaded. Some features may require booking.",
+              status: "info",
+              duration: 3000,
               isClosable: true,
             });
           }
@@ -145,8 +190,8 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
       } catch (error) {
         console.error("Access check failed:", error);
         toast({
-          title: "Access Check Failed",
-          description: "Unable to verify access. Please try again.",
+          title: "IDE Access Error",
+          description: "Unable to fully initialize. Please refresh the page.",
           status: "error",
           duration: 5000,
           isClosable: true,
@@ -156,7 +201,7 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
       }
     };
 
-    checkUserAccess();
+    checkUserAccessAndMode();
   }, [authToken, user, toast, robot]);
 
   // Panel control functions
@@ -248,6 +293,18 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
   };
 
   const handleRunCode = async () => {
+    // Check if user is in preview mode and block robot execution
+    if (userMode === "preview" && !hasActiveBooking) {
+      toast({
+        title: "Booking Required",
+        description: "👉 Code execution on robot requires booking. You can still use the IDE to edit and save code.",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
     setCodeLoading(true);
     try {
       // This will push user code from workspace to the robot endpoint
@@ -262,6 +319,10 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
       if (theiaResponse.ok) {
         const theiaStatusData = await theiaResponse.json();
         setTheiaStatus(theiaStatusData);
+        
+        // Update user mode based on response
+        setUserMode(theiaStatusData.user_mode || "preview");
+        setHasActiveBooking(theiaStatusData.has_active_booking || false);
         
         // Auto-start Theia if not running
         if (theiaStatusData.status !== "running") {
@@ -310,13 +371,26 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
       
     } catch (error) {
       console.error("Failed to run code:", error);
-      toast({
-        title: "Code Execution Failed",
-        description: error.message || "Unable to execute code. Please try again.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-      });
+      
+      // Check if it's a booking-related error
+      const errorMessage = error.message || "Unable to execute code";
+      if (errorMessage.includes("booking") || errorMessage.includes("Book")) {
+        toast({
+          title: "Booking Required",
+          description: "👉 " + errorMessage,
+          status: "warning",
+          duration: 5000,
+          isClosable: true,
+        });
+      } else {
+        toast({
+          title: "Code Execution Failed",
+          description: errorMessage,
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
     } finally {
       setCodeLoading(false);
     }
@@ -327,31 +401,13 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
       <Box h="100vh" w="100vw" display="flex" alignItems="center" justifyContent="center">
         <VStack spacing={6}>
           <Spinner size="xl" color="neon.cyan" />
-          <Text variant="neonGlow" fontSize="lg">Initializing Robot Console...</Text>
+          <Text variant="neonGlow" fontSize="lg">Initializing Development Environment...</Text>
         </VStack>
       </Box>
     );
   }
 
-  if (!hasAccess) {
-    return (
-      <Box h="100vh" w="100vw" display="flex" alignItems="center" justifyContent="center">
-        <VStack spacing={6} maxW="md" textAlign="center">
-          <Alert status="warning" variant="glassPanel" borderRadius="12px">
-            <AlertIcon />
-            <Box>
-              <Text fontWeight="bold" color="white">Access Denied</Text>
-              <Text color="gray.300">You need an active booking to access the development console.</Text>
-            </Box>
-          </Alert>
-          <Button variant="neonPrimary" onClick={onBack}>
-            Go Back to Booking
-          </Button>
-        </VStack>
-      </Box>
-    );
-  }
-
+  // IDE access is now always available for authenticated users
   // Calculate panel widths based on layout mode
   const getLeftPanelWidth = () => {
     if (panelLayout === "ide-expanded") return "100%";
@@ -441,12 +497,13 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
           <HStack spacing={3}>
             <Button
               size="sm"
-              colorScheme="green"
-              onClick={handleRunCode}
+              colorScheme={userMode === "preview" ? "orange" : "green"}
+              onClick={userMode === "preview" ? onBack : handleRunCode}
               isLoading={codeLoading}
               loadingText="Running..."
+              disabled={userMode === "preview" && codeLoading}
             >
-              Run Code
+              {userMode === "preview" ? "📅 Book for Robot Access" : "🚀 Run Code on Robot"}
             </Button>
             
             <Button
@@ -573,7 +630,38 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
                     <source src={videoUrl} type="video/mp4" />
                     Your browser does not support the video tag.
                   </video>
+                ) : userMode === "preview" ? (
+                  // Preview mode - show booking requirement message
+                  <VStack 
+                    justify="center" 
+                    align="center" 
+                    h="100%" 
+                    spacing={6}
+                    p={8}
+                  >
+                    <Text fontSize="4xl">📹</Text>
+                    <VStack spacing={3} textAlign="center">
+                      <Badge colorScheme="orange" fontSize="md" p={2}>
+                        Preview Mode
+                      </Badge>
+                      <Text color="neon.cyan" fontSize="lg" fontWeight="bold">
+                        Live Robot Feed
+                      </Text>
+                      <Text color="gray.300" maxW="300px">
+                        👉 To access the real-time robot feed, please book the service.
+                      </Text>
+                    </VStack>
+                    <Button 
+                      colorScheme="orange" 
+                      onClick={onBack}
+                      size="md"
+                      variant="neonPrimary"
+                    >
+                      📅 Book Robot Session
+                    </Button>
+                  </VStack>
                 ) : (
+                  // Booking mode - show WebRTC video player
                   <WebRTCVideoPlayer 
                     user={user}
                     authToken={authToken}
@@ -684,11 +772,11 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
               <Box>
                 <Text fontWeight="bold" color="neon.cyan" mb={2}>Usage Instructions:</Text>
                 <VStack spacing={1} align="start" fontSize="sm">
-                  <Text>• Use the IDE panel to write and test robot code</Text>
-                  <Text>• Click "Run Code" to execute code on the robot</Text>
-                  <Text>• Monitor execution through the video feed (during active booking)</Text>
+                  <Text>• Use the IDE panel to write and test robot code (always available)</Text>
+                  <Text>• {userMode === "preview" ? "Book a session to execute code on robot" : "Click 'Run Code' to execute code on the robot"}</Text>
+                  <Text>• Monitor execution through the video feed (booking mode only)</Text>
                   <Text>• Drag the center divider to resize panels</Text>
-                  <Text>• View simulation results with "Get Real Result"</Text>
+                  <Text>• Preview Mode: Code editing only | Booking Mode: Full robot access</Text>
                 </VStack>
               </Box>
             </VStack>
