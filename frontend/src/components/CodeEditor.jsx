@@ -24,7 +24,6 @@ import { checkAccess, getVideo, getMyActiveBookings, getAvailableRobots } from "
 
 const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
   const [robot, setRobot] = useState(slot?.robotType || "turtlebot");
-  const [hasAccess, setHasAccess] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const [videoUrl, setVideoUrl] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -32,6 +31,9 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
   const [activeBookings, setActiveBookings] = useState([]);
   const [availableRobots, setAvailableRobots] = useState([]);
   const [robotNames, setRobotNames] = useState({});
+  const [userMode, setUserMode] = useState("preview"); // "preview" or "booking"
+  const [hasActiveBooking, setHasActiveBooking] = useState(false);
+  const [theiaStatus, setTheiaStatus] = useState(null);
   const toast = useToast();
 
   const loadRobotNames = async () => {
@@ -62,27 +64,59 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
     }
   };
 
+  const checkTheiaStatusAndMode = async () => {
+    try {
+      // Check Theia status which now includes user mode information
+      const response = await fetch('/theia/status', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const status = await response.json();
+        setTheiaStatus(status);
+        setUserMode(status.user_mode || "preview");
+        setHasActiveBooking(status.has_active_booking || false);
+        
+        // Log the current mode for debugging
+        console.log('User mode:', status.user_mode, 'Has active booking:', status.has_active_booking);
+        
+        return status;
+      } else {
+        console.error('Failed to check Theia status');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error checking Theia status:', error);
+      return null;
+    }
+  };
+
   useEffect(() => {
-    // Check if user has access to Monaco Editor and fetch active bookings
-    const checkUserAccess = async () => {
+    // Check user access and mode - IDE access is now always available for authenticated users
+    const checkUserAccessAndMode = async () => {
       try {
+        // Load robot names from API for all users
+        await loadRobotNames();
+        
+        // Check Theia status and user mode (preview vs booking)
+        const theiaStatus = await checkTheiaStatusAndMode();
+        
         // Check for demo user access
         const isDemoUser = localStorage.getItem('isDemoUser');
         const isDemoAdmin = localStorage.getItem('isDemoAdmin');
         const isDummy = localStorage.getItem('isDummy');
         const isDemoMode = localStorage.getItem('isDemoMode');
         
-        // Load robot names from API for all users (including demo users)
-        await loadRobotNames();
-        
-        // Check for demo user access - give immediate access but only for admin-created robots
         if (isDemoUser || isDemoAdmin || isDummy || isDemoMode || user?.isDemoUser || user?.isDemoAdmin || user?.isDemoMode) {
           // Demo users get access to all available admin-created robots
           const robotData = await getAvailableRobots();
           const availableRobotTypes = robotData.robots || [];
           
           setAvailableRobots(availableRobotTypes);
-          setHasAccess(availableRobotTypes.length > 0);
           
           if (availableRobotTypes.length > 0 && !availableRobotTypes.includes(robot)) {
             setRobot(availableRobotTypes[0]);
@@ -98,52 +132,57 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
             });
           }
         } else if (authToken) {
-          // Regular access check for authenticated users
+          // Regular users - IDE access is always available, but check for active bookings
           try {
             const bookings = await getMyActiveBookings(authToken);
             setActiveBookings(bookings);
             
-            // Extract unique robot types from active bookings
+            // Extract unique robot types from all bookings (not just active ones)
             const robotTypes = [...new Set(bookings.map(booking => booking.robot_type))];
             setAvailableRobots(robotTypes);
-            
-            // Set access based on having active bookings
-            setHasAccess(robotTypes.length > 0);
             
             // If user has bookings but current robot is not available, switch to first available
             if (robotTypes.length > 0 && !robotTypes.includes(robot)) {
               setRobot(robotTypes[0]);
             }
             
-            if (robotTypes.length === 0) {
+            // Show appropriate welcome message based on mode
+            if (userMode === "preview") {
               toast({
-                title: "No Active Bookings",
-                description: "You need an active booking to access the development console.",
-                status: "warning",
+                title: "Welcome to Preview Mode",
+                description: "You can edit and save code. Book a session to run code on robot and view live feed.",
+                status: "info", 
                 duration: 5000,
                 isClosable: true,
               });
+            } else {
+              toast({
+                title: "Booking Mode Active",
+                description: "Full robot access available - code execution and live video feed enabled.",
+                status: "success",
+                duration: 3000,
+                isClosable: true,
+              });
             }
+            
           } catch (error) {
-            console.error("Failed to fetch active bookings:", error);
-            setHasAccess(false);
+            console.error("Failed to fetch bookings:", error);
+            // Even if booking check fails, IDE access is still available
             toast({
-              title: "Error",
-              description: "Failed to load your active bookings.",
-              status: "error",
-              duration: 5000,
+              title: "IDE Ready",
+              description: "Development environment loaded. Some features may require booking.",
+              status: "info",
+              duration: 3000,
               isClosable: true,
             });
           }
-        } else {
-          setHasAccess(false);
         }
       } catch (error) {
         console.error("Access check failed:", error);
         toast({
-          title: "Access Check Failed",
-          description: "Unable to verify access. Please try again.",
-          status: "error",
+          title: "IDE Access Error",
+          description: "Unable to fully initialize. Please refresh the page.",
+          status: "error", 
           duration: 5000,
           isClosable: true,
         });
@@ -152,7 +191,7 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
       }
     };
 
-    checkUserAccess();
+    checkUserAccessAndMode();
   }, [authToken, user, toast, robot]);
 
   const onSelect = (robotType) => {
@@ -162,17 +201,29 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
   };
 
   const handleGetRealResult = async () => {
+    // In preview mode, show booking requirement message
+    if (userMode === "preview" && !hasActiveBooking) {
+      toast({
+        title: "Booking Required",
+        description: "👉 To access the real-time robot feed, please book the service.",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
     setVideoLoading(true);
     try {
       if (authToken) {
-        // Regular video loading with authentication
+        // Video loading with authentication (booking mode)
         const videoBlob = await getVideo(robot, authToken);
         const url = URL.createObjectURL(videoBlob);
         setVideoUrl(url);
         setShowVideo(true);
         toast({
           title: "Video Loaded",
-          description: `${robotNames[robot].name} simulation video is now playing.`,
+          description: `${robotNames[robot]?.name || robot} simulation video is now playing.`,
           status: "success",
           duration: 3000,
           isClosable: true,
@@ -191,13 +242,26 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
       }
     } catch (error) {
       console.error("Failed to load video:", error);
-      toast({
-        title: "Video Load Failed",
-        description: error.response?.data?.detail || "Unable to load simulation video. Please try again.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-      });
+      const errorMessage = error.response?.data?.detail || "Unable to load video feed.";
+      
+      // Show booking-specific error message if it's a booking-related error
+      if (errorMessage.includes("book")) {
+        toast({
+          title: "Booking Required", 
+          description: "👉 " + errorMessage,
+          status: "warning",
+          duration: 5000,
+          isClosable: true,
+        });
+      } else {
+        toast({
+          title: "Video Load Failed",
+          description: errorMessage,
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
     } finally {
       setVideoLoading(false);
     }
@@ -208,31 +272,13 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
       <Container maxW="7xl" py={8}>
         <VStack spacing={6} justify="center" minH="60vh">
           <Spinner size="xl" color="blue.500" />
-          <Text color="white">Checking access permissions...</Text>
+          <Text color="white">Initializing development environment...</Text>
         </VStack>
       </Container>
     );
   }
 
-  if (!hasAccess) {
-    return (
-      <Container maxW="7xl" py={8}>
-        <VStack spacing={6}>
-          <Alert status="warning" bg="orange.900" borderRadius="md">
-            <AlertIcon />
-            <Box>
-              <Text fontWeight="bold">Access Denied</Text>
-              <Text>You need an active booking to access the development console.</Text>
-            </Box>
-          </Alert>
-          <Button colorScheme="blue" onClick={onBack}>
-            Go Back to Booking
-          </Button>
-        </VStack>
-      </Container>
-    );
-  }
-
+  // IDE access is now always available for authenticated users
   return (
     <Container maxW="7xl" py={8}>
       <VStack spacing={6}>
@@ -294,25 +340,49 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
           <CardHeader>
             <HStack justify="space-between" align="center">
               <VStack align="start" spacing={1}>
-                <Text fontSize="xl" fontWeight="bold" color="white">
-                  Development Console - Robot Control Interface
-                </Text>
+                <HStack spacing={3}>
+                  <Text fontSize="xl" fontWeight="bold" color="white">
+                    Development Console
+                  </Text>
+                  {userMode === "preview" ? (
+                    <Badge colorScheme="orange" fontSize="sm">
+                      Preview Mode – Book to run code on robot and view live feed
+                    </Badge>
+                  ) : (
+                    <Badge colorScheme="green" fontSize="sm">
+                      Booking Mode – Full robot access available
+                    </Badge>
+                  )}
+                </HStack>
                 <HStack spacing={4}>
                   <RobotSelector robot={robot} onSelect={onSelect} availableRobots={availableRobots} />
                   <Badge colorScheme="blue" fontSize="xs">
-                    Eclipse Theia IDE + Robot Video Feed
+                    Eclipse Theia IDE {userMode === "booking" ? "+ Robot Control" : "(Code Preview)"}
                   </Badge>
                 </HStack>
               </VStack>
-              <Button 
-                colorScheme="green" 
-                onClick={handleGetRealResult}
-                isLoading={videoLoading}
-                loadingText="Loading Video..."
-                disabled={videoLoading}
-              >
-                Get Real Result
-              </Button>
+              <VStack spacing={2}>
+                {userMode === "preview" ? (
+                  <Button 
+                    colorScheme="orange" 
+                    onClick={onBack}
+                    size="sm"
+                  >
+                    📅 Book Service for Robot Access
+                  </Button>
+                ) : (
+                  <Button 
+                    colorScheme="green" 
+                    onClick={handleGetRealResult}
+                    isLoading={videoLoading}
+                    loadingText="Loading Video..."
+                    disabled={videoLoading}
+                    size="sm"
+                  >
+                    📹 Get Live Robot Feed
+                  </Button>
+                )}
+              </VStack>
             </HStack>
           </CardHeader>
           <CardBody>
@@ -337,9 +407,17 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
               {/* Right Panel - Robot Video Feed */}
               <Box w="50%">
                 <VStack spacing={4} align="start" h="100%">
-                  <Text fontSize="lg" color="white" fontWeight="bold">
-                    {showVideo ? `${robotNames[robot].name} Simulation Result` : "Robot Video Feed"}
-                  </Text>
+                  <HStack justify="space-between" w="full">
+                    <Text fontSize="lg" color="white" fontWeight="bold">
+                      {showVideo ? `${robotNames[robot]?.name || robot} Simulation Result` : "Robot Video Feed"}
+                    </Text>
+                    {userMode === "preview" && (
+                      <Badge colorScheme="orange" fontSize="xs">
+                        Booking Required
+                      </Badge>
+                    )}
+                  </HStack>
+                  
                   <Box w="full" h="75vh" border="1px solid" borderColor="gray.600" borderRadius="md" overflow="hidden">
                     {showVideo && videoUrl ? (
                       <video 
@@ -354,7 +432,34 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
                         <source src={videoUrl} type="video/mp4" />
                         Your browser does not support the video tag.
                       </video>
+                    ) : userMode === "preview" ? (
+                      // Preview mode - show booking requirement message
+                      <VStack 
+                        justify="center" 
+                        align="center" 
+                        h="100%" 
+                        bg="gray.900" 
+                        borderRadius="md"
+                        spacing={4}
+                        p={8}
+                      >
+                        <Text fontSize="3xl">📹</Text>
+                        <Text color="orange.200" textAlign="center" fontSize="lg" fontWeight="bold">
+                          Preview Mode
+                        </Text>
+                        <Text color="gray.300" textAlign="center">
+                          👉 To access the real-time robot feed, please book the service.
+                        </Text>
+                        <Button 
+                          colorScheme="orange" 
+                          onClick={onBack}
+                          size="sm"
+                        >
+                          📅 Book Robot Session
+                        </Button>
+                      </VStack>
                     ) : (
+                      // Booking mode - show WebRTC video player
                       <WebRTCVideoPlayer 
                         user={user}
                         authToken={authToken}
@@ -371,6 +476,7 @@ const CodeEditor = ({ user, slot, authToken, onBack, onLogout }) => {
                       />
                     )}
                   </Box>
+                  
                   {showVideo && (
                     <Button 
                       size="sm" 

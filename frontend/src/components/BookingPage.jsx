@@ -661,6 +661,49 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
           />
         )}
 
+        {/* Code Preview Access - Always Available */}
+        {authToken && !isDemoMode() && (
+          <Card w="full" bg="gray.800" border="1px solid" borderColor="blue.500">
+            <CardBody>
+              <VStack spacing={4}>
+                <HStack justify="space-between" w="full">
+                  <VStack align="start" spacing={2}>
+                    <HStack>
+                      <Text fontSize="xl" fontWeight="bold" color="blue.100">
+                        💻 Development Environment
+                      </Text>
+                      <Badge colorScheme="green" size="sm">Always Available</Badge>
+                    </HStack>
+                    <Text color="blue.200" fontSize="md">
+                      Access your personal IDE to write, edit, and save robot code anytime.
+                    </Text>
+                    <Text color="gray.400" fontSize="sm">
+                      Preview Mode: Full code editing • Book a session for robot execution and live video feed
+                    </Text>
+                  </VStack>
+                  <Button 
+                    colorScheme="blue" 
+                    size="lg"
+                    onClick={() => onBooking({
+                      id: `code_preview_${Date.now()}`,
+                      robotType: 'turtlebot', // Default robot type for preview
+                      date: new Date().toISOString().split('T')[0],
+                      startTime: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+                      endTime: new Date(Date.now() + 1 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+                      bookingId: 'code_preview',
+                      available: true,
+                      bookedBy: user.name,
+                      isPreview: true
+                    })}
+                  >
+                    📝 Code Preview
+                  </Button>
+                </HStack>
+              </VStack>
+            </CardBody>
+          </Card>
+        )}
+
         {/* User's Bookings with Classification */}
         {authToken && (classifiedBookings.upcoming.length > 0 || classifiedBookings.past.length > 0) && (
           <VStack w="full" spacing={6} mt={8}>

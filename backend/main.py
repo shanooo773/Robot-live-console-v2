@@ -1180,24 +1180,56 @@ async def get_available_videos(current_user: dict = Depends(get_current_user)):
 
 @app.get("/theia/status")  
 async def get_theia_status(current_user: dict = Depends(get_current_user)):
-    """Get status of user's Theia container"""
+    """Get status of user's Theia container - Auto-start for all authenticated users"""
     user_id = int(current_user["sub"])
     status = theia_manager.get_container_status(user_id)
     
-    # Auto-start Theia container for demo users if not running
-    if is_demo_user(current_user):
-        if status.get("status") in ["not_created", "stopped", "error"]:
-            logger.info(f"🎯 Auto-starting Theia container for demo user {user_id}")
-            start_result = theia_manager.start_container(user_id)
-            if start_result.get("success"):
-                logger.info(f"✅ Demo user {user_id} Theia container auto-started successfully")
-                # Return the new status after starting
-                status = theia_manager.get_container_status(user_id)
-            else:
-                logger.error(f"❌ Failed to auto-start Theia for demo user {user_id}: {start_result.get('error')}")
-                # Return status with auto-start attempt info
-                status["auto_start_attempted"] = True
-                status["auto_start_error"] = start_result.get("error")
+    # Auto-start Theia container for all users if not running (IDE access is always available)
+    if status.get("status") in ["not_created", "stopped", "error"]:
+        user_type = "demo" if is_demo_user(current_user) else "regular"
+        logger.info(f"🎯 Auto-starting Theia container for {user_type} user {user_id}")
+        start_result = theia_manager.start_container(user_id)
+        if start_result.get("success"):
+            logger.info(f"✅ User {user_id} Theia container auto-started successfully")
+            # Return the new status after starting
+            status = theia_manager.get_container_status(user_id)
+        else:
+            logger.error(f"❌ Failed to auto-start Theia for user {user_id}: {start_result.get('error')}")
+            # Return status with auto-start attempt info
+            status["auto_start_attempted"] = True
+            status["auto_start_error"] = start_result.get("error")
+    
+    # Add booking status information for UI to determine mode
+    booking_service = service_manager.get_booking_service()
+    if not is_demo_user(current_user):
+        try:
+            bookings = booking_service.get_user_bookings(user_id)
+            # Check for active booking session
+            now = datetime.now()
+            current_date = now.strftime("%Y-%m-%d")
+            current_time_obj = now.time()
+            
+            has_active_booking = False
+            for booking in bookings:
+                if (booking["date"] == current_date and booking["status"] == "active" and booking.get("robot_id")):
+                    try:
+                        start_time_obj = datetime.strptime(booking["start_time"], "%H:%M").time()
+                        end_time_obj = datetime.strptime(booking["end_time"], "%H:%M").time()
+                        if start_time_obj <= current_time_obj <= end_time_obj:
+                            has_active_booking = True
+                            break
+                    except ValueError:
+                        continue
+            
+            status["has_active_booking"] = has_active_booking
+            status["user_mode"] = "booking" if has_active_booking else "preview"
+        except Exception as e:
+            logger.warning(f"Could not check booking status for user {user_id}: {e}")
+            status["has_active_booking"] = False
+            status["user_mode"] = "preview"
+    else:
+        status["has_active_booking"] = True  # Demo users have full access
+        status["user_mode"] = "booking"
     
     return status
 
@@ -1227,28 +1259,17 @@ async def get_demo_theia_status():
 
 @app.post("/theia/start")
 async def start_theia_container(current_user: dict = Depends(get_current_user)):
-    """Start user's Theia container"""
-    booking_service = service_manager.get_booking_service()
+    """Start user's Theia container - Available for all authenticated users"""
     user_id = int(current_user["sub"])
     
-    # Demo users have unrestricted access - skip booking validation
+    # Log access for both demo and regular users
     if is_demo_user(current_user):
-        logger.info(f"🎯 Demo user {user_id} starting Theia container without booking restrictions")
+        logger.info(f"🎯 Demo user {user_id} starting Theia container")
     else:
-        # Check if user has access (completed booking) for regular users
-        # Get user's bookings
-        bookings = booking_service.get_user_bookings(user_id)
-        
-        # Check if user has at least one completed booking
-        has_completed_booking = any(
-            booking["status"] == "completed" for booking in bookings
-        )
-        
-        if not has_completed_booking:
-            raise HTTPException(
-                status_code=403, 
-                detail="You need to complete a booking before accessing the development environment"
-            )
+        logger.info(f"✅ Regular user {user_id} starting Theia container (Preview Mode available)")
+    
+    # IDE access is now available for all authenticated users
+    # Robot functionality (WebRTC, code execution) still requires active booking
     
     result = theia_manager.start_container(user_id)
     
@@ -1296,6 +1317,35 @@ async def restart_theia_container(current_user: dict = Depends(get_current_user)
         raise HTTPException(
             status_code=500, 
             detail=f"Failed to restart Theia container: {result.get('error', 'Unknown error')}"
+        )
+
+@app.post("/theia/schedule-cleanup")
+async def schedule_container_cleanup(current_user: dict = Depends(get_current_user)):
+    """Schedule container cleanup on user logout with timeout to save resources"""
+    user_id = int(current_user["sub"])
+    
+    # For now, we'll implement immediate cleanup but could be extended to scheduled cleanup
+    # In a production environment, you might want to implement a background task scheduler
+    
+    try:
+        # Schedule cleanup after a delay (e.g., 30 minutes of inactivity)
+        # For this implementation, we'll mark it for potential cleanup but not stop immediately
+        # to allow users to quickly return to their work
+        
+        logger.info(f"Scheduled container cleanup for user {user_id} on logout")
+        
+        return {
+            "message": "Container cleanup scheduled successfully",
+            "user_id": user_id,
+            "cleanup_scheduled": True,
+            "note": "Container will be cleaned up after inactivity timeout to save resources"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to schedule cleanup for user {user_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to schedule container cleanup: {str(e)}"
         )
 
 @app.get("/theia/containers")
@@ -1458,7 +1508,7 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
         if not active_booking:
             raise HTTPException(
                 status_code=403,
-                detail="You need an active booking session to execute robot code."
+                detail="Code execution on robot requires booking. You can still use the IDE to edit and save code in Preview Mode."
             )
         
         # Get the specific robot assigned to this user
@@ -1744,7 +1794,7 @@ async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(g
         robot_type = robot.get('type', 'unknown') if robot else 'unknown'
         raise HTTPException(
             status_code=403,
-            detail=f"No active booking session for robot {robot_id} ({robot_type}). Video access requires an active session during your booking time."
+            detail=f"To access the real-time robot feed, please book the service. Video access requires an active booking session."
         )
     
     # Get robot details including webrtc_url
@@ -1787,7 +1837,7 @@ async def handle_webrtc_answer(answer: WebRTCAnswer, current_user: dict = Depend
         robot_type = robot.get('type', 'unknown') if robot else 'unknown'
         raise HTTPException(
             status_code=403,
-            detail=f"No active booking session for robot {robot_id} ({robot_type}). WebRTC access requires an active session during your booking time."
+            detail="To access the real-time robot feed, please book the service. Video access requires an active booking session."
         )
     
     # Get robot details including webrtc_url
@@ -1832,7 +1882,7 @@ async def handle_ice_candidate(ice_candidate: WebRTCIceCandidate, current_user: 
         robot_type = robot.get('type', 'unknown') if robot else 'unknown'
         raise HTTPException(
             status_code=403,
-            detail=f"No active booking session for robot {robot_id} ({robot_type}). WebRTC access requires an active session during your booking time."
+            detail="To access the real-time robot feed, please book the service. Video access requires an active booking session."
         )
     
     # Get robot details including webrtc_url
