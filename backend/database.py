@@ -58,6 +58,7 @@ class DatabaseManager:
                 email VARCHAR(255) UNIQUE NOT NULL,
                 password_hash {text_type} NOT NULL,
                 role VARCHAR(50) DEFAULT 'user',
+                theia_port INTEGER DEFAULT NULL,
                 created_at TIMESTAMP {timestamp_default}
             )
         """)
@@ -144,6 +145,12 @@ class DatabaseManager:
         # Add upload_endpoint column for robot code upload URLs
         try:
             cursor.execute("ALTER TABLE robots ADD COLUMN upload_endpoint VARCHAR(500)")
+        except pymysql.Error:
+            pass
+        
+        # Add theia_port column to users table for persistent port storage
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN theia_port INTEGER DEFAULT NULL")
         except pymysql.Error:
             pass
         
@@ -268,7 +275,7 @@ class DatabaseManager:
         placeholder = self._get_placeholder()
         
         cursor.execute(f"""
-            SELECT id, name, email, role, created_at
+            SELECT id, name, email, role, theia_port, created_at
             FROM users WHERE id = {placeholder}
         """, (user_id,))
         
@@ -281,9 +288,69 @@ class DatabaseManager:
                 "name": user[1],
                 "email": user[2],
                 "role": user[3],
-                "created_at": user[4]
+                "theia_port": user[4],
+                "created_at": user[5]
             }
         return None
+    
+    def get_user_theia_port(self, user_id: int) -> Optional[int]:
+        """Get user's assigned Theia port from database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            SELECT theia_port FROM users WHERE id = {placeholder}
+        """, (user_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        return result[0] if result and result[0] else None
+    
+    def set_user_theia_port(self, user_id: int, port: int) -> bool:
+        """Set user's assigned Theia port in database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            UPDATE users SET theia_port = {placeholder} WHERE id = {placeholder}
+        """, (port, user_id))
+        
+        updated = cursor.rowcount > 0
+        conn.close()
+        
+        return updated
+    
+    def clear_user_theia_port(self, user_id: int) -> bool:
+        """Clear user's assigned Theia port in database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            UPDATE users SET theia_port = NULL WHERE id = {placeholder}
+        """, (user_id,))
+        
+        updated = cursor.rowcount > 0
+        conn.close()
+        
+        return updated
+    
+    def get_all_assigned_ports(self) -> List[int]:
+        """Get all currently assigned Theia ports"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT theia_port FROM users WHERE theia_port IS NOT NULL
+        """)
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        return [result[0] for result in results if result[0]]
     
     def _find_available_robot(self, robot_type: str, date: str, start_time: str, end_time: str, cursor) -> Optional[Dict[str, Any]]:
         """Find an available robot of the specified type for the given time slot"""
