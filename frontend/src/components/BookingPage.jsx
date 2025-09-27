@@ -25,12 +25,15 @@ import {
   Alert,
   AlertIcon,
   AlertDescription,
+  IconButton,
+  Fade,
 } from "@chakra-ui/react";
 import { useState, useEffect, useMemo } from "react";
 import { createBooking, getUserBookings, getBookingSchedule, getActiveAnnouncements, getAvailableSlots, getAvailableRobots } from "../api";
 import ServiceStatus from "./ServiceStatus";
 import CountdownTimer from "./CountdownTimer";
 import TimeSlotGrid from "./TimeSlotGrid";
+import { ChevronUpIcon } from "@chakra-ui/icons";
 
 // Generate realistic time slots based on business rules - NO DUMMY DATA
 const generateAvailableTimeSlots = async (authToken, selectedDate, selectedRobot) => {
@@ -69,7 +72,27 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   const [isAutoFetching, setIsAutoFetching] = useState(false);
   // Track which booking countdowns have expired to enable "View Booking" button
   const [expiredCountdowns, setExpiredCountdowns] = useState(new Set());
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const toast = useToast();
+
+  // Handle scroll to top button visibility
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      setShowScrollTop(scrollTop > 300);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Scroll to top function
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
 
   // Handle countdown expiration for a specific booking
   const handleCountdownExpired = (bookingId) => {
@@ -410,8 +433,16 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   };
 
   return (
-    <Container maxW="7xl" py={8}>
-      <VStack spacing={8}>
+    <Box 
+      w="full" 
+      minH="100vh" 
+      pb={20}
+      css={{
+        WebkitOverflowScrolling: 'touch', // Smooth scrolling on iOS
+      }}
+    >
+      <Container maxW="7xl" py={8} px={{ base: 4, md: 8 }}>
+        <VStack spacing={8} w="full">
         {/* Header */}
         <HStack w="full" justify="space-between">
           <VStack align="start" spacing={1}>
@@ -632,7 +663,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
 
         {/* User's Bookings with Classification */}
         {authToken && (classifiedBookings.upcoming.length > 0 || classifiedBookings.past.length > 0) && (
-          <VStack w="full" spacing={6}>
+          <VStack w="full" spacing={6} mt={8}>
             <Divider borderColor="gray.600" />
             
             <Tabs variant="enclosed" colorScheme="blue" w="full">
@@ -647,7 +678,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
               
               <TabPanels>
                 {/* Upcoming Bookings */}
-                <TabPanel px={0}>
+                <TabPanel px={0} py={6}>
                   {classifiedBookings.upcoming.length === 0 ? (
                     <Card bg="gray.800" border="1px solid" borderColor="gray.600">
                       <CardBody textAlign="center" py={8}>
@@ -736,7 +767,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                 </TabPanel>
 
                 {/* Past Bookings */}
-                <TabPanel px={0}>
+                <TabPanel px={0} py={6}>
                   {classifiedBookings.past.length === 0 ? (
                     <Card bg="gray.800" border="1px solid" borderColor="gray.600">
                       <CardBody textAlign="center" py={8}>
@@ -794,6 +825,30 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
         )}
       </VStack>
     </Container>
+    
+    {/* Scroll to Top Button */}
+    <Fade in={showScrollTop}>
+      <IconButton
+        icon={<ChevronUpIcon />}
+        aria-label="Scroll to top"
+        position="fixed"
+        bottom={{ base: "20px", md: "30px" }}
+        right={{ base: "20px", md: "30px" }}
+        size={{ base: "md", md: "lg" }}
+        colorScheme="blue"
+        borderRadius="full"
+        boxShadow="lg"
+        zIndex={1000}
+        onClick={scrollToTop}
+        _hover={{
+          transform: 'translateY(-2px)',
+          boxShadow: 'xl'
+        }}
+        transition="all 0.2s"
+        display={{ base: showScrollTop ? "flex" : "none", md: "flex" }}
+      />
+    </Fade>
+    </Box>
   );
 };
 
