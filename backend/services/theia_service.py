@@ -51,7 +51,7 @@ class TheiaContainerManager:
             port = self._port_mappings[user_id]
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(('localhost', port))
+                    s.bind(('172.232.105.47', port))
                     s.close()
                     return port
                 except OSError:
@@ -67,7 +67,7 @@ class TheiaContainerManager:
             # Check if port is available
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(('localhost', port))
+                    s.bind(('172.232.105.47', port))
                     s.close()
                     # Store the mapping
                     self._port_mappings[user_id] = port
@@ -256,7 +256,7 @@ int main() {
             
             return {
                 "status": "running" if is_running else "stopped",
-                "url": f"http://localhost:{port}" if is_running and port else None,
+                "url": f"http://172.232.105.47:{port}" if is_running and port else None,
                 "port": port if is_running else None,
                 "container_name": container_name
             }
@@ -367,7 +367,7 @@ int main() {
                 return {
                     "success": True,
                     "status": "running",
-                    "url": f"http://localhost:{port}",
+                    "url": f"http://172.232.105.47:{port}",
                     "port": port,
                     "container_name": container_name
                 }
