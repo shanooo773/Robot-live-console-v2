@@ -91,7 +91,16 @@ function App() {
   };
 
   return (
-    <Box minH="100vh" bg="#0f0a19" color="gray.500">
+    <Box 
+      minH="100vh" 
+      bg="#0f0a19" 
+      color="gray.500"
+      css={{ 
+        scrollBehavior: 'smooth',
+        overflowX: 'hidden',
+        overflowY: 'auto'
+      }}
+    >
       {currentPage === "landing" && (
         <LandingPage onGetStarted={() => setCurrentPage("auth")} />
       )}
