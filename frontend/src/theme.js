@@ -49,7 +49,8 @@ const theme = extendTheme({
         bg: "linear-gradient(135deg, #0a0015 0%, #1a0033 25%, #001a33 50%, #003366 75%, #004080 100%)",
         minHeight: "100vh",
         fontFamily: "'Rajdhani', sans-serif",
-        overflow: "hidden",
+        overflowX: "hidden",
+        overflowY: "auto",
       },
       "@keyframes pulse": {
         "0%, 100%": {
