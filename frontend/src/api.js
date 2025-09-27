@@ -13,7 +13,7 @@ const getApiUrl = () => {
     return `${window.location.origin}/api`;
   }
   
-  return "http://localhost:8000"
+  return "http://172.232.105.47:8000"
 };
 
 // Backend API (authentication, booking, and video serving)
