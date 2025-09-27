@@ -13,7 +13,7 @@ import {
 } from "@chakra-ui/react";
 import { getWebRTCConfig, getRobotWebRTCUrl, sendOfferToRobot, sendICECandidateToRobot } from '../api';
 
-const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }) => {
+const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", hasAccess = true }) => {
   const videoRef = useRef();
   const peerConnectionRef = useRef();
   const [isConnected, setIsConnected] = useState(false);
@@ -243,149 +243,111 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot" }
 
   return (
     <Box w="100%" h="100%">
-      {/* Stream Controls */}
-      <VStack spacing={3} mb={4}>
-        <HStack spacing={3} w="full">
-          <Select 
-            value={streamType} 
-            onChange={(e) => setStreamType(e.target.value)}
-            size="sm"
-            maxW="200px"
-          >
-            <option value="test">Test Stream</option>
-            <option value="webrtc">WebRTC (Real-time)</option>
-          </Select>
-          
-          {!isConnected ? (
-            <Button
-              colorScheme="blue"
-              size="sm"
-              onClick={handleConnect}
-              isLoading={isLoading}
-              loadingText="Connecting..."
-              disabled={isLoading}
-            >
-              Connect Video Feed
-            </Button>
-          ) : (
-            <Button
-              colorScheme="red"
-              size="sm"
-              onClick={handleDisconnect}
-            >
-              Disconnect
-            </Button>
-          )}
-          
-          {isConnected && (
-            <Badge colorScheme="green" fontSize="xs">
-              LIVE
-            </Badge>
-          )}
-          
-          {streamType === "webrtc" && webrtcStatus !== "disconnected" && (
-            <Badge 
-              colorScheme={webrtcStatus === "connected" ? "green" : "yellow"} 
-              fontSize="xs"
-            >
-              WebRTC: {webrtcStatus.toUpperCase()}
-            </Badge>
-          )}
-        </HStack>
-
-        {/* Stream Info */}
-        <Text fontSize="xs" color="gray.400" textAlign="center">
-          {streamType === "test" && "Test video stream for development"}
-          {streamType === "webrtc" && `🚀 Real-time robot video feed (WebRTC) - Robot: ${robotType}`}
-        </Text>
-      </VStack>
-
-      {/* Error Display */}
-      {error && (
-        <Alert status="warning" size="sm" mb={3}>
-          <AlertIcon />
-          <VStack align="start" spacing={0}>
-            <Text fontSize="sm" fontWeight="bold">Video Stream Error</Text>
-            <Text fontSize="xs">{error}</Text>
-          </VStack>
-        </Alert>
-      )}
-
-      {/* Video Player */}
-      <Box
-        w="100%"
-        h="calc(100% - 120px)"
-        border="1px solid"
-        borderColor="gray.600"
-        borderRadius="md"
-        bg="#1a1a1a"
-        overflow="hidden"
-        position="relative"
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-      >
-        {isLoading && (
-          <VStack spacing={3}>
-            <Spinner size="lg" color="blue.400" />
-            <Text color="gray.300" fontSize="sm">
-              Connecting to video stream...
-            </Text>
-          </VStack>
-        )}
-
-        {!isConnected && !isLoading && !error && (
-          <VStack spacing={3} p={6} textAlign="center">
-            <Text fontSize="2xl">📹</Text>
-            <Text color="gray.300" fontSize="md" fontWeight="bold">
-              Robot Video Feed
-            </Text>
-            <Text color="gray.500" fontSize="sm" maxW="sm">
-              Select a stream type and click "Connect Video Feed" to start viewing the robot camera.
-            </Text>
-          </VStack>
-        )}
-
-        {isConnected && (
-          <video
-            ref={videoRef}
-            width="100%"
-            height="100%"
-            controls
-            autoPlay
-            playsInline
-            muted
-            style={{ 
-              objectFit: "contain",
-              background: "#000"
-            }}
-            onError={handleVideoError}
-            onLoadedData={handleVideoLoad}
-            onLoadStart={() => setIsLoading(true)}
-            onCanPlay={() => setIsLoading(false)}
-          >
-            Your browser does not support the video tag.
-          </video>
-        )}
-      </Box>
-
-      {/* Enhancement Status */}
-      <VStack spacing={2} mt={3} align="start">
-        <Text fontSize="xs" color="gray.500">
-          ✅ Current features:
-        </Text>
-        <VStack spacing={1} align="start" pl={4}>
-          <Text fontSize="xs" color="gray.500">
-            • Direct WebRTC streaming from robot
+      {/* Booking Access Check */}
+      {!hasAccess ? (
+        <VStack 
+          spacing={4} 
+          justify="center" 
+          align="center" 
+          h="100%" 
+          p={8} 
+          textAlign="center"
+        >
+          <Text fontSize="4xl">🔒</Text>
+          <Text color="orange.300" fontSize="lg" fontWeight="bold">
+            Robot Feed Access Restricted
           </Text>
-          <Text fontSize="xs" color="gray.500">
-            • Real-time low-latency video connection
+          <Text color="gray.400" fontSize="md" maxW="md">
+            To access the robot feed, please book a session.
           </Text>
-          <Text fontSize="xs" color="gray.500">
-            • Automatic ICE candidate handling
+          <Text color="gray.500" fontSize="sm" maxW="md">
+            The IDE remains available 24/7 for code development and preview.
           </Text>
         </VStack>
-      </VStack>
+      ) : (
+        <>
+          {/* Error Display */}
+          {error && (
+            <Alert status="warning" size="sm" mb={3}>
+              <AlertIcon />
+              <VStack align="start" spacing={0}>
+                <Text fontSize="sm" fontWeight="bold">Video Stream Error</Text>
+                <Text fontSize="xs">{error}</Text>
+              </VStack>
+            </Alert>
+          )}
+
+          {/* Video Player */}
+          <Box
+            w="100%"
+            h="100%"
+            border="1px solid"
+            borderColor="gray.600"
+            borderRadius="md"
+            bg="#1a1a1a"
+            overflow="hidden"
+            position="relative"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+          >
+            {isLoading && (
+              <VStack spacing={3}>
+                <Spinner size="lg" color="blue.400" />
+                <Text color="gray.300" fontSize="sm">
+                  Connecting to robot video stream...
+                </Text>
+              </VStack>
+            )}
+
+            {!isConnected && !isLoading && !error && (
+              <VStack spacing={3} p={6} textAlign="center">
+                <Text fontSize="2xl">📹</Text>
+                <Text color="gray.300" fontSize="md" fontWeight="bold">
+                  Robot Video Feed
+                </Text>
+                <Button
+                  colorScheme="blue"
+                  size="sm"
+                  onClick={handleConnect}
+                  isLoading={isLoading}
+                  loadingText="Connecting..."
+                  disabled={isLoading}
+                >
+                  Connect
+                </Button>
+                {isConnected && (
+                  <Badge colorScheme="green" fontSize="xs" mt={2}>
+                    LIVE
+                  </Badge>
+                )}
+              </VStack>
+            )}
+
+            {isConnected && (
+              <video
+                ref={videoRef}
+                width="100%"
+                height="100%"
+                controls
+                autoPlay
+                playsInline
+                muted
+                style={{ 
+                  objectFit: "contain",
+                  background: "#000"
+                }}
+                onError={handleVideoError}
+                onLoadedData={handleVideoLoad}
+                onLoadStart={() => setIsLoading(true)}
+                onCanPlay={() => setIsLoading(false)}
+              >
+                Your browser does not support the video tag.
+              </video>
+            )}
+          </Box>
+        </>
+      )}
     </Box>
   );
 };

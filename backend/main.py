@@ -77,7 +77,7 @@ def get_cors_origins():
             return [vps_url, f"{vps_url}:3000", f"{vps_url}:5173"]
     else:
         # Development origins
-        dev_origins = os.getenv('CORS_ORIGINS', 'http://172.232.105.47:3000,http://172.232.105.47:5173')
+        dev_origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://172.232.105.47:3000,http://172.232.105.47:5173')
         return dev_origins.split(',')
 
 CORS_ORIGINS = get_cors_origins()
