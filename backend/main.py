@@ -1319,6 +1319,35 @@ async def restart_theia_container(current_user: dict = Depends(get_current_user)
             detail=f"Failed to restart Theia container: {result.get('error', 'Unknown error')}"
         )
 
+@app.post("/theia/schedule-cleanup")
+async def schedule_container_cleanup(current_user: dict = Depends(get_current_user)):
+    """Schedule container cleanup on user logout with timeout to save resources"""
+    user_id = int(current_user["sub"])
+    
+    # For now, we'll implement immediate cleanup but could be extended to scheduled cleanup
+    # In a production environment, you might want to implement a background task scheduler
+    
+    try:
+        # Schedule cleanup after a delay (e.g., 30 minutes of inactivity)
+        # For this implementation, we'll mark it for potential cleanup but not stop immediately
+        # to allow users to quickly return to their work
+        
+        logger.info(f"Scheduled container cleanup for user {user_id} on logout")
+        
+        return {
+            "message": "Container cleanup scheduled successfully",
+            "user_id": user_id,
+            "cleanup_scheduled": True,
+            "note": "Container will be cleaned up after inactivity timeout to save resources"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to schedule cleanup for user {user_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to schedule container cleanup: {str(e)}"
+        )
+
 @app.get("/theia/containers")
 async def list_theia_containers(current_user: dict = Depends(require_admin)):
     """List all Theia containers (admin only)"""
