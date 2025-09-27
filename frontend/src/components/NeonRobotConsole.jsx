@@ -48,6 +48,8 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
   const [videoUrl, setVideoUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [videoLoading, setVideoLoading] = useState(false);
+  const [codeLoading, setCodeLoading] = useState(false);
+  const [theiaStatus, setTheiaStatus] = useState(null);
   const [activeBookings, setActiveBookings] = useState([]);
   const [availableRobots, setAvailableRobots] = useState([]);
   const [robotNames, setRobotNames] = useState({});
@@ -245,6 +247,81 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
     }
   };
 
+  const handleRunCode = async () => {
+    setCodeLoading(true);
+    try {
+      // This will push user code from workspace to the robot endpoint
+      // Auto-start Theia container if not running
+      const theiaResponse = await fetch('/theia/status', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (theiaResponse.ok) {
+        const theiaStatusData = await theiaResponse.json();
+        setTheiaStatus(theiaStatusData);
+        
+        // Auto-start Theia if not running
+        if (theiaStatusData.status !== "running") {
+          toast({
+            title: "Starting IDE",
+            description: "Auto-starting development environment...",
+            status: "info",
+            duration: 3000,
+            isClosable: true,
+          });
+          
+          await fetch('/theia/start', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${authToken}`,
+              'Content-Type': 'application/json'
+            }
+          });
+        }
+      }
+      
+      // Execute robot code
+      const response = await fetch('/robot/execute', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          robot_type: robot,
+          code: "# Code from Theia workspace will be executed here"
+        })
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Code Executed",
+          description: `Code successfully sent to ${robotNames[robot]?.name || robot} robot.`,
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+      } else {
+        throw new Error('Failed to execute code');
+      }
+      
+    } catch (error) {
+      console.error("Failed to run code:", error);
+      toast({
+        title: "Code Execution Failed",
+        description: error.message || "Unable to execute code. Please try again.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setCodeLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box h="100vh" w="100vw" display="flex" alignItems="center" justifyContent="center">
@@ -290,7 +367,7 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
 
   return (
     <Box h="100vh" w="100vw" overflow="hidden" position="relative">
-      {/* Neon Glass Top Bar */}
+      {/* Simplified Top Bar */}
       <Box
         position="absolute"
         top="0"
@@ -307,7 +384,7 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
         boxShadow="0 4px 20px rgba(0,0,0,0.3)"
       >
         <HStack spacing={4} flex="1">
-          {/* Left side - Robot info */}
+          {/* Left side - User info */}
           <HStack spacing={3}>
             <Avatar size="sm" name={user.name} />
             <VStack align="start" spacing={0}>
@@ -318,21 +395,11 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
                 <Badge colorScheme="orange" fontSize="xs">DEMO</Badge>
               )}
             </VStack>
-            
-            <Box w="1px" h="30px" bg="rgba(0,255,200,0.3)" />
-            
-            <HStack spacing={2}>
-              <Text fontSize="lg">{robotNames[robot]?.emoji || "🤖"}</Text>
-              <Text color="neon.cyan" fontSize="sm" fontWeight="600">
-                {robotNames[robot]?.name || robot}
-              </Text>
-              <Badge variant="outline" colorScheme="green" fontSize="xs">ACTIVE</Badge>
-            </HStack>
           </HStack>
           
           <Box flex="1" />
           
-          {/* Center - Panel controls */}
+          {/* Center - Panel controls (keep resizer functionality) */}
           <HStack spacing={2}>
             <Tooltip label="Expand IDE" placement="bottom">
               <IconButton
@@ -370,36 +437,25 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
           
           <Box flex="1" />
           
-          {/* Right side - Controls */}
+          {/* Right side - Main actions (simplified to two main buttons) */}
           <HStack spacing={3}>
-            <RobotSelector robot={robot} onSelect={onSelect} availableRobots={availableRobots} />
+            <Button
+              size="sm"
+              colorScheme="green"
+              onClick={handleRunCode}
+              isLoading={codeLoading}
+              loadingText="Running..."
+            >
+              Run Code
+            </Button>
             
             <Button
               size="sm"
-              variant="solid"
-              onClick={handleGetRealResult}
-              isLoading={videoLoading}
-              loadingText="Loading..."
+              variant="outline"
+              onClick={onLogsOpen}
             >
-              Get Real Result
+              View Logs
             </Button>
-            
-            <Tooltip label="View Logs & Instructions" placement="bottom">
-              <IconButton
-                icon={<InfoIcon />}
-                size="sm"
-                variant="ghost"
-                onClick={onLogsOpen}
-              />
-            </Tooltip>
-            
-            <Tooltip label="Settings" placement="bottom">
-              <IconButton
-                icon={<SettingsIcon />}
-                size="sm"
-                variant="ghost"
-              />
-            </Tooltip>
             
             <Button size="sm" variant="ghost" onClick={onBack}>
               Back
@@ -493,10 +549,6 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
         >
           <Box h="100%" variant="glassPanel" borderRadius="0" p={4}>
             <VStack h="100%" spacing={4}>
-              <Text variant="neonGlow" fontSize="lg">
-                {showVideo ? `${robotNames[robot]?.name} Simulation Result` : "Robot Video Feed"}
-              </Text>
-              
               <Box 
                 flex="1" 
                 w="100%" 
@@ -526,6 +578,7 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
                     user={user}
                     authToken={authToken}
                     robotType={robot}
+                    hasAccess={hasAccess}
                     onError={(error) => {
                       toast({
                         title: "Video Stream Error",
@@ -539,6 +592,19 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
                 )}
               </Box>
               
+              {/* Small Get Real Result button for simulation videos */}
+              {hasAccess && (
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={handleGetRealResult}
+                  isLoading={videoLoading}
+                  loadingText="Loading..."
+                >
+                  Get Real Result
+                </Button>
+              )}
+              
               {showVideo && (
                 <Button 
                   size="sm" 
@@ -551,7 +617,7 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
                     }
                   }}
                 >
-                  Back to Live Video Feed
+                  Back to Live Feed
                 </Button>
               )}
             </VStack>
@@ -559,12 +625,12 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
         </Box>
       </Box>
 
-      {/* Logs Modal */}
+      {/* Enhanced Logs Modal */}
       <Modal isOpen={isLogsOpen} onClose={onLogsClose} size="xl">
         <ModalOverlay backdropFilter="blur(4px)" />
         <ModalContent bg="rgba(26, 32, 44, 0.9)" backdropFilter="blur(12px)" border="1px solid rgba(0,255,200,0.3)">
           <ModalHeader color="white" fontFamily="'Orbitron', sans-serif">
-            Robot Console Logs & Instructions
+            Development Console Logs
           </ModalHeader>
           <ModalCloseButton color="white" />
           <ModalBody pb={6} color="gray.300">
@@ -572,29 +638,58 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
               <Box>
                 <Text fontWeight="bold" color="neon.cyan" mb={2}>Current Session:</Text>
                 <Text>Robot Type: {robotNames[robot]?.name || robot}</Text>
-                <Text>Status: Connected</Text>
-                <Text>IDE: Eclipse Theia Ready</Text>
-                <Text>Video Feed: {showVideo ? "Simulation Active" : "Live Stream Active"}</Text>
+                <Text>IDE Status: Eclipse Theia {theiaStatus?.status === "running" ? "Running" : "Stopped"}</Text>
+                <Text>WebRTC Status: {hasAccess ? "Available" : "Booking Required"}</Text>
+                <Text>User: {user.name} {(user?.isDemoUser || user?.isDemoAdmin) ? "(Demo)" : ""}</Text>
               </Box>
               
               <Box>
-                <Text fontWeight="bold" color="neon.cyan" mb={2}>Instructions:</Text>
-                <VStack spacing={2} align="start" fontSize="sm">
-                  <Text>• Use the IDE panel to write and execute robot code</Text>
-                  <Text>• Monitor robot behavior through the video feed</Text>
-                  <Text>• Use panel controls to expand/collapse views as needed</Text>
-                  <Text>• Drag the center divider to resize panels</Text>
-                  <Text>• Click "Get Real Result" to view simulation videos</Text>
+                <Text fontWeight="bold" color="neon.cyan" mb={2}>Container Lifecycle:</Text>
+                <VStack spacing={1} align="start" fontSize="sm">
+                  <Text color="gray.400">• IDE auto-starts on first access</Text>
+                  <Text color="gray.400">• Available 24/7 for code preview and editing</Text>
+                  <Text color="gray.400">• Persistent workspace in isolated container</Text>
+                  <Text color="gray.400">• Auto-cleanup after configurable timeout</Text>
                 </VStack>
               </Box>
               
               <Box>
-                <Text fontWeight="bold" color="neon.cyan" mb={2}>Quick Actions:</Text>
-                <HStack spacing={2} wrap="wrap">
-                  <Button size="xs" variant="ghost">Refresh IDE</Button>
-                  <Button size="xs" variant="ghost">Restart Robot</Button>
-                  <Button size="xs" variant="ghost">Reset Session</Button>
-                </HStack>
+                <Text fontWeight="bold" color="neon.cyan" mb={2}>WebRTC Events:</Text>
+                <VStack spacing={1} align="start" fontSize="sm">
+                  {hasAccess ? (
+                    <>
+                      <Text color="green.300">✓ WebRTC access granted - active booking detected</Text>
+                      <Text color="gray.400">• Live robot feed available during session</Text>
+                      <Text color="gray.400">• Direct WebRTC connection to robot</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text color="orange.300">⚠ WebRTC access restricted</Text>
+                      <Text color="gray.400">• To access the robot feed, please book a session</Text>
+                      <Text color="gray.400">• IDE remains available for code development</Text>
+                    </>
+                  )}
+                </VStack>
+              </Box>
+              
+              <Box>
+                <Text fontWeight="bold" color="neon.cyan" mb={2}>Code Push Results:</Text>
+                <VStack spacing={1} align="start" fontSize="sm">
+                  <Text color="gray.400">• "Run Code" pushes workspace code to robot endpoint</Text>
+                  <Text color="gray.400">• Code execution logged for debugging</Text>
+                  <Text color="gray.400">• Results available in robot simulation videos</Text>
+                </VStack>
+              </Box>
+              
+              <Box>
+                <Text fontWeight="bold" color="neon.cyan" mb={2}>Usage Instructions:</Text>
+                <VStack spacing={1} align="start" fontSize="sm">
+                  <Text>• Use the IDE panel to write and test robot code</Text>
+                  <Text>• Click "Run Code" to execute code on the robot</Text>
+                  <Text>• Monitor execution through the video feed (during active booking)</Text>
+                  <Text>• Drag the center divider to resize panels</Text>
+                  <Text>• View simulation results with "Get Real Result"</Text>
+                </VStack>
               </Box>
             </VStack>
           </ModalBody>

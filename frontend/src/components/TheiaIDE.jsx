@@ -241,70 +241,6 @@ const TheiaIDE = ({ user, authToken, onError }) => {
 
   return (
     <Box w="100%" h="100%">
-      {/* IDE Controls */}
-      <VStack spacing={3} mb={4}>
-        <HStack spacing={3} w="full" justify="space-between">
-          <VStack align="start" spacing={1}>
-            <HStack spacing={2}>
-              <Text fontSize="lg" color="white" fontWeight="bold">
-                Eclipse Theia IDE
-              </Text>
-              {theiaStatus?.status === "running" && (
-                <Badge colorScheme="green" fontSize="xs">
-                  RUNNING
-                </Badge>
-              )}
-              {theiaStatus?.status === "stopped" && (
-                <Badge colorScheme="orange" fontSize="xs">
-                  STOPPED
-                </Badge>
-              )}
-              {theiaStatus?.status === "not_created" && (
-                <Badge colorScheme="gray" fontSize="xs">
-                  NOT STARTED
-                </Badge>
-              )}
-            </HStack>
-            <Text fontSize="xs" color="gray.400">
-              Your personal development environment with Python, C++, Git, and Terminal
-            </Text>
-          </VStack>
-
-          <HStack spacing={2}>
-            {theiaStatus?.status === "running" ? (
-              <>
-                <Button size="sm" colorScheme="blue" onClick={checkTheiaStatus}>
-                  Refresh
-                </Button>
-                <Button size="sm" colorScheme="orange" onClick={restartTheiaContainer} isLoading={isStarting}>
-                  Restart
-                </Button>
-                <Button size="sm" colorScheme="red" onClick={stopTheiaContainer}>
-                  Stop
-                </Button>
-              </>
-            ) : (
-              <Button 
-                size="sm" 
-                colorScheme="green" 
-                onClick={startTheiaContainer}
-                isLoading={isStarting}
-                loadingText="Starting..."
-              >
-                Start IDE
-              </Button>
-            )}
-          </HStack>
-        </HStack>
-
-        {/* Status Info */}
-        {theiaStatus?.url && (
-          <Text fontSize="xs" color="gray.500">
-            IDE running at: {theiaStatus.url}
-          </Text>
-        )}
-      </VStack>
-
       {/* Error Display */}
       {error && (
         <Alert status="error" size="sm" mb={3}>
@@ -319,7 +255,7 @@ const TheiaIDE = ({ user, authToken, onError }) => {
       {/* Theia IDE Iframe */}
       <Box
         w="100%"
-        h="calc(100% - 120px)"
+        h={error ? "calc(100% - 80px)" : "100%"}
         border="1px solid"
         borderColor="gray.600"
         borderRadius="md"
@@ -360,19 +296,9 @@ const TheiaIDE = ({ user, authToken, onError }) => {
                   Eclipse Theia IDE
                 </Text>
                 <Text color="gray.500" fontSize="sm" maxW="md">
-                  Your personal development environment is ready to start. 
-                  Click "Start IDE" to launch your containerized workspace with Python, C++, Git, and terminal access.
+                  Your development environment is ready to start. 
+                  Use "Run Code" to auto-launch your workspace.
                 </Text>
-                <VStack spacing={2} mt={4}>
-                  <Text fontSize="xs" color="gray.600" fontWeight="bold">Features included:</Text>
-                  <VStack spacing={1}>
-                    <Text fontSize="xs" color="gray.500">🐍 Python development environment</Text>
-                    <Text fontSize="xs" color="gray.500">⚡ C++ compiler and tools</Text>
-                    <Text fontSize="xs" color="gray.500">📁 File explorer and editor</Text>
-                    <Text fontSize="xs" color="gray.500">💻 Integrated terminal</Text>
-                    <Text fontSize="xs" color="gray.500">🔄 Git version control</Text>
-                  </VStack>
-                </VStack>
               </>
             )}
 
@@ -380,10 +306,10 @@ const TheiaIDE = ({ user, authToken, onError }) => {
               <>
                 <Spinner size="xl" color="blue.400" />
                 <Text color="gray.300" fontSize="lg" fontWeight="bold">
-                  Auto-Starting IDE...
+                  Starting IDE...
                 </Text>
                 <Text color="gray.500" fontSize="sm">
-                  Your development environment is being automatically prepared for you.
+                  Your development environment is being prepared.
                 </Text>
               </>
             )}
@@ -395,8 +321,7 @@ const TheiaIDE = ({ user, authToken, onError }) => {
                   IDE Stopped
                 </Text>
                 <Text color="gray.500" fontSize="sm" maxW="md">
-                  Your development environment is currently stopped. 
-                  Click "Start IDE" to resume your work.
+                  Click "Run Code" to restart your development environment.
                 </Text>
               </>
             )}
@@ -405,34 +330,25 @@ const TheiaIDE = ({ user, authToken, onError }) => {
               <>
                 <Spinner size="xl" color="blue.400" />
                 <Text color="gray.300" fontSize="lg" fontWeight="bold">
-                  Starting Theia IDE...
+                  Starting IDE...
                 </Text>
                 <Text color="gray.500" fontSize="sm">
-                  Please wait while we prepare your development environment.
+                  Please wait while your container starts.
+                </Text>
+              </>
+            )}
+
+            {isLoading && !theiaStatus && (
+              <>
+                <Spinner size="lg" color="blue.400" />
+                <Text color="gray.300" fontSize="md">
+                  Checking IDE status...
                 </Text>
               </>
             )}
           </VStack>
         )}
       </Box>
-
-      {/* Future Enhancement Info */}
-      <VStack spacing={2} mt={3} align="start">
-        <Text fontSize="xs" color="gray.500">
-          🔧 Future enhancements:
-        </Text>
-        <VStack spacing={1} align="start" pl={4}>
-          <Text fontSize="xs" color="gray.500">
-            • Git-based version history for your projects
-          </Text>
-          <Text fontSize="xs" color="gray.500">
-            • Resource limits and container security improvements
-          </Text>
-          <Text fontSize="xs" color="gray.500">
-            • Extension marketplace integration
-          </Text>
-        </VStack>
-      </VStack>
     </Box>
   );
 };
