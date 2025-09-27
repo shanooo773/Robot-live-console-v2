@@ -163,6 +163,29 @@ class TheiaContainerManager:
         # Fallback if no port found in range
         raise Exception(f"No available ports in range {self.base_port}-{self.max_port}")
     
+    def ensure_user_port_assigned(self, user_id: int) -> bool:
+        """Ensure user has a theia_port assigned in database (doesn't need to be available right now)"""
+        if not self.db_manager:
+            logger.warning(f"No database manager available to assign port for user {user_id}")
+            return False
+            
+        try:
+            # Check if user already has a port in database
+            existing_port = self.db_manager.get_user_theia_port(user_id)
+            if existing_port:
+                logger.info(f"User {user_id} already has theia_port assigned: {existing_port}")
+                return True
+            
+            # User doesn't have a port, assign one
+            logger.info(f"Assigning new theia_port for user {user_id}")
+            port = self.get_user_port(user_id)  # This will find and assign a port
+            logger.info(f"✅ Successfully assigned theia_port {port} to user {user_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to ensure port assignment for user {user_id}: {e}")
+            return False
+    
     def release_user_port(self, user_id: int) -> None:
         """Release port mapping when container is stopped"""
         if user_id in self._port_mappings:
