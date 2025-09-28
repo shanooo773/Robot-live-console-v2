@@ -19,7 +19,7 @@ class TheiaContainerManager:
         self.base_port = base_port or int(os.getenv('THEIA_BASE_PORT', 4000))
         self.max_port = int(os.getenv('THEIA_MAX_PORT', 9000))
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
-        self.theia_image = os.getenv('THEIA_IMAGE', 'theiaide/theia:latest')  # Use official image as per requirement
+        self.theia_image = os.getenv('THEIA_IMAGE', 'elswork/theia')  # Use working image that matches start-user-container.sh
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
         
         # Container lifecycle configuration
@@ -374,7 +374,7 @@ int main() {
             
             return {
                 "status": "running" if is_running else "stopped",
-                "url": f"http://172.232.105.47:{port}" if is_running and port else None,
+                "url": f"http://{server_host}:{port}" if is_running and port else None,
                 "port": port if is_running else None,
                 "container_name": container_name
             }
@@ -469,13 +469,26 @@ int main() {
             except subprocess.TimeoutExpired:
                 logger.warning("Docker network creation timed out")
             
+            # Get server host from environment for container configuration
+            server_host = os.getenv('SERVER_HOST', '172.232.105.47')
+            
             # Start container using the exact command format from requirements
             # docker run -d --name theia-${USERID} -p ${ASSIGNED_PORT}:3000 -v /data/users/${USERID}:/home/project theiaide/theia:latest
+            # Add environment variables to configure Theia with external hostname
             cmd = [
                 "docker", "run", "-d",
                 "--name", container_name,
                 "-p", f"{port}:3000",
                 "-v", f"{project_dir.absolute()}:/home/project",
+                "-e", f"THEIA_HOST={server_host}",
+                "-e", f"THEIA_PORT={port}",
+                "-e", f"PUBLIC_URL=http://{server_host}:{port}",
+                "-e", f"THEIA_WEBVIEW_EXTERNAL_ENDPOINT=http://{server_host}:{port}",
+                "-e", f"THEIA_MINI_BROWSER_HOST_PATTERN=http://{server_host}:{port}",
+                "-e", f"HOSTNAME={server_host}",
+                # Additional Theia-specific environment variables
+                "-e", f"THEIA_OPEN_HANDLER_URL=http://{server_host}:{port}",
+                "-e", f"SHELL=/bin/bash",
                 self.theia_image
             ]
             
