@@ -79,7 +79,10 @@ turtlebot_test.mp4
 # Theia transformation - exclude test files
 backend/test_theia.py
 projects/123/
+projects/7777/
+projects/8888/
 projects/9999/
+test_theia_config.py
 playwright-logs/
 
 # Database files (MySQL only - no SQLite)
