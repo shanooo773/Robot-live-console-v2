@@ -374,7 +374,7 @@ int main() {
             
             return {
                 "status": "running" if is_running else "stopped",
-                "url": f"http://{server_host}:{port}" if is_running and port else None,
+                "url": f"http://172.232.105.47:{port}" if is_running and port else None,
                 "port": port if is_running else None,
                 "container_name": container_name
             }
