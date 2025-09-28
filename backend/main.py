@@ -170,6 +170,7 @@ except Exception as e:
                 "email": email,
                 "password_hash": password_hash,
                 "role": role,
+                "theia_port": None,  # Will be assigned during onboarding
                 "created_at": datetime.now().isoformat()
             }
             
@@ -210,6 +211,7 @@ except Exception as e:
                         "name": user["name"],
                         "email": user["email"],
                         "role": user["role"],
+                        "theia_port": user.get("theia_port"),
                         "created_at": user["created_at"]
                     }
             return None
@@ -382,12 +384,48 @@ except Exception as e:
             self._robots = [robot for robot in self._robots if robot["id"] != robot_id]
             logger.info(f"MockDB: Deleted robot {robot_id}")
             return True
+        
+        # Theia service support methods
+        def get_user_theia_port(self, user_id: int) -> Optional[int]:
+            """Get user's assigned Theia port from in-memory storage"""
+            for user in self._users.values():
+                if user["id"] == user_id:
+                    return user.get("theia_port")
+            return None
+        
+        def set_user_theia_port(self, user_id: int, port: int) -> bool:
+            """Set user's assigned Theia port in in-memory storage"""
+            for user in self._users.values():
+                if user["id"] == user_id:
+                    user["theia_port"] = port
+                    logger.info(f"MockDB: Set theia_port {port} for user {user_id}")
+                    return True
+            logger.warning(f"MockDB: User {user_id} not found for theia_port assignment")
+            return False
+        
+        def clear_user_theia_port(self, user_id: int) -> bool:
+            """Clear user's assigned Theia port in in-memory storage"""
+            for user in self._users.values():
+                if user["id"] == user_id:
+                    user["theia_port"] = None
+                    logger.info(f"MockDB: Cleared theia_port for user {user_id}")
+                    return True
+            return False
+        
+        def get_all_assigned_ports(self) -> List[int]:
+            """Get all currently assigned Theia ports from in-memory storage"""
+            ports = []
+            for user in self._users.values():
+                port = user.get("theia_port")
+                if port:
+                    ports.append(port)
+            return ports
     db = MockDatabaseManager()
 
 # Initialize service manager with fallback
 if SERVICES_AVAILABLE:
-    service_manager = AdminServiceManager(db)
     theia_manager = TheiaContainerManager(db_manager=db)
+    service_manager = AdminServiceManager(db, theia_manager)
 else:
     # Create simple fallback service manager
     class FallbackServiceManager:

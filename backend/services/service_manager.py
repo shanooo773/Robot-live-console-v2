@@ -17,8 +17,9 @@ class AdminServiceManager:
     Provides authentication and booking functionality without simulation dependencies.
     """
     
-    def __init__(self, db: DatabaseManager):
+    def __init__(self, db: DatabaseManager, theia_manager=None):
         self.db = db
+        self.theia_manager = theia_manager
         self.services = {}
         self._initialize_services()
     
@@ -28,7 +29,7 @@ class AdminServiceManager:
         
         # Initialize core services (must always work)
         try:
-            self.auth_service = AuthService(self.db)
+            self.auth_service = AuthService(self.db, self.theia_manager)
             self.services['auth'] = self.auth_service
             logger.info("✅ Auth service initialized")
         except Exception as e:

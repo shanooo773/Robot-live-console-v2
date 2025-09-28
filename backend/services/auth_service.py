@@ -22,11 +22,12 @@ class AuthService:
     This service operates independently of Docker and other services.
     """
     
-    def __init__(self, db: DatabaseManager):
+    def __init__(self, db: DatabaseManager, theia_manager=None):
         self.db = db
         self.auth_manager = auth_manager
         self.available = True
         self.status = "available"
+        self.theia_manager = theia_manager
         
         # Load demo credentials from environment variables
         self.demo_user_email = os.getenv("DEMO_USER_EMAIL", "demo@user.com")
@@ -76,6 +77,9 @@ class AuthService:
             user = self.db.create_user(name, email, password)
             logger.info(f"✅ User registered successfully: {email} (ID: {user['id']})")
             
+            # Ensure user onboarding setup (theia port assignment and directory creation)
+            self._ensure_user_onboarding(user['id'], user['email'])
+            
             token = self.auth_manager.create_access_token(
                 data={"sub": str(user["id"]), "email": user["email"], "role": user["role"]}
             )
@@ -114,6 +118,9 @@ class AuthService:
                 
                 token = self.auth_manager.create_access_token(data=token_data)
                 
+                # Ensure demo user onboarding setup
+                self._ensure_user_onboarding(demo_user['id'], demo_user['email'])
+                
                 logger.info(f"🎯 Demo user login successful: {email} with role {demo_user['role']}")
                 return {
                     "access_token": token,
@@ -129,6 +136,10 @@ class AuthService:
                 raise HTTPException(status_code=401, detail="Invalid email or password")
             
             logger.info(f"✅ Database authentication successful for: {email} (ID: {user['id']}, Role: {user['role']})")
+            
+            # Ensure user onboarding setup (theia port assignment and directory creation)
+            self._ensure_user_onboarding(user['id'], user['email'])
+            
             token = self.auth_manager.create_access_token(
                 data={"sub": str(user["id"]), "email": user["email"], "role": user["role"]}
             )
@@ -158,3 +169,39 @@ class AuthService:
     def verify_admin_role(self, user: Dict[str, Any]) -> bool:
         """Verify if user has admin role"""
         return user.get("role") == "admin"
+    
+    def _ensure_user_onboarding(self, user_id: int, user_email: str) -> None:
+        """Ensure user has required onboarding setup (theia port and project directory)"""
+        try:
+            logger.info(f"🎯 Ensuring onboarding setup for user {user_id} ({user_email})")
+            
+            # Step 1: Ensure theia_port is assigned
+            if self.theia_manager:
+                try:
+                    port_assigned = self.theia_manager.ensure_user_port_assigned(user_id)
+                    if port_assigned:
+                        logger.info(f"✅ Theia port ensured for user {user_id}")
+                    else:
+                        logger.warning(f"⚠️ Failed to ensure theia port for user {user_id}")
+                except Exception as e:
+                    logger.error(f"❌ Error ensuring theia_port for user {user_id}: {e}")
+            else:
+                logger.warning(f"⚠️ Theia manager not available for user {user_id} port assignment")
+            
+            # Step 2: Ensure project directory exists
+            if self.theia_manager:
+                try:
+                    directory_created = self.theia_manager.ensure_user_project_dir(user_id)
+                    if directory_created:
+                        logger.info(f"✅ Project directory ensured for user {user_id}")
+                    else:
+                        logger.warning(f"⚠️ Failed to create project directory for user {user_id}")
+                except Exception as e:
+                    logger.error(f"❌ Error creating project directory for user {user_id}: {e}")
+            else:
+                logger.warning(f"⚠️ Theia manager not available for user {user_id} directory creation")
+                
+        except Exception as e:
+            logger.error(f"❌ Error during user onboarding setup for user {user_id}: {e}")
+            # Don't fail the authentication due to onboarding issues
+            pass
