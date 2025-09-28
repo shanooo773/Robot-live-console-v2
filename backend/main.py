@@ -46,8 +46,18 @@ def setup_logging():
 
 logger = setup_logging()
 
-# WebRTC no longer needed for backend - robots handle WebRTC directly
-# Backend only provides robot WebRTC URLs and configuration
+# WebRTC imports for compatibility and future direct handling if needed
+try:
+    from aiortc import RTCPeerConnection
+    from aiortc.contrib.media import MediaPlayer, MediaRelay
+    WEBRTC_AVAILABLE = True
+    logger.info("WebRTC modules (aiortc) loaded successfully")
+except ImportError as e:
+    logger.warning(f"WebRTC modules not available - using fallbacks: {e}")
+    WEBRTC_AVAILABLE = False
+    RTCPeerConnection = None
+    MediaPlayer = None
+    MediaRelay = None
 
 # Import our modules with fallback handling
 from database import DatabaseManager
@@ -1582,7 +1592,9 @@ async def execute_robot_code(request: RobotExecuteRequest, current_user: dict = 
         robot_type = robot.get("type")
     
     # At this point, 'robot' contains the specific robot assigned to the user
-    upload_endpoint = robot.get("upload_endpoint")
+    # Code execution uses robot registry (get_active_robot_by_type) for endpoint URLs
+    # upload_endpoint was formerly known as code_api_url in the schema migration
+    upload_endpoint = robot.get("upload_endpoint")  # Previously code_api_url
     robot_id = robot.get("id")
     robot_name = robot.get("name")
     
@@ -1839,6 +1851,63 @@ async def has_booking_for_robot(user_id: int, robot_id: int, current_user: dict 
     
     # Check if user has active session for this specific robot
     return booking_service.has_active_robot_session(user_id, robot_id)
+
+async def getRobotWebRTCUrl(robot_type: str, current_user: dict) -> dict:
+    """Get robot WebRTC URL for direct connection"""
+    user_id = int(current_user["sub"])
+    
+    # Get robot by type from registry
+    robot = db.get_active_robot_by_type(robot_type)
+    if not robot:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No active robot found with type '{robot_type}'"
+        )
+    
+    robot_id = robot.get('id')
+    
+    # Validate user has active booking session for this robot  
+    if not await has_booking_for_robot(user_id, robot_id, current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="To access the real-time robot feed, please book the service. Video access requires an active booking session."
+        )
+    
+    webrtc_url = robot.get('webrtc_url')
+    if not webrtc_url:
+        raise HTTPException(
+            status_code=404,  
+            detail=f"Robot {robot_id} does not have a WebRTC URL configured"
+        )
+    
+    return {
+        "robot_id": robot_id,
+        "robot_name": robot.get("name", "Unknown"),
+        "robot_type": robot_type,
+        "webrtc_url": webrtc_url,
+        "message": "Connect directly to robot WebRTC server using this URL"
+    }
+
+async def sendOfferToRobot(webrtc_url: str, offer: dict) -> dict:
+    """Send offer directly to robot WebRTC server"""
+    import aiohttp
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{webrtc_url}/offer", json=offer, timeout=10) as response:
+                if response.status != 200:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Robot WebRTC server returned {response.status}"
+                    )
+                result = await response.json()
+                return result
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to send offer to robot at {webrtc_url}: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to connect to robot WebRTC server"
+        )
 
 @app.post("/webrtc/offer")
 async def handle_webrtc_offer(offer: WebRTCOffer, current_user: dict = Depends(get_current_user)):

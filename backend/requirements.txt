@@ -14,3 +14,6 @@ aiomysql==0.2.0
 websockets==11.0.2
 # Docker container management
 docker==6.1.3
+# WebRTC support
+aiortc==1.6.0
+aiohttp==3.9.1
