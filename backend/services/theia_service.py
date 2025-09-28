@@ -370,7 +370,7 @@ int main() {
                 port = self._port_mappings[user_id]
             
             # Get server host from environment or use localhost
-            server_host = os.getenv('SERVER_HOST', 'localhost')
+            server_host = os.getenv('SERVER_HOST', '172.232.105.47')
             
             return {
                 "status": "running" if is_running else "stopped",
@@ -483,7 +483,7 @@ int main() {
             
             if result.returncode == 0:
                 # Get server host from environment or use localhost  
-                server_host = os.getenv('SERVER_HOST', 'localhost')
+                server_host = os.getenv('SERVER_HOST', '172.232.105.47')
                 
                 return {
                     "success": True,
