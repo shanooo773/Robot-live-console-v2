@@ -19,7 +19,7 @@ class TheiaContainerManager:
         self.base_port = base_port or int(os.getenv('THEIA_BASE_PORT', 4000))
         self.max_port = int(os.getenv('THEIA_MAX_PORT', 9000))
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
-        self.theia_image = os.getenv('THEIA_IMAGE', 'theiaide/theia:latest')  # Use official image as per requirement
+        self.theia_image = os.getenv('THEIA_IMAGE', 'elswork/theia')  # Use working image that matches start-user-container.sh
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
         
         # Container lifecycle configuration
@@ -486,6 +486,9 @@ int main() {
                 "-e", f"THEIA_WEBVIEW_EXTERNAL_ENDPOINT=http://{server_host}:{port}",
                 "-e", f"THEIA_MINI_BROWSER_HOST_PATTERN=http://{server_host}:{port}",
                 "-e", f"HOSTNAME={server_host}",
+                # Additional Theia-specific environment variables
+                "-e", f"THEIA_OPEN_HANDLER_URL=http://{server_host}:{port}",
+                "-e", f"SHELL=/bin/bash",
                 self.theia_image
             ]
             

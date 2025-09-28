@@ -18,6 +18,9 @@ echo "  Public URL: $PUBLIC_URL"
 export THEIA_OPEN_HANDLER_URL="$PUBLIC_URL"
 export THEIA_WEBVIEW_EXTERNAL_ENDPOINT="$PUBLIC_URL"
 
+# Set Node.js specific environment variables that might affect URL generation
+export NODE_OPTIONS="--max-old-space-size=2048"
+
 # Start Theia with the external hostname configuration
 # Use the standard Theia start command but ensure it knows about external access
 exec theia start \
