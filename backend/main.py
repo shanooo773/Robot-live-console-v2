@@ -1526,6 +1526,71 @@ async def robot_websocket(websocket, user_id: int):
     finally:
         await websocket.close()
 
+# Workspace Files Endpoint
+@app.get("/theia/workspace/files")
+async def list_workspace_files(current_user: dict = Depends(get_current_user)):
+    """List all .py and .cpp files in the user's workspace"""
+    import os
+    
+    user_id = int(current_user["sub"])
+    
+    if not theia_manager:
+        raise HTTPException(status_code=503, detail="Theia manager not available")
+    
+    try:
+        user_project_dir = theia_manager.get_user_project_dir(user_id)
+        
+        if not user_project_dir.exists():
+            return {"files": []}
+        
+        # List all .py and .cpp files
+        files = []
+        for root, dirs, filenames in os.walk(user_project_dir):
+            for filename in filenames:
+                if filename.endswith(('.py', '.cpp')):
+                    # Get relative path from project directory
+                    file_path = os.path.join(root, filename)
+                    rel_path = os.path.relpath(file_path, user_project_dir)
+                    files.append({
+                        "name": filename,
+                        "path": rel_path,
+                        "language": "cpp" if filename.endswith('.cpp') else "python"
+                    })
+        
+        return {"files": files}
+    
+    except Exception as e:
+        logger.error(f"Failed to list workspace files for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list workspace files: {str(e)}")
+
+@app.get("/theia/workspace/file/{file_path:path}")
+async def get_workspace_file_content(file_path: str, current_user: dict = Depends(get_current_user)):
+    """Get content of a specific file from the user's workspace"""
+    user_id = int(current_user["sub"])
+    
+    if not theia_manager:
+        raise HTTPException(status_code=503, detail="Theia manager not available")
+    
+    try:
+        user_project_dir = theia_manager.get_user_project_dir(user_id)
+        full_path = user_project_dir / file_path
+        
+        # Security check: ensure the file is within the user's project directory
+        if not str(full_path.resolve()).startswith(str(user_project_dir.resolve())):
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        if not full_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        content = full_path.read_text()
+        return {"content": content, "filename": file_path}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to read file {file_path} for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
+
 # Robot Code Execution Endpoint
 class RobotExecuteRequest(BaseModel):
     code: str

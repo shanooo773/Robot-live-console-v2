@@ -33,6 +33,7 @@ import {
 import TheiaIDE from "./TheiaIDE";
 import WebRTCVideoPlayer from "./WebRTCVideoPlayer";
 import RobotSelector from "./RobotSelector";
+import FileSelector from "./FileSelector";
 import { checkAccess, getVideo, getMyActiveBookings, getAvailableRobots } from "../api";
 
 const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
@@ -55,6 +56,11 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
   const [robotNames, setRobotNames] = useState({});
   const [userMode, setUserMode] = useState("preview"); // "preview" or "booking"
   const [hasActiveBooking, setHasActiveBooking] = useState(false);
+  
+  // File selection state
+  const [workspaceFiles, setWorkspaceFiles] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [filesLoading, setFilesLoading] = useState(false);
   
   // Modal state
   const { isOpen: isLogsOpen, onOpen: onLogsOpen, onClose: onLogsClose } = useDisclosure();
@@ -204,6 +210,13 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
     checkUserAccessAndMode();
   }, [authToken, user, toast, robot]);
 
+  // Load workspace files when Theia status changes to running
+  useEffect(() => {
+    if (theiaStatus?.status === "running" && authToken) {
+      loadWorkspaceFiles();
+    }
+  }, [theiaStatus?.status, authToken]);
+
   // Panel control functions
   const expandIDE = () => setPanelLayout("ide-expanded");
   const expandVideo = () => setPanelLayout("video-expanded");
@@ -252,6 +265,34 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
     setVideoUrl(null);
   };
 
+  const loadWorkspaceFiles = async () => {
+    setFilesLoading(true);
+    try {
+      const response = await fetch('/theia/workspace/files', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setWorkspaceFiles(data.files || []);
+        
+        // Auto-select first file if none selected
+        if (!selectedFile && data.files && data.files.length > 0) {
+          setSelectedFile(data.files[0]);
+        }
+      } else {
+        console.error("Failed to load workspace files");
+      }
+    } catch (error) {
+      console.error("Error loading workspace files:", error);
+    } finally {
+      setFilesLoading(false);
+    }
+  };
+
   const handleGetRealResult = async () => {
     setVideoLoading(true);
     try {
@@ -293,6 +334,18 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
   };
 
   const handleRunCode = async () => {
+    // Check if a file is selected
+    if (!selectedFile) {
+      toast({
+        title: "No File Selected",
+        description: "Please select a .py or .cpp file to run.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
     // Check if user is in preview mode and block robot execution
     if (userMode === "preview" && !hasActiveBooking) {
       toast({
@@ -343,8 +396,28 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
           });
         }
       }
+
+      // Fetch the actual file content from the workspace
+      // Encode the path properly to handle subdirectories
+      const encodedPath = selectedFile.path.split('/').map(encodeURIComponent).join('/');
+      const fileResponse = await fetch(`/theia/workspace/file/${encodedPath}`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!fileResponse.ok) {
+        throw new Error('Failed to read file from workspace');
+      }
+
+      const fileData = await fileResponse.json();
+      const fileContent = fileData.content;
+
+      // Determine language from file extension
+      const language = selectedFile.language;
       
-      // Execute robot code
+      // Execute robot code with actual file content
       const response = await fetch('/robot/execute', {
         method: 'POST',
         headers: {
@@ -353,14 +426,16 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
         },
         body: JSON.stringify({
           robot_type: robot,
-          code: "# Code from Theia workspace will be executed here"
+          code: fileContent,
+          language: language,
+          filename: selectedFile.name
         })
       });
       
       if (response.ok) {
         toast({
           title: "Code Executed",
-          description: `Code successfully sent to ${robotNames[robot]?.name || robot} robot.`,
+          description: `${selectedFile.name} successfully sent to ${robotNames[robot]?.name || robot} robot.`,
           status: "success",
           duration: 3000,
           isClosable: true,
@@ -495,6 +570,14 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
           
           {/* Right side - Main actions (simplified to two main buttons) */}
           <HStack spacing={3}>
+            <FileSelector 
+              selectedFile={selectedFile}
+              files={workspaceFiles}
+              onSelect={setSelectedFile}
+              isLoading={filesLoading}
+              onRefresh={loadWorkspaceFiles}
+            />
+            
             {userMode === "preview" ? (
               <>
                 <Tooltip 
