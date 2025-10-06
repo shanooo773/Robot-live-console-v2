@@ -398,7 +398,9 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
       }
 
       // Fetch the actual file content from the workspace
-      const fileResponse = await fetch(`/theia/workspace/file/${encodeURIComponent(selectedFile.path)}`, {
+      // Encode the path properly to handle subdirectories
+      const encodedPath = selectedFile.path.split('/').map(encodeURIComponent).join('/');
+      const fileResponse = await fetch(`/theia/workspace/file/${encodedPath}`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json'
@@ -573,6 +575,7 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
               files={workspaceFiles}
               onSelect={setSelectedFile}
               isLoading={filesLoading}
+              onRefresh={loadWorkspaceFiles}
             />
             
             {userMode === "preview" ? (

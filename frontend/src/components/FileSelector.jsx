@@ -1,38 +1,36 @@
-import { Box, Button, Menu, MenuButton, MenuList, MenuItem, Text, Badge, HStack } from "@chakra-ui/react";
-import { ChevronDownIcon } from "@chakra-ui/icons";
+import { Box, Button, Menu, MenuButton, MenuList, MenuItem, Text, Badge, HStack, IconButton, Tooltip } from "@chakra-ui/react";
+import { ChevronDownIcon, RepeatIcon } from "@chakra-ui/icons";
 
-const FileSelector = ({ selectedFile, files, onSelect, isLoading }) => {
+const FileSelector = ({ selectedFile, files, onSelect, isLoading, onRefresh }) => {
   const getFileIcon = (language) => {
     return language === "cpp" ? "🔧" : "🐍";
   };
 
   return (
-    <Box mb={2} minW="200px">
-      <Text mb={2} fontSize="sm" color="gray.400">
-        Select File to Run:
-      </Text>
-      <Menu isLazy>
-        <MenuButton 
-          as={Button} 
-          rightIcon={<ChevronDownIcon />}
-          variant="outline" 
-          color="gray.300" 
-          bg="#1a1a2e" 
-          _hover={{ bg: "#1e1e2e" }}
-          size="sm"
-          w="100%"
-          textAlign="left"
-          isLoading={isLoading}
-        >
-          {selectedFile ? (
-            <HStack spacing={2}>
-              <Text>{getFileIcon(selectedFile.language)}</Text>
-              <Text isTruncated>{selectedFile.name}</Text>
-            </HStack>
-          ) : (
-            "Select a file..."
-          )}
-        </MenuButton>
+    <HStack spacing={1}>
+      <Box minW="200px">
+        <Menu isLazy>
+          <MenuButton 
+            as={Button} 
+            rightIcon={<ChevronDownIcon />}
+            variant="outline" 
+            color="gray.300" 
+            bg="#1a1a2e" 
+            _hover={{ bg: "#1e1e2e" }}
+            size="sm"
+            w="100%"
+            textAlign="left"
+            isLoading={isLoading}
+          >
+            {selectedFile ? (
+              <HStack spacing={2}>
+                <Text>{getFileIcon(selectedFile.language)}</Text>
+                <Text isTruncated>{selectedFile.name}</Text>
+              </HStack>
+            ) : (
+              "Select a file..."
+            )}
+          </MenuButton>
         <MenuList 
           bg="#1a1a2e" 
           border="1px solid #333"
@@ -71,6 +69,20 @@ const FileSelector = ({ selectedFile, files, onSelect, isLoading }) => {
         </MenuList>
       </Menu>
     </Box>
+    {onRefresh && (
+      <Tooltip label="Refresh file list" placement="bottom">
+        <IconButton
+          icon={<RepeatIcon />}
+          size="sm"
+          variant="ghost"
+          color="gray.400"
+          onClick={onRefresh}
+          isLoading={isLoading}
+          _hover={{ color: "cyan.400" }}
+        />
+      </Tooltip>
+    )}
+  </HStack>
   );
 };
 
