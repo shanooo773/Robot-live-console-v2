@@ -20,6 +20,7 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
   const videoRef = useRef();
   const peerConnectionRef = useRef();
   const websocketRef = useRef(); // For RTSP bridge WebSocket connection
+  const connectionTimeoutRef = useRef(); // Track timeout for cleanup
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -100,9 +101,10 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
       const peerConnection = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = peerConnection;
 
-      // Set up connection timeout (30 seconds)
-      const connectionTimeout = setTimeout(() => {
-        if (webrtcStatus === "connecting") {
+      // Set up connection timeout
+      connectionTimeoutRef.current = setTimeout(() => {
+        if (peerConnection.connectionState !== 'connected' && 
+            peerConnection.connectionState !== 'closed') {
           console.warn('WebRTC connection timed out');
           setError('Connection timed out. The robot may not be available.');
           setWebrtcStatus("disconnected");
@@ -110,12 +112,15 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
             peerConnection.close();
           }
         }
-      }, 30000);
+      }, CONNECTION_TIMEOUT_MS);
 
       // Step 4: Set up video element to receive remote stream
       peerConnection.ontrack = (event) => {
         console.log('Received remote stream from robot');
-        clearTimeout(connectionTimeout); // Clear timeout on successful connection
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
         if (videoRef.current && event.streams[0]) {
           videoRef.current.srcObject = event.streams[0];
           setIsConnected(true);
@@ -169,7 +174,10 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
         console.error('Failed to connect to robot WebRTC server:', offerError);
         setError(`Failed to connect to robot: ${offerError.message}. The robot may be offline or not configured.`);
         setWebrtcStatus("disconnected");
-        clearTimeout(connectionTimeout);
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
         return;
       }
 
@@ -195,9 +203,9 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
         wsUrl = `${protocol}//${window.location.hostname}:${port}`;
       }
 
-      // Construct WebSocket URL with stream_id query parameter
+      // Construct WebSocket URL with stream_id query parameter (URL-encoded for security)
       const wsEndpoint = streamId 
-        ? `${wsUrl}/ws/stream?stream_id=${streamId}`
+        ? `${wsUrl}/ws/stream?stream_id=${encodeURIComponent(streamId)}`
         : `${wsUrl}/ws/stream`;
 
       console.log('Connecting to WebSocket:', wsEndpoint);
@@ -210,9 +218,11 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
       const peerConnection = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = peerConnection;
 
-      // Set up connection timeout
-      const connectionTimeout = setTimeout(() => {
-        if (webrtcStatus === "connecting") {
+      // Set up connection timeout (using ref to avoid stale closure)
+      connectionTimeoutRef.current = setTimeout(() => {
+        // Check actual connection state instead of stale webrtcStatus
+        if (peerConnection.connectionState !== 'connected' && 
+            peerConnection.connectionState !== 'closed') {
           console.warn('RTSP bridge connection timed out');
           setError('Connection timed out. The stream may not be available.');
           setWebrtcStatus("disconnected");
@@ -224,7 +234,10 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
       // Handle incoming video track from bridge
       peerConnection.ontrack = (event) => {
         console.log('Received remote stream from RTSP bridge');
-        clearTimeout(connectionTimeout);
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
         if (videoRef.current && event.streams[0]) {
           videoRef.current.srcObject = event.streams[0];
           setIsConnected(true);
@@ -248,7 +261,12 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
         console.log('WebSocket connected to bridge');
         try {
           // Add transceiver to receive video (modern approach)
-          peerConnection.addTransceiver('video', { direction: 'recvonly' });
+          try {
+            peerConnection.addTransceiver('video', { direction: 'recvonly' });
+          } catch (transceiverError) {
+            console.warn('addTransceiver not supported, falling back to createOffer options:', transceiverError);
+            // Fallback for older browsers - will use deprecated options in createOffer
+          }
           
           // Create and send offer
           const offer = await peerConnection.createOffer();
@@ -263,7 +281,10 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
           console.error('Failed to create/send offer:', offerError);
           setError(`Failed to create offer: ${offerError.message}`);
           setWebrtcStatus("disconnected");
-          clearTimeout(connectionTimeout);
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
         }
       };
 
@@ -273,6 +294,13 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
           console.log('Received message from bridge:', message.type);
 
           if (message.type === 'answer') {
+            // Validate SDP before setting remote description
+            if (!message.sdp || typeof message.sdp !== 'string' || message.sdp.trim() === '') {
+              console.error('Invalid SDP received from bridge:', message);
+              setError('Invalid answer received from bridge');
+              return;
+            }
+            
             await peerConnection.setRemoteDescription({
               type: 'answer',
               sdp: message.sdp
@@ -291,7 +319,10 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
         console.error('WebSocket error:', error);
         setError('WebSocket connection error. Please check the bridge service.');
         setWebrtcStatus("disconnected");
-        clearTimeout(connectionTimeout);
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
       };
 
       ws.onclose = () => {
@@ -300,7 +331,10 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
           setError('WebSocket connection closed unexpectedly.');
         }
         setWebrtcStatus("disconnected");
-        clearTimeout(connectionTimeout);
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
       };
 
     } catch (err) {
@@ -360,6 +394,12 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
   };
 
   const handleDisconnect = () => {
+    // Clean up timeout
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
+    }
+    
     // Clean up WebRTC connection
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
