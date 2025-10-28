@@ -361,3 +361,32 @@ export const deleteRobot = async (robotId, token) => {
   });
   return response.data;
 };
+
+// Stream API - for RTSP bridge support
+export const startStream = async (streamData, token) => {
+  const response = await API.post("/streams/start", streamData, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const stopStream = async (streamId, token) => {
+  const response = await API.post("/streams/stop", { stream_id: streamId }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const getStreamMetadata = async (streamId, token) => {
+  const response = await API.get(`/streams/${streamId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const getStreamSignalingInfo = async (streamId, token) => {
+  const response = await API.get(`/streams/${streamId}/signaling-info`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};

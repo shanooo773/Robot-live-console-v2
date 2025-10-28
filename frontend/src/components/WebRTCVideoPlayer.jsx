@@ -11,11 +11,12 @@ import {
   HStack,
   Select
 } from "@chakra-ui/react";
-import { getWebRTCConfig, getRobotWebRTCUrl, sendOfferToRobot, sendICECandidateToRobot } from '../api';
+import { getWebRTCConfig, getRobotWebRTCUrl, sendOfferToRobot, sendICECandidateToRobot, getStreamMetadata, getStreamSignalingInfo } from '../api';
 
-const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", hasAccess = true }) => {
+const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", hasAccess = true, streamId = null }) => {
   const videoRef = useRef();
   const peerConnectionRef = useRef();
+  const websocketRef = useRef(); // For RTSP bridge WebSocket connection
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -176,6 +177,131 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
     }
   };
 
+  // Initialize WebRTC connection via RTSP bridge (WebSocket signaling)
+  const initRTSPBridge = async (signalingInfo) => {
+    try {
+      setWebrtcStatus("connecting");
+      console.log('Initializing RTSP bridge connection with signaling info:', signalingInfo);
+
+      const wsUrl = signalingInfo.ws_url || 
+                    process.env.REACT_APP_BRIDGE_WS_URL || 
+                    `ws://${window.location.hostname}:8081`;
+
+      // Construct WebSocket URL with stream_id query parameter
+      const wsEndpoint = streamId 
+        ? `${wsUrl}/ws/stream?stream_id=${streamId}`
+        : `${wsUrl}/ws/stream`;
+
+      console.log('Connecting to WebSocket:', wsEndpoint);
+
+      // Create WebSocket connection
+      const ws = new WebSocket(wsEndpoint);
+      websocketRef.current = ws;
+
+      // Create peer connection with existing rtcConfig
+      const peerConnection = new RTCPeerConnection(rtcConfig);
+      peerConnectionRef.current = peerConnection;
+
+      // Set up connection timeout (30 seconds)
+      const connectionTimeout = setTimeout(() => {
+        if (webrtcStatus === "connecting") {
+          console.warn('RTSP bridge connection timed out');
+          setError('Connection timed out. The stream may not be available.');
+          setWebrtcStatus("disconnected");
+          if (peerConnection) peerConnection.close();
+          if (ws) ws.close();
+        }
+      }, 30000);
+
+      // Handle incoming video track from bridge
+      peerConnection.ontrack = (event) => {
+        console.log('Received remote stream from RTSP bridge');
+        clearTimeout(connectionTimeout);
+        if (videoRef.current && event.streams[0]) {
+          videoRef.current.srcObject = event.streams[0];
+          setIsConnected(true);
+          setWebrtcStatus("connected");
+        }
+      };
+
+      // Handle ICE candidates - send via WebSocket
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate && ws.readyState === WebSocket.OPEN) {
+          console.log('Sending ICE candidate to bridge');
+          ws.send(JSON.stringify({
+            type: 'ice',
+            candidate: event.candidate
+          }));
+        }
+      };
+
+      // WebSocket event handlers
+      ws.onopen = async () => {
+        console.log('WebSocket connected to bridge');
+        try {
+          // Create and send offer
+          const offer = await peerConnection.createOffer({
+            offerToReceiveVideo: true,
+            offerToReceiveAudio: false
+          });
+          await peerConnection.setLocalDescription(offer);
+          
+          console.log('Sending offer to bridge');
+          ws.send(JSON.stringify({
+            type: 'offer',
+            sdp: offer.sdp
+          }));
+        } catch (offerError) {
+          console.error('Failed to create/send offer:', offerError);
+          setError(`Failed to create offer: ${offerError.message}`);
+          setWebrtcStatus("disconnected");
+          clearTimeout(connectionTimeout);
+        }
+      };
+
+      ws.onmessage = async (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          console.log('Received message from bridge:', message.type);
+
+          if (message.type === 'answer') {
+            await peerConnection.setRemoteDescription({
+              type: 'answer',
+              sdp: message.sdp
+            });
+            console.log('Applied remote description from bridge');
+          } else if (message.type === 'ice' && message.candidate) {
+            await peerConnection.addIceCandidate(message.candidate);
+            console.log('Added ICE candidate from bridge');
+          }
+        } catch (msgError) {
+          console.error('Error handling WebSocket message:', msgError);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setError('WebSocket connection error. Please check the bridge service.');
+        setWebrtcStatus("disconnected");
+        clearTimeout(connectionTimeout);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket connection closed');
+        if (webrtcStatus === "connecting") {
+          setError('WebSocket connection closed unexpectedly.');
+        }
+        setWebrtcStatus("disconnected");
+        clearTimeout(connectionTimeout);
+      };
+
+    } catch (err) {
+      console.error('RTSP bridge initialization error:', err);
+      setError(`RTSP bridge connection failed: ${err.message}`);
+      setWebrtcStatus("disconnected");
+    }
+  };
+
   const handleConnect = async () => {
     setIsLoading(true);
     setError(null);
@@ -188,8 +314,34 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
           setIsConnected(true);
         }
       } else if (streamType === "webrtc") {
-        // Initialize WebRTC connection
-        await initWebRTC();
+        // Check if streamId is provided - if so, check stream metadata first
+        if (streamId) {
+          try {
+            console.log('Fetching stream metadata for stream_id:', streamId);
+            const metadata = await getStreamMetadata(streamId, authToken);
+            console.log('Stream metadata:', metadata);
+
+            // If stream type is 'rtsp', use bridge flow
+            if (metadata.type === 'rtsp') {
+              console.log('Stream type is RTSP, using bridge flow');
+              const signalingInfo = await getStreamSignalingInfo(streamId, authToken);
+              console.log('Signaling info:', signalingInfo);
+              await initRTSPBridge(signalingInfo);
+            } else {
+              // Otherwise use direct robot flow
+              console.log('Stream type is not RTSP, using direct robot flow');
+              await initWebRTC();
+            }
+          } catch (metadataError) {
+            console.error('Failed to fetch stream metadata:', metadataError);
+            // If metadata fetch fails, fall back to direct robot flow
+            console.log('Falling back to direct robot WebRTC flow');
+            await initWebRTC();
+          }
+        } else {
+          // No streamId provided, use existing direct robot flow
+          await initWebRTC();
+        }
       }
     } catch (err) {
       setError(`Failed to connect to video stream: ${err.message}`);
@@ -206,8 +358,11 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
       peerConnectionRef.current = null;
     }
     
-    // Note: socketRef was removed as WebRTC now connects directly to robot
-    // No socket connection cleanup needed for direct robot WebRTC
+    // Clean up WebSocket connection (for RTSP bridge)
+    if (websocketRef.current) {
+      websocketRef.current.close();
+      websocketRef.current = null;
+    }
     
     if (videoRef.current) {
       videoRef.current.src = "";
