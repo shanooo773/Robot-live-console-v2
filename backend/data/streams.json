@@ -1,0 +1,65 @@
+[
+  {
+    "stream_id": "test-stream-001",
+    "rtsp_url": "rtsp://example.com:554/stream",
+    "booking_id": "booking-123",
+    "type": "rtsp",
+    "status": "running",
+    "created_by": "admin",
+    "created_at": "2025-10-28T02:35:45.458863"
+  },
+  {
+    "stream_id": "meta-test-stream",
+    "rtsp_url": "rtsp://example.com:554/test",
+    "booking_id": "booking-meta-test",
+    "type": "rtsp",
+    "status": "running",
+    "created_by": "admin",
+    "created_at": "2025-10-28T02:35:45.464955"
+  },
+  {
+    "stream_id": "stop-test-stream",
+    "rtsp_url": "rtsp://example.com:554/stop-test",
+    "booking_id": "booking-stop-test",
+    "type": "rtsp",
+    "status": "stopped",
+    "created_by": "admin",
+    "created_at": "2025-10-28T02:35:45.468945"
+  },
+  {
+    "stream_id": "webrtc-test-stream",
+    "rtsp_url": "http://example.com/webrtc",
+    "booking_id": "booking-webrtc",
+    "type": "webrtc",
+    "status": "running",
+    "created_by": "admin",
+    "created_at": "2025-10-28T02:35:45.477852"
+  },
+  {
+    "stream_id": "duplicate-stream",
+    "rtsp_url": "rtsp://example.com:554/dup",
+    "booking_id": "booking-dup",
+    "type": "rtsp",
+    "status": "running",
+    "created_by": "admin",
+    "created_at": "2025-10-28T02:35:45.480445"
+  },
+  {
+    "stream_id": "c72c6dc2-481c-4642-900b-74ce15090ae7",
+    "rtsp_url": "rtsp://example.com:554/auto",
+    "booking_id": "booking-auto",
+    "type": "rtsp",
+    "status": "running",
+    "created_by": "admin",
+    "created_at": "2025-10-28T02:35:45.487610"
+  },
+  {
+    "stream_id": "signaling-test-stream",
+    "rtsp_url": "rtsp://example.com:554/signaling-test",
+    "booking_id": "booking-signaling",
+    "type": "rtsp",
+    "status": "running",
+    "created_by": "admin",
+    "created_at": "2025-10-28T02:36:09.186240"
+  }
+]

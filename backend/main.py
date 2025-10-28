@@ -63,6 +63,16 @@ except ImportError as e:
 from database import DatabaseManager
 from auth import auth_manager, get_current_user, require_admin
 
+# Import streams router
+try:
+    from routes import streams
+    STREAMS_ROUTER_AVAILABLE = True
+    logger.info("Streams router loaded successfully")
+except ImportError as e:
+    logger.warning(f"Streams router not available: {e}")
+    STREAMS_ROUTER_AVAILABLE = False
+    streams = None
+
 # Optional service imports - use fallbacks if not available
 try:
     from services.service_manager import AdminServiceManager
@@ -473,6 +483,14 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Admin Backend API starting up...")
     logger.info("📊 Database initialized")
     
+    # Log environment variables for streams feature
+    logger.info(f"🌐 BRIDGE_WS_URL: {os.getenv('BRIDGE_WS_URL', 'ws://localhost:8081')}")
+    bridge_control = os.getenv('BRIDGE_CONTROL_URL')
+    if bridge_control:
+        logger.info(f"🎛️ BRIDGE_CONTROL_URL: {bridge_control}")
+    else:
+        logger.info("🎛️ BRIDGE_CONTROL_URL: Not configured (optional)")
+    
     # Log service status
     status = service_manager.get_service_status()
     logger.info(f"🔧 Services status: {status['overall_status']}")
@@ -515,6 +533,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include streams router
+if STREAMS_ROUTER_AVAILABLE:
+    app.include_router(streams.router)
+    logger.info("✅ Streams router registered at /api/streams")
 
 # API Models
 
