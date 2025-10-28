@@ -90,6 +90,9 @@ playwright-logs/
 *.sqlite
 *.sqlite3
 
+# Streams data file (runtime data, not for version control)
+backend/data/streams.json
+
 # Python cache
 __pycache__/
 *.pyc
