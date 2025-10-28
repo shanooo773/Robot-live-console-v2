@@ -24,7 +24,12 @@ def check_mark(condition):
     return "✅" if condition else "❌"
 
 def check_environment():
-    """Check environment configuration"""
+    """
+    Check environment configuration.
+    
+    Returns:
+        bool: True if all required environment variables are configured, False otherwise.
+    """
     print_header("Environment Configuration")
     
     required_vars = {
@@ -55,7 +60,12 @@ def check_environment():
     return all_found
 
 def check_files():
-    """Check required files exist"""
+    """
+    Check required files exist.
+    
+    Returns:
+        bool: True if all required files exist, False otherwise.
+    """
     print_header("File Structure")
     
     required_files = {
@@ -77,7 +87,13 @@ def check_files():
     return all_found
 
 def check_api_endpoints():
-    """Check if API endpoints are available (if server is running)"""
+    """
+    Check if API endpoints are available (if server is running).
+    
+    Returns:
+        bool: True if server is running and endpoints are accessible, 
+              or if server is not running (allowing validation to continue).
+    """
     print_header("API Endpoints")
     
     try:
@@ -112,7 +128,12 @@ def check_api_endpoints():
         return True
 
 def check_imports():
-    """Check that streams router can be imported"""
+    """
+    Check that streams router can be imported.
+    
+    Returns:
+        bool: True if streams router and all required functions/objects exist, False otherwise.
+    """
     print_header("Python Imports")
     
     backend_path = Path(__file__).parent / "backend"
@@ -150,7 +171,12 @@ def check_imports():
         return False
 
 def check_documentation():
-    """Check documentation quality"""
+    """
+    Check documentation quality.
+    
+    Returns:
+        bool: True if all required documentation sections are present, False otherwise.
+    """
     print_header("Documentation")
     
     guide_path = Path(__file__).parent / "RTSP_STREAMING_GUIDE.md"
