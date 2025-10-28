@@ -434,9 +434,9 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const handleCreateStream = async () => {
     try {
       const streamData = {
-        rtsp_url: streamForm.rtsp_url,
-        booking_id: streamForm.booking_id,
-        stream_id: streamForm.stream_id || undefined,
+        rtsp_url: streamForm.rtsp_url.trim(),
+        booking_id: streamForm.booking_id.trim(),
+        stream_id: streamForm.stream_id.trim() || undefined,
         type: streamForm.use_bridge ? 'rtsp' : 'webrtc'
       };
       
@@ -1413,7 +1413,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             <Button 
               colorScheme="purple" 
               onClick={handleCreateStream}
-              isDisabled={!streamForm.rtsp_url || !streamForm.booking_id}
+              isDisabled={!streamForm.rtsp_url.trim() || !streamForm.booking_id.trim()}
             >
               Create Stream
             </Button>

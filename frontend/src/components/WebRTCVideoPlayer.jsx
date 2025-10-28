@@ -13,6 +13,9 @@ import {
 } from "@chakra-ui/react";
 import { getWebRTCConfig, getRobotWebRTCUrl, sendOfferToRobot, sendICECandidateToRobot, getStreamMetadata, getStreamSignalingInfo } from '../api';
 
+// Connection timeout constant (in milliseconds)
+const CONNECTION_TIMEOUT_MS = 30000;
+
 const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", hasAccess = true, streamId = null }) => {
   const videoRef = useRef();
   const peerConnectionRef = useRef();
@@ -183,9 +186,14 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
       setWebrtcStatus("connecting");
       console.log('Initializing RTSP bridge connection with signaling info:', signalingInfo);
 
-      const wsUrl = signalingInfo.ws_url || 
-                    process.env.REACT_APP_BRIDGE_WS_URL || 
-                    `ws://${window.location.hostname}:8081`;
+      // Determine WebSocket URL with secure protocol preference
+      let wsUrl = signalingInfo.ws_url || process.env.REACT_APP_BRIDGE_WS_URL;
+      if (!wsUrl) {
+        // Fallback: use secure WebSocket if page is HTTPS, otherwise use WS
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = process.env.REACT_APP_BRIDGE_WS_PORT || '8081';
+        wsUrl = `${protocol}//${window.location.hostname}:${port}`;
+      }
 
       // Construct WebSocket URL with stream_id query parameter
       const wsEndpoint = streamId 
@@ -202,7 +210,7 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
       const peerConnection = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = peerConnection;
 
-      // Set up connection timeout (30 seconds)
+      // Set up connection timeout
       const connectionTimeout = setTimeout(() => {
         if (webrtcStatus === "connecting") {
           console.warn('RTSP bridge connection timed out');
@@ -211,7 +219,7 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
           if (peerConnection) peerConnection.close();
           if (ws) ws.close();
         }
-      }, 30000);
+      }, CONNECTION_TIMEOUT_MS);
 
       // Handle incoming video track from bridge
       peerConnection.ontrack = (event) => {
@@ -239,11 +247,11 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
       ws.onopen = async () => {
         console.log('WebSocket connected to bridge');
         try {
+          // Add transceiver to receive video (modern approach)
+          peerConnection.addTransceiver('video', { direction: 'recvonly' });
+          
           // Create and send offer
-          const offer = await peerConnection.createOffer({
-            offerToReceiveVideo: true,
-            offerToReceiveAudio: false
-          });
+          const offer = await peerConnection.createOffer();
           await peerConnection.setLocalDescription(offer);
           
           console.log('Sending offer to bridge');
