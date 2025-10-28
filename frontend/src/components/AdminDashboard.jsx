@@ -67,7 +67,9 @@ import {
   getAllRobots,
   createRobot,
   updateRobot,
-  deleteRobot
+  deleteRobot,
+  startStream,
+  stopStream
 } from "../api";
 import { ChevronDownIcon, DeleteIcon, EditIcon, AddIcon, ViewIcon } from "@chakra-ui/icons";
 
@@ -86,6 +88,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const [selectedRobot, setSelectedRobot] = useState(null);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
   const [isRobotModalOpen, setIsRobotModalOpen] = useState(false);
+  const [isStreamModalOpen, setIsStreamModalOpen] = useState(false);
   const [announcementForm, setAnnouncementForm] = useState({
     title: "",
     content: "",
@@ -97,6 +100,13 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     type: "",
     webrtc_url: "",
     upload_endpoint: ""
+  });
+  const [streamForm, setStreamForm] = useState({
+    rtsp_url: "",
+    booking_id: "",
+    stream_id: "",
+    type: "rtsp",
+    use_bridge: true
   });
   const [isEditingAnnouncement, setIsEditingAnnouncement] = useState(false);
   const [isEditingRobot, setIsEditingRobot] = useState(false);
@@ -415,6 +425,46 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
         description: "Failed to delete robot",
         status: "error",
         duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  // Stream Management Handlers
+  const handleCreateStream = async () => {
+    try {
+      const streamData = {
+        rtsp_url: streamForm.rtsp_url.trim(),
+        booking_id: streamForm.booking_id.trim(),
+        stream_id: streamForm.stream_id.trim() || undefined,
+        type: streamForm.use_bridge ? 'rtsp' : 'webrtc'
+      };
+      
+      await startStream(streamData, authToken);
+      
+      toast({
+        title: "Stream started",
+        description: "RTSP stream has been successfully started",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      
+      setIsStreamModalOpen(false);
+      setStreamForm({
+        rtsp_url: "",
+        booking_id: "",
+        stream_id: "",
+        type: "rtsp",
+        use_bridge: true
+      });
+    } catch (error) {
+      console.error('Error creating stream:', error);
+      toast({
+        title: "Stream creation failed",
+        description: error.response?.data?.detail || "Failed to start stream",
+        status: "error",
+        duration: 5000,
         isClosable: true,
       });
     }
@@ -1031,6 +1081,30 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             </TableContainer>
           </CardBody>
         </Card>
+
+        {/* Stream Management Card */}
+        <Card bg="gray.800" border="1px solid" borderColor="gray.600">
+          <CardHeader>
+            <HStack justify="space-between">
+              <Text fontSize="lg" fontWeight="bold" color="white">
+                Stream Management
+              </Text>
+              <Button
+                size="sm"
+                colorScheme="purple"
+                leftIcon={<AddIcon />}
+                onClick={() => setIsStreamModalOpen(true)}
+              >
+                Create Stream
+              </Button>
+            </HStack>
+          </CardHeader>
+          <CardBody>
+            <Text color="gray.400" fontSize="sm">
+              Create RTSP streams for robot cameras. Use the bridge option to route through the WebRTC bridge service.
+            </Text>
+          </CardBody>
+        </Card>
       </VStack>
 
       {/* Delete Confirmation Dialog */}
@@ -1259,6 +1333,89 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
               isDisabled={!robotForm.name || !robotForm.type}
             >
               {isEditingRobot ? 'Update' : 'Create'}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Stream Modal */}
+      <Modal isOpen={isStreamModalOpen} onClose={() => setIsStreamModalOpen(false)}>
+        <ModalOverlay />
+        <ModalContent bg="gray.800" border="1px solid" borderColor="gray.600">
+          <ModalHeader color="white">Create RTSP Stream</ModalHeader>
+          <ModalCloseButton color="white" />
+          <ModalBody>
+            <VStack spacing={4}>
+              <FormControl isRequired>
+                <FormLabel color="gray.200">RTSP URL</FormLabel>
+                <Input
+                  placeholder="rtsp://camera-ip:554/stream"
+                  value={streamForm.rtsp_url}
+                  onChange={(e) => setStreamForm({...streamForm, rtsp_url: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                  _placeholder={{ color: "gray.400" }}
+                />
+              </FormControl>
+
+              <FormControl isRequired>
+                <FormLabel color="gray.200">Booking ID</FormLabel>
+                <Input
+                  placeholder="Enter booking ID"
+                  value={streamForm.booking_id}
+                  onChange={(e) => setStreamForm({...streamForm, booking_id: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                  _placeholder={{ color: "gray.400" }}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel color="gray.200">Stream ID (Optional)</FormLabel>
+                <Input
+                  placeholder="Auto-generated if not provided"
+                  value={streamForm.stream_id}
+                  onChange={(e) => setStreamForm({...streamForm, stream_id: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                  _placeholder={{ color: "gray.400" }}
+                />
+              </FormControl>
+
+              <FormControl display="flex" alignItems="center">
+                <FormLabel color="gray.200" mb="0">
+                  Use Server RTSP Bridge
+                </FormLabel>
+                <Switch
+                  isChecked={streamForm.use_bridge}
+                  onChange={(e) => setStreamForm({...streamForm, use_bridge: e.target.checked})}
+                  colorScheme="purple"
+                />
+              </FormControl>
+
+              <Text color="gray.400" fontSize="xs">
+                {streamForm.use_bridge 
+                  ? "Stream will use the WebRTC bridge service for RTSP transcoding."
+                  : "Stream will use direct WebRTC connection (type will be 'webrtc')."}
+              </Text>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={() => setIsStreamModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              colorScheme="purple" 
+              onClick={handleCreateStream}
+              isDisabled={!streamForm.rtsp_url.trim() || !streamForm.booking_id.trim()}
+            >
+              Create Stream
             </Button>
           </ModalFooter>
         </ModalContent>
