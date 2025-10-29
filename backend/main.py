@@ -628,6 +628,7 @@ class RobotCreate(BaseModel):
     name: str
     type: str
     webrtc_url: Optional[str] = None
+    rtsp_url: Optional[str] = None
     upload_endpoint: Optional[str] = None
     status: str = 'active'
 
@@ -635,6 +636,7 @@ class RobotUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
     webrtc_url: Optional[str] = None
+    rtsp_url: Optional[str] = None
     upload_endpoint: Optional[str] = None
     status: Optional[str] = None
 
@@ -646,6 +648,7 @@ class RobotResponse(BaseModel):
     name: str
     type: str
     webrtc_url: Optional[str] = None
+    rtsp_url: Optional[str] = None
     upload_endpoint: Optional[str] = None
     status: str
     created_at: str
@@ -899,6 +902,7 @@ async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(req
         name=robot_data.name,
         robot_type=robot_data.type,
         webrtc_url=robot_data.webrtc_url,
+        rtsp_url=robot_data.rtsp_url,
         upload_endpoint=robot_data.upload_endpoint,
         status=robot_data.status
     )
@@ -940,6 +944,7 @@ async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dic
         name=robot_data.name,
         robot_type=robot_data.type,
         webrtc_url=robot_data.webrtc_url,
+        rtsp_url=robot_data.rtsp_url,
         upload_endpoint=robot_data.upload_endpoint,
         status=robot_data.status
     )
