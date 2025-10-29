@@ -31,6 +31,16 @@ try:
 except ImportError:
     AUTH_AVAILABLE = False
 
+# Import database for booking validation
+try:
+    from database import DatabaseManager
+    db = DatabaseManager()
+    DB_AVAILABLE = True
+except Exception as e:
+    DB_AVAILABLE = False
+    db = None
+    logging.warning(f"Database not available for streams router: {e}")
+
 logger = logging.getLogger(__name__)
 
 # Create router with /api/streams prefix
@@ -219,18 +229,38 @@ def user_has_active_booking(user_id: int, booking_id: str) -> bool:
     """
     Check if user has an active booking.
     
-    TODO-DB: Replace this with proper booking validation:
-    booking = db.get_booking_by_id(booking_id)
-    return booking and booking['user_id'] == user_id and booking['status'] == 'active'
-    
-    For now, this is permissive for dev/testing.
+    This validates that the user has access to the stream associated with this booking.
     """
-    # DEV MODE: Permissive behavior - log warning and allow
-    logger.warning(
-        f"DEV MODE: Skipping booking validation for user {user_id}, booking {booking_id}. "
-        "Implement proper booking check when database is available."
-    )
-    return True
+    if not DB_AVAILABLE or not db:
+        logger.warning(
+            f"DEV MODE: Database unavailable, skipping booking validation for user {user_id}, booking {booking_id}. "
+            "Implement proper booking check when database is available."
+        )
+        return True
+    
+    try:
+        # Get all user bookings
+        bookings = db.get_user_bookings(user_id)
+        
+        # Check if any active booking matches the booking_id
+        for booking in bookings:
+            # Match by booking_id (could be stored as string or int)
+            booking_match = (
+                str(booking.get("id")) == str(booking_id) or 
+                booking.get("booking_id") == booking_id
+            )
+            
+            if booking_match and booking.get("status") == "active":
+                logger.info(f"User {user_id} has active booking {booking_id}")
+                return True
+        
+        logger.warning(f"User {user_id} does not have active booking {booking_id}")
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error checking booking for user {user_id}: {e}")
+        # Fail open in dev mode, fail closed in production
+        return True if os.getenv("ENVIRONMENT") == "development" else False
 
 
 # ============================================================================
@@ -368,21 +398,19 @@ async def stop_stream(
 
 @router.get("/{stream_id}", response_model=StreamMetadataResponse)
 async def get_stream_metadata(
-    stream_id: str
+    stream_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user) if AUTH_AVAILABLE else None
 ):
     """
     Get stream metadata (authenticated users).
     
     Returns safe metadata only - does NOT include rtsp_url.
-    
-    TODO-DB: Replace with: stream = db.get_stream_by_id(stream_id)
     """
-    # For now, allow permissive access for dev (no auth required)
-    # In production, add: current_user: Dict[str, Any] = Depends(get_current_user)
-    logger.warning("Dev mode: Allowing permissive access to stream metadata")
+    # Require authentication if available
+    if not AUTH_AVAILABLE or not current_user:
+        logger.warning("Dev mode: Allowing permissive access to stream metadata")
     
     # Get stream from storage
-    # TODO-DB: Replace with: stream = db.get_stream_by_id(stream_id)
     stream = get_stream_by_id(stream_id)
     
     if not stream:
@@ -403,7 +431,8 @@ async def get_stream_metadata(
 
 @router.get("/{stream_id}/signaling-info", response_model=StreamSignalingInfoResponse)
 async def get_signaling_info(
-    stream_id: str
+    stream_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user) if AUTH_AVAILABLE else None
 ):
     """
     Get signaling info for a stream (authenticated users with active booking).
@@ -411,16 +440,8 @@ async def get_signaling_info(
     - Verifies user has active booking for the stream
     - Returns WebSocket URL for signaling
     - Does NOT return rtsp_url or any secrets
-    
-    TODO-DB: Replace booking validation with real database check
-    TODO-AUTH: Add authentication: current_user: Dict[str, Any] = Depends(get_current_user)
     """
-    # DEV MODE: For now, allow permissive access for testing
-    # In production, require authentication and booking validation
-    logger.warning("DEV MODE: Allowing permissive access to signaling info for testing")
-    
     # Get stream from storage
-    # TODO-DB: Replace with: stream = db.get_stream_by_id(stream_id)
     stream = get_stream_by_id(stream_id)
     
     if not stream:
@@ -429,12 +450,35 @@ async def get_signaling_info(
             detail=f"Stream {stream_id} not found"
         )
     
-    # DEV MODE: Skip booking validation for testing
-    # TODO-DB: Add proper booking validation when auth is integrated
-    # user_id = int(current_user.get("sub", 0))
-    # booking_id = stream["booking_id"]
-    # if not user_has_active_booking(user_id, booking_id):
-    #     raise HTTPException(status_code=403, detail="Access denied.")
+    # Check if stream is running
+    if stream.get("status") != "running":
+        raise HTTPException(
+            status_code=403,
+            detail=f"Stream {stream_id} is not running (status: {stream.get('status')})"
+        )
+    
+    # Validate user has active booking (if auth is available)
+    if AUTH_AVAILABLE and current_user:
+        user_id = int(current_user.get("sub", 0))
+        booking_id = stream["booking_id"]
+        
+        if not user_has_active_booking(user_id, booking_id):
+            raise HTTPException(
+                status_code=403, 
+                detail="Access denied. You need an active booking to view this stream."
+            )
+        
+        logger.info(f"User {user_id} authorized to access stream {stream_id}")
+    else:
+        # DEV MODE: Log warning when auth is not available
+        logger.warning(f"DEV MODE: Allowing permissive access to signaling info for stream {stream_id}")
+    
+    # Build WebSocket URL with stream_id parameter for bridge validation
+    ws_url = BRIDGE_WS_URL
+    if "?" not in ws_url:
+        ws_url += f"?stream_id={stream_id}"
+    else:
+        ws_url += f"&stream_id={stream_id}"
     
     # Return WebSocket URL (no secrets)
-    return StreamSignalingInfoResponse(ws_url=BRIDGE_WS_URL)
+    return StreamSignalingInfoResponse(ws_url=ws_url)
