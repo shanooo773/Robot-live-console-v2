@@ -2,14 +2,16 @@
 
 ## Overview
 
-This implementation enables administrators to register RTSP streams (e.g., from cameras at rtsp://10.0.0.2:8554) and allows authenticated users with active bookings to view these streams through an external WebRTC bridge.
+This implementation enables administrators to configure RTSP streams for robots in the Robot Registry, and allows authenticated users with active bookings to view these streams through an external WebRTC bridge.
+
+**Migration Note**: Legacy file-based `streams.json` has been removed. All RTSP sources must now be configured in the Robot Registry (database).
 
 ## Architecture
 
 ```
 ┌─────────────┐      ┌──────────────┐      ┌─────────────────┐      ┌─────────┐
-│   Admin     │─────▶│   Backend    │─────▶│ WebRTC Bridge   │─────▶│  RTSP   │
-│  (Register) │      │ (API Server) │      │  (GStreamer)    │      │ Camera  │
+│   Admin     │─────▶│ Robot        │─────▶│ WebRTC Bridge   │─────▶│  RTSP   │
+│ (Configure) │      │ Registry DB  │      │  (GStreamer)    │      │ Camera  │
 └─────────────┘      └──────────────┘      └─────────────────┘      └─────────┘
                              │                       │
                              │                       │
@@ -32,20 +34,28 @@ This implementation enables administrators to register RTSP streams (e.g., from 
 ### 1. Backend API (FastAPI)
 - **Location**: `backend/routes/streams.py`
 - **Endpoints**:
-  - `POST /api/streams/start` - Register RTSP stream (admin only)
-  - `POST /api/streams/stop` - Stop stream (admin only)
-  - `GET /api/streams/{stream_id}` - Get stream metadata (authenticated)
-  - `GET /api/streams/{stream_id}/signaling-info` - Get WebSocket URL (booked users)
+  - `GET /api/streams/{robot_id}` - Get stream metadata (authenticated) - stream_id corresponds to robot_id
+  - `GET /api/streams/{robot_id}/signaling-info` - Get WebSocket URL (booked users only)
+  - `GET /api/streams/bridge/authorize` - Bridge authorization endpoint (requires BRIDGE_CONTROL_SECRET)
 
-### 2. WebRTC Bridge (External Service)
+**NOTE**: `POST /api/streams/start` and `POST /api/streams/stop` endpoints have been **removed**. Stream management is now done through Robot Registry.
+
+### 2. Robot Registry (Database)
+- **Location**: `backend/database.py`
+- **Table**: `robots`
+- **RTSP Field**: `rtsp_url` (VARCHAR(500))
+- Admins configure RTSP URLs via `/admin/robots` endpoints
+
+### 3. WebRTC Bridge (External Service)
 - **Not included in this repository** - runs separately
 - **Purpose**: Converts RTSP to WebRTC
 - **Technology**: GStreamer with webrtcbin
 - **Endpoint**: Exposes WebSocket at `ws://localhost:8081/ws/stream`
+- **Security**: Bridge must call `/api/streams/bridge/authorize` to get RTSP URL
 
-### 3. Frontend (React)
+### 4. Frontend (React)
 - Connects to backend for authentication
-- Obtains WebSocket URL from `/api/streams/{stream_id}/signaling-info`
+- Obtains WebSocket URL from `/api/streams/{robot_id}/signaling-info`
 - Establishes WebRTC connection through bridge
 
 ## Configuration
@@ -55,8 +65,7 @@ This implementation enables administrators to register RTSP streams (e.g., from 
 ```bash
 # WebRTC Bridge Configuration
 BRIDGE_WS_URL=ws://localhost:8081/ws/stream
-BRIDGE_CONTROL_URL=http://localhost:8081
-ADMIN_API_KEY=choose-a-secure-key-for-production
+BRIDGE_CONTROL_SECRET=choose-a-secure-secret-for-bridge
 ```
 
 ### Environment Variables Explained
@@ -65,101 +74,127 @@ ADMIN_API_KEY=choose-a-secure-key-for-production
   - Development: `ws://localhost:8081/ws/stream`
   - Production: `wss://your-bridge.domain.com/ws/stream`
 
-- **BRIDGE_CONTROL_URL**: Optional HTTP endpoint for bridge control
-  - Used to notify bridge when streams start/stop
-  - Can be omitted if bridge auto-discovers streams
-
-- **ADMIN_API_KEY**: Fallback admin authentication
-  - Only used when standard auth is unavailable
-  - Should be a strong random key in production
+- **BRIDGE_CONTROL_SECRET**: Secret for bridge authorization
+  - Bridge must provide this in `X-BRIDGE-SECRET` header
+  - Used to authorize bridge to get RTSP URLs from backend
+  - Should be a strong random key
 
 ## Usage
 
-### 1. Admin: Register RTSP Stream
+### 1. Admin: Configure Robot with RTSP URL
+
+Add RTSP URL to a robot in Robot Registry:
 
 ```bash
-curl -X POST http://localhost:8000/api/streams/start \
+curl -X POST http://localhost:8000/admin/robots \
   -H "Content-Type: application/json" \
-  -H "X-ADMIN-KEY: your-admin-key" \
+  -H "Authorization: Bearer <admin-token>" \
   -d '{
+    "name": "Security Camera 1",
+    "type": "camera",
     "rtsp_url": "rtsp://10.0.0.2:8554",
-    "booking_id": "booking-123",
-    "type": "rtsp"
+    "status": "active"
   }'
 ```
 
 **Response:**
 ```json
 {
-  "stream_id": "550e8400-e29b-41d4-a716-446655440000"
+  "id": 5,
+  "name": "Security Camera 1",
+  "type": "camera",
+  "rtsp_url": "rtsp://10.0.0.2:8554",
+  "status": "active",
+  "created_at": "2024-01-20T10:00:00"
 }
 ```
 
-**Note**: RTSP URL is never returned in responses for security.
-
-### 2. Viewer: Get Stream Metadata
+Update existing robot with RTSP URL:
 
 ```bash
-curl http://localhost:8000/api/streams/{stream_id} \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+curl -X PUT http://localhost:8000/admin/robots/5 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <admin-token>" \
+  -d '{
+    "rtsp_url": "rtsp://10.0.0.2:8554"
+  }'
 ```
+
+### 2. Viewer: Get Stream Metadata
 
 **Response:**
 ```json
 {
-  "stream_id": "550e8400-e29b-41d4-a716-446655440000",
-  "type": "rtsp",
-  "booking_id": "booking-123",
-  "status": "running",
-  "created_at": "2024-01-15T10:30:00Z"
+  "stream_id": "5",
+  "robot_id": 5,
+  "robot_name": "Security Camera 1",
+  "robot_type": "camera",
+  "status": "active"
 }
 ```
+
+**Note**: The `stream_id` corresponds to the `robot_id`.
 
 ### 3. Viewer: Get WebSocket URL (Requires Active Booking)
 
 ```bash
-curl http://localhost:8000/api/streams/{stream_id}/signaling-info \
+curl http://localhost:8000/api/streams/5/signaling-info \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
 **Response:**
 ```json
 {
-  "ws_url": "ws://localhost:8081/ws/stream?stream_id=550e8400-e29b-41d4-a716-446655440000"
+  "ws_url": "ws://localhost:8081/ws/stream?robot_id=5"
 }
 ```
 
-### 4. Admin: Stop Stream
+### 4. Bridge: Authorize and Get RTSP URL
+
+The bridge must call the authorization endpoint with the secret to get the RTSP URL:
 
 ```bash
-curl -X POST http://localhost:8000/api/streams/stop \
-  -H "Content-Type: application/json" \
-  -H "X-ADMIN-KEY: your-admin-key" \
-  -d '{
-    "stream_id": "550e8400-e29b-41d4-a716-446655440000"
-  }'
+curl http://localhost:8000/api/streams/bridge/authorize?robot_id=5 \
+  -H "X-BRIDGE-SECRET: your-bridge-secret"
+```
+
+**Response:**
+```json
+{
+  "rtsp_url": "rtsp://10.0.0.2:8554",
+  "robot_id": 5,
+  "robot_name": "Security Camera 1"
+}
 ```
 
 ## Security Features
 
 ### 1. RTSP URL Protection
-- RTSP URLs are **never** exposed in API responses
-- Stored server-side only in `backend/data/streams.json`
+- RTSP URLs are **never** exposed in client-facing API responses
+- Stored in database (`robots.rtsp_url` field)
+- Only accessible via bridge authorization endpoint with secret
 - Frontend never has access to RTSP credentials
 
 ### 2. Authentication & Authorization
-- Stream registration requires admin authentication
+- Robot configuration requires admin authentication
 - Stream viewing requires:
   - Valid JWT token (user authentication)
-  - Active booking for the stream's booking_id
-- WebSocket URL includes stream_id for bridge-side validation
+  - Active booking for the robot
+- WebSocket URL includes robot_id for bridge-side validation
+- Bridge must use secret to authorize and get RTSP URL
 
 ### 3. Booking Validation
-- Users can only access streams for their active bookings
+- Users can only access streams for robots they have active bookings for
 - Validation checks:
-  - User has booking with matching booking_id
+  - User has booking for robot_id or robot_type
   - Booking status is "active"
   - Current time is within booking window (if implemented)
+
+### 4. Bridge Authorization
+- Bridge must provide `BRIDGE_CONTROL_SECRET` in `X-BRIDGE-SECRET` header
+- Bridge calls `/api/streams/bridge/authorize?robot_id={id}` to get RTSP URL
+- This ensures bridge cannot access arbitrary RTSP URLs
+- Backend validates booking before returning RTSP URL to bridge
 
 ## Testing
 
@@ -175,29 +210,30 @@ python test_stream_integration.py
 1. **Setup**
    - [ ] Backend running: `uvicorn main:app --reload --port 8000`
    - [ ] Environment variables configured in `.env`
+   - [ ] Robot with RTSP URL configured in database
    - [ ] WebRTC bridge running (external)
 
-2. **Admin Stream Registration**
-   - [ ] Can register RTSP stream with valid URL
-   - [ ] Cannot register with invalid URL (http://)
-   - [ ] RTSP URL not in response
-   - [ ] Stream ID returned
+2. **Admin Robot Configuration**
+   - [ ] Can create robot with RTSP URL
+   - [ ] Can update robot with RTSP URL
+   - [ ] RTSP URL validated (must start with rtsp://)
+   - [ ] RTSP URL visible in admin responses
 
 3. **Stream Metadata Access**
-   - [ ] Can get metadata with authentication
-   - [ ] Metadata includes status, type, booking_id
-   - [ ] RTSP URL not in metadata
+   - [ ] Can get metadata with authentication (using robot_id as stream_id)
+   - [ ] Metadata includes robot info, status
+   - [ ] RTSP URL not in client metadata
 
 4. **WebSocket Signaling Info**
    - [ ] Can get ws_url with valid booking
    - [ ] Cannot get ws_url without booking
    - [ ] RTSP URL not in signaling info
-   - [ ] stream_id in WebSocket URL
+   - [ ] robot_id in WebSocket URL
 
-5. **Stream Control**
-   - [ ] Can stop stream as admin
-   - [ ] Status updated to "stopped"
-   - [ ] Cannot access stopped stream
+5. **Bridge Authorization**
+   - [ ] Bridge can get RTSP URL with secret
+   - [ ] Bridge cannot get RTSP URL without secret
+   - [ ] RTSP URL returned only to bridge
 
 6. **No Regression**
    - [ ] Existing robot WebRTC streams work
@@ -211,9 +247,10 @@ python test_stream_integration.py
 **Problem**: User cannot access stream
 **Checks**:
 1. User has valid JWT token?
-2. User has active booking for this booking_id?
-3. Stream status is "running"?
-4. WebRTC bridge is running?
+2. User has active booking for this robot?
+3. Robot status is "active"?
+4. Robot has rtsp_url configured?
+5. WebRTC bridge is running?
 
 ### RTSP Connection Failed
 
@@ -223,6 +260,7 @@ python test_stream_integration.py
 2. Camera accessible from bridge server?
 3. Network/firewall allows RTSP port (554)?
 4. Bridge logs show connection attempt?
+5. Bridge called `/api/streams/bridge/authorize` successfully?
 
 ### WebSocket Connection Failed
 
@@ -240,15 +278,14 @@ python test_stream_integration.py
 ```bash
 # Production .env
 BRIDGE_WS_URL=wss://bridge.yourdomain.com/ws/stream
-BRIDGE_CONTROL_URL=https://bridge.yourdomain.com
-ADMIN_API_KEY=<generate-secure-random-key>
+BRIDGE_CONTROL_SECRET=<generate-secure-random-secret>
 ENVIRONMENT=production
 ```
 
-### 2. Secure Admin API Key
+### 2. Secure Bridge Secret
 
 ```bash
-# Generate secure key
+# Generate secure secret
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
@@ -257,7 +294,8 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 The bridge service should:
 - Run on separate server or container
 - Expose WebSocket on wss:// (TLS required)
-- Handle authentication/validation
+- Call `/api/streams/bridge/authorize` with secret to get RTSP URL
+- Validate robot_id from WebSocket query parameter
 - Use GStreamer pipeline:
   ```
   rtspsrc location='rtsp://10.0.0.2:8554' latency=200 ! 
