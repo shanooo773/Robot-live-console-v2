@@ -2,102 +2,93 @@
 
 ## Overview
 
-This implementation adds a minimal streams router for managing RTSP/WebRTC streams in the Robot Console backend. The router provides admin-controlled stream registration and authenticated user access to stream signaling information.
+This implementation provides stream access endpoints for managing RTSP streaming in the Robot Console backend using Robot Registry as the single source of truth.
+
+**Migration Note**: Legacy file-based `streams.json` support has been removed. All RTSP URLs are now managed through Robot Registry (database).
 
 ## Architecture
 
 - **Router Location**: `backend/routes/streams.py`
-- **Storage**: File-based JSON storage at `backend/data/streams.json` (development mode)
-- **Authentication**: Reuses existing `require_admin` and `get_current_user` dependencies, with X-ADMIN-KEY header fallback
+- **Storage**: Database (Robot Registry) - `robots.rtsp_url` field
+- **Authentication**: Reuses existing `get_current_user` dependency
+- **Authorization**: Booking-based access control
 
 ## Endpoints
 
-### 1. POST /api/streams/start
-**Auth**: Admin only (X-ADMIN-KEY header)
-
-**Request**:
-```json
-{
-  "rtsp_url": "rtsp://example.com:554/stream",
-  "booking_id": "booking-123",
-  "stream_id": "optional-custom-id",
-  "type": "rtsp"
-}
-```
-
-**Response** (201 Created):
-```json
-{
-  "stream_id": "unique-stream-id"
-}
-```
-
-**Features**:
-- Validates RTSP URL format when `type === 'rtsp'`
-- Auto-generates UUID if `stream_id` not provided
-- Persists to `backend/data/streams.json`
-- **Never returns `rtsp_url` in response**
-- Optionally notifies bridge control service (non-blocking)
-
-### 2. POST /api/streams/stop
-**Auth**: Admin only (X-ADMIN-KEY header)
-
-**Request**:
-```json
-{
-  "stream_id": "stream-to-stop"
-}
-```
-
-**Response** (200 OK):
-```json
-{
-  "message": "Stream stopped successfully",
-  "stream_id": "stream-to-stop"
-}
-```
-
-**Features**:
-- Marks stream status as 'stopped'
-- Optionally notifies bridge control service (non-blocking)
-
-### 3. GET /api/streams/{stream_id}
+### 1. GET /api/streams/{robot_id}
 **Auth**: Authenticated users (permissive in dev mode)
 
+**Parameters**:
+- `robot_id`: Robot ID from Robot Registry (used as stream_id)
+
 **Response** (200 OK):
 ```json
 {
-  "stream_id": "stream-123",
-  "type": "rtsp",
-  "booking_id": "booking-456",
-  "status": "running",
-  "created_at": "2025-10-28T02:35:45.464955"
+  "stream_id": "5",
+  "robot_id": 5,
+  "robot_name": "Security Camera 1",
+  "robot_type": "camera",
+  "status": "active"
 }
 ```
 
 **Features**:
 - Returns safe metadata only
 - **Never includes `rtsp_url`**
+- Verifies robot exists and has RTSP configured
+- Returns 404 if robot not found or has no RTSP URL
 
-### 4. GET /api/streams/{stream_id}/signaling-info
-**Auth**: Authenticated users with active booking (permissive in dev mode)
+### 2. GET /api/streams/{robot_id}/signaling-info
+**Auth**: Authenticated users with active booking
+
+**Parameters**:
+- `robot_id`: Robot ID from Robot Registry (used as stream_id)
 
 **Response** (200 OK):
 ```json
 {
-  "ws_url": "ws://localhost:8081"
+  "ws_url": "ws://localhost:8081/ws/stream?robot_id=5"
 }
 ```
 
 **Features**:
-- Returns WebSocket URL for signaling
-- Verifies user has active booking (when integrated)
+- Returns WebSocket URL for signaling to bridge
+- Verifies user has active booking for the robot
+- Verifies robot exists, has RTSP configured, and is active
 - **Never returns `rtsp_url` or secrets**
+- Returns 403 if user has no active booking
+- Returns 404 if robot not found or has no RTSP URL
+- Returns 403 if robot is not active
+
+### 3. GET /api/streams/bridge/authorize
+**Auth**: Bridge only (X-BRIDGE-SECRET header required)
+
+**Query Parameters**:
+- `robot_id`: Robot ID to authorize
+
+**Headers**:
+- `X-BRIDGE-SECRET`: Bridge control secret (from BRIDGE_CONTROL_SECRET env var)
+
+**Response** (200 OK):
+```json
+{
+  "rtsp_url": "rtsp://10.0.0.2:8554",
+  "robot_id": 5,
+  "robot_name": "Security Camera 1"
+}
+```
+
+**Features**:
+- **ONLY endpoint that returns `rtsp_url`**
+- Requires BRIDGE_CONTROL_SECRET for authorization
+- Used by bridge to get RTSP URL for streaming
+- Returns 401 if secret is invalid
+- Returns 404 if robot not found or has no RTSP URL
 
 ## Security Features
 
-1. **rtsp_url Protection**: Server-side only, never exposed in any response
-2. **Admin Authentication**: Required for start/stop operations
+1. **rtsp_url Protection**: Server-side only, never exposed to clients
+2. **Bridge Authorization**: Bridge must provide secret to access RTSP URLs
 3. **Input Validation**: RTSP URL format, duplicate stream IDs
 4. **Proper HTTP Status Codes**: 400/401/403/404
 
@@ -210,3 +201,20 @@ curl http://localhost:8000/api/streams/stream-id-here/signaling-info
 - Clear migration path to database provided
 - Bridge control integration is optional and non-blocking
 - Authentication uses existing system with simple fallback
+
+## Migration from Legacy streams.json
+
+**BREAKING CHANGE**: Legacy `POST /api/streams/start` and `POST /api/streams/stop` endpoints have been removed.
+
+**Migration Steps**:
+1. Remove any code that calls `/api/streams/start` or `/api/streams/stop`
+2. Configure RTSP URLs in Robot Registry via `/admin/robots` endpoints
+3. Update frontend to use robot_id as stream_id
+4. Ensure BRIDGE_CONTROL_SECRET is set for production
+5. Update bridge to call `/api/streams/bridge/authorize` to get RTSP URLs
+
+**New Workflow**:
+- Admin configures RTSP URLs in Robot Registry (database)
+- Users access streams using robot_id
+- Bridge authorizes with secret to get RTSP URL
+- No file-based storage - all data in database

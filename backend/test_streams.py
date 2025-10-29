@@ -1,7 +1,9 @@
 """
 Tests for Streams Router
 
-This test suite validates the streams endpoints functionality.
+Legacy streams.json support removed — Robot Registry is now single source of truth for RTSP.
+
+This test suite validates the streams endpoints functionality using Robot Registry.
 """
 
 import os
@@ -12,277 +14,196 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Set test environment variables
+os.environ["BRIDGE_WS_URL"] = "ws://localhost:8081/ws/stream"
+os.environ["BRIDGE_CONTROL_SECRET"] = "test-bridge-secret-123"
+os.environ["ENVIRONMENT"] = "development"
+os.environ["DATABASE_TYPE"] = "mock"
+
 from fastapi.testclient import TestClient
-from main import app
+from main import app, db
 
 # Test client
 client = TestClient(app)
 
-# Test admin API key for fallback auth
-os.environ["ADMIN_API_KEY"] = "test-admin-key-123"
 
-
-def test_start_stream_with_admin_key():
-    """Test starting a stream with admin key authentication"""
-    response = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": "rtsp://example.com:554/stream",
-            "booking_id": "booking-123",
-            "stream_id": "test-stream-001",
-            "type": "rtsp"
-        },
-        headers={"X-ADMIN-KEY": "test-admin-key-123"}
+def test_get_robot_metadata():
+    """Test getting stream metadata using robot_id (no rtsp_url in response)"""
+    # First create a robot with RTSP
+    robot = db.create_robot(
+        name="Test Robot for Metadata",
+        robot_type="turtlebot",
+        rtsp_url="rtsp://example.com:554/test",
+        status='active'
     )
+    robot_id = robot["id"]
+    
+    # Get the metadata using robot_id as stream_id
+    response = client.get(f"/api/streams/{robot_id}")
     
     print(f"Response status: {response.status_code}")
     print(f"Response body: {response.json()}")
     
-    assert response.status_code == 201
+    assert response.status_code == 200
     data = response.json()
-    assert "stream_id" in data
-    assert data["stream_id"] == "test-stream-001"
+    assert data["stream_id"] == str(robot_id)
+    assert data["robot_id"] == robot_id
+    assert data["robot_name"] == "Test Robot for Metadata"
+    assert data["robot_type"] == "turtlebot"
+    assert data["status"] == "active"
     # Ensure rtsp_url is NOT in response
     assert "rtsp_url" not in data
-    print("✅ Test passed: start_stream_with_admin_key")
+    print("✅ Test passed: get_robot_metadata")
 
 
-def test_start_stream_invalid_rtsp_url():
-    """Test that invalid RTSP URLs are rejected"""
-    response = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": "http://example.com/stream",  # Should be rtsp://
-            "booking_id": "booking-456",
-            "type": "rtsp"
-        },
-        headers={"X-ADMIN-KEY": "test-admin-key-123"}
+def test_get_signaling_info():
+    """Test getting signaling info for robot with RTSP"""
+    # First create a robot with RTSP
+    robot = db.create_robot(
+        name="Test Robot for Signaling",
+        robot_type="arm",
+        rtsp_url="rtsp://example.com:554/signaling-test",
+        status='active'
+    )
+    robot_id = robot["id"]
+    
+    # Get the signaling info
+    response = client.get(f"/api/streams/{robot_id}/signaling-info")
+    
+    print(f"Response status: {response.status_code}")
+    print(f"Response body: {response.json()}")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert "ws_url" in data
+    assert f"robot_id={robot_id}" in data["ws_url"]
+    # Ensure rtsp_url is NOT in response
+    assert "rtsp_url" not in data
+    print("✅ Test passed: get_signaling_info")
+
+
+def test_bridge_authorization():
+    """Test bridge authorization with secret"""
+    # First create a robot with RTSP
+    robot = db.create_robot(
+        name="Test Robot for Bridge",
+        robot_type="hand",
+        rtsp_url="rtsp://example.com:554/bridge-test",
+        status='active'
+    )
+    robot_id = robot["id"]
+    
+    # Authorize with bridge secret
+    response = client.get(
+        f"/api/streams/bridge/authorize?robot_id={robot_id}",
+        headers={"X-BRIDGE-SECRET": "test-bridge-secret-123"}
     )
     
     print(f"Response status: {response.status_code}")
     print(f"Response body: {response.json()}")
     
-    assert response.status_code == 400
-    assert "Invalid RTSP URL" in response.json()["detail"]
-    print("✅ Test passed: start_stream_invalid_rtsp_url")
+    assert response.status_code == 200
+    data = response.json()
+    # Bridge should get rtsp_url
+    assert "rtsp_url" in data
+    assert data["rtsp_url"] == "rtsp://example.com:554/bridge-test"
+    assert data["robot_id"] == robot_id
+    print("✅ Test passed: bridge_authorization")
 
 
-def test_start_stream_unauthorized():
-    """Test that unauthorized requests are rejected"""
-    response = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": "rtsp://example.com:554/stream",
-            "booking_id": "booking-789",
-            "type": "rtsp"
-        },
-        headers={"X-ADMIN-KEY": "wrong-key"}
+def test_bridge_authorization_fails_without_secret():
+    """Test that bridge authorization fails without secret"""
+    # Create a robot
+    robot = db.create_robot(
+        name="Test Robot for Bridge Auth Fail",
+        robot_type="turtlebot",
+        rtsp_url="rtsp://example.com:554/fail-test",
+        status='active'
     )
+    robot_id = robot["id"]
+    
+    # Try to authorize without secret
+    response = client.get(f"/api/streams/bridge/authorize?robot_id={robot_id}")
     
     print(f"Response status: {response.status_code}")
     print(f"Response body: {response.json()}")
     
     assert response.status_code == 401
-    print("✅ Test passed: start_stream_unauthorized")
+    print("✅ Test passed: bridge_authorization_fails_without_secret")
 
 
-def test_get_stream_metadata():
-    """Test getting stream metadata (no rtsp_url in response)"""
-    # First create a stream
-    create_response = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": "rtsp://example.com:554/test",
-            "booking_id": "booking-meta-test",
-            "stream_id": "meta-test-stream",
-            "type": "rtsp"
-        },
-        headers={"X-ADMIN-KEY": "test-admin-key-123"}
+def test_robot_without_rtsp():
+    """Test getting signaling info for robot without RTSP returns 404"""
+    # Create a robot without RTSP
+    robot = db.create_robot(
+        name="Test Robot No RTSP",
+        robot_type="arm",
+        status='active'
     )
-    assert create_response.status_code == 201
+    robot_id = robot["id"]
     
-    # Get the metadata
-    response = client.get("/api/streams/meta-test-stream")
-    
-    print(f"Response status: {response.status_code}")
-    print(f"Response body: {response.json()}")
-    
-    assert response.status_code == 200
-    data = response.json()
-    assert data["stream_id"] == "meta-test-stream"
-    assert data["type"] == "rtsp"
-    assert data["booking_id"] == "booking-meta-test"
-    assert data["status"] == "running"
-    assert "created_at" in data
-    # Ensure rtsp_url is NOT in response
-    assert "rtsp_url" not in data
-    print("✅ Test passed: get_stream_metadata")
-
-
-def test_stop_stream():
-    """Test stopping a stream"""
-    # First create a stream
-    create_response = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": "rtsp://example.com:554/stop-test",
-            "booking_id": "booking-stop-test",
-            "stream_id": "stop-test-stream",
-            "type": "rtsp"
-        },
-        headers={"X-ADMIN-KEY": "test-admin-key-123"}
-    )
-    assert create_response.status_code == 201
-    
-    # Stop the stream
-    response = client.post(
-        "/api/streams/stop",
-        json={"stream_id": "stop-test-stream"},
-        headers={"X-ADMIN-KEY": "test-admin-key-123"}
-    )
-    
-    print(f"Response status: {response.status_code}")
-    print(f"Response body: {response.json()}")
-    
-    assert response.status_code == 200
-    data = response.json()
-    assert data["stream_id"] == "stop-test-stream"
-    
-    # Verify status is updated
-    metadata_response = client.get("/api/streams/stop-test-stream")
-    assert metadata_response.status_code == 200
-    metadata = metadata_response.json()
-    assert metadata["status"] == "stopped"
-    print("✅ Test passed: stop_stream")
-
-
-def test_get_stream_not_found():
-    """Test getting a non-existent stream"""
-    response = client.get("/api/streams/non-existent-stream")
+    # Try to get signaling info
+    response = client.get(f"/api/streams/{robot_id}/signaling-info")
     
     print(f"Response status: {response.status_code}")
     print(f"Response body: {response.json()}")
     
     assert response.status_code == 404
-    print("✅ Test passed: get_stream_not_found")
+    assert "not configured" in response.json()["detail"].lower()
+    print("✅ Test passed: robot_without_rtsp")
 
 
-def test_stop_stream_not_found():
-    """Test stopping a non-existent stream"""
-    response = client.post(
-        "/api/streams/stop",
-        json={"stream_id": "non-existent-stream"},
-        headers={"X-ADMIN-KEY": "test-admin-key-123"}
+def test_inactive_robot():
+    """Test getting signaling info for inactive robot returns 403"""
+    # Create an inactive robot with RTSP
+    robot = db.create_robot(
+        name="Test Inactive Robot",
+        robot_type="hand",
+        rtsp_url="rtsp://example.com:554/inactive",
+        status='inactive'
     )
+    robot_id = robot["id"]
+    
+    # Try to get signaling info
+    response = client.get(f"/api/streams/{robot_id}/signaling-info")
+    
+    print(f"Response status: {response.status_code}")
+    print(f"Response body: {response.json()}")
+    
+    assert response.status_code == 403
+    assert "not active" in response.json()["detail"].lower()
+    print("✅ Test passed: inactive_robot")
+
+
+def test_nonexistent_robot():
+    """Test getting stream info for non-existent robot returns 404"""
+    response = client.get("/api/streams/999999")
     
     print(f"Response status: {response.status_code}")
     print(f"Response body: {response.json()}")
     
     assert response.status_code == 404
-    print("✅ Test passed: stop_stream_not_found")
-
-
-def test_webrtc_stream_type():
-    """Test creating a WebRTC stream (no RTSP URL validation)"""
-    response = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": "http://example.com/webrtc",  # Not rtsp:// but type is webrtc
-            "booking_id": "booking-webrtc",
-            "stream_id": "webrtc-test-stream",
-            "type": "webrtc"
-        },
-        headers={"X-ADMIN-KEY": "test-admin-key-123"}
-    )
-    
-    print(f"Response status: {response.status_code}")
-    print(f"Response body: {response.json()}")
-    
-    # Should succeed because validation only applies to type='rtsp'
-    assert response.status_code == 201
-    print("✅ Test passed: webrtc_stream_type")
-
-
-def test_duplicate_stream_id():
-    """Test creating a stream with duplicate stream_id"""
-    # Create first stream
-    response1 = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": "rtsp://example.com:554/dup",
-            "booking_id": "booking-dup",
-            "stream_id": "duplicate-stream",
-            "type": "rtsp"
-        },
-        headers={"X-ADMIN-KEY": "test-admin-key-123"}
-    )
-    assert response1.status_code == 201
-    
-    # Try to create another with same stream_id
-    response2 = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": "rtsp://example.com:554/dup2",
-            "booking_id": "booking-dup2",
-            "stream_id": "duplicate-stream",
-            "type": "rtsp"
-        },
-        headers={"X-ADMIN-KEY": "test-admin-key-123"}
-    )
-    
-    print(f"Response status: {response2.status_code}")
-    print(f"Response body: {response2.json()}")
-    
-    assert response2.status_code == 409
-    assert "already exists" in response2.json()["detail"]
-    print("✅ Test passed: duplicate_stream_id")
-
-
-def test_auto_generated_stream_id():
-    """Test that stream_id is auto-generated when not provided"""
-    response = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": "rtsp://example.com:554/auto",
-            "booking_id": "booking-auto",
-            "type": "rtsp"
-            # No stream_id provided
-        },
-        headers={"X-ADMIN-KEY": "test-admin-key-123"}
-    )
-    
-    print(f"Response status: {response.status_code}")
-    print(f"Response body: {response.json()}")
-    
-    assert response.status_code == 201
-    data = response.json()
-    assert "stream_id" in data
-    assert len(data["stream_id"]) > 0  # Should be a UUID
-    print("✅ Test passed: auto_generated_stream_id")
+    print("✅ Test passed: nonexistent_robot")
 
 
 if __name__ == "__main__":
     print("\n" + "="*70)
-    print("Running Streams Router Tests")
+    print("Running Streams Router Tests (Robot Registry)")
     print("="*70 + "\n")
     
-    # Clean up any existing test data
-    streams_file = Path(__file__).parent / "data" / "streams.json"
-    if streams_file.exists():
-        streams_file.unlink()
+    # Clean up any existing test robots
+    if hasattr(db, '_robots'):
+        db._robots = [r for r in db._robots if not r.get('name', '').startswith('Test Robot')]
         print("🧹 Cleaned up existing test data\n")
     
     tests = [
-        test_start_stream_with_admin_key,
-        test_start_stream_invalid_rtsp_url,
-        test_start_stream_unauthorized,
-        test_get_stream_metadata,
-        test_stop_stream,
-        test_get_stream_not_found,
-        test_stop_stream_not_found,
-        test_webrtc_stream_type,
-        test_duplicate_stream_id,
-        test_auto_generated_stream_id,
+        test_get_robot_metadata,
+        test_get_signaling_info,
+        test_bridge_authorization,
+        test_bridge_authorization_fails_without_secret,
+        test_robot_without_rtsp,
+        test_inactive_robot,
+        test_nonexistent_robot,
     ]
     
     passed = 0
@@ -300,6 +221,8 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"❌ Test error: {test.__name__}")
             print(f"   Error: {e}")
+            import traceback
+            traceback.print_exc()
             failed += 1
     
     print("\n" + "="*70)

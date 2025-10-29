@@ -2,12 +2,15 @@
 """
 Integration tests for RTSP streaming through WebRTC bridge.
 
+Legacy streams.json support removed — Robot Registry is now single source of truth for RTSP.
+
 This test suite validates:
-1. Admin can register RTSP streams
-2. Authenticated users with active bookings can access streams
-3. WebSocket signaling info is properly returned
-4. Security: RTSP URLs are never exposed
-5. No regression for existing functionality
+1. Robot Registry contains RTSP URLs
+2. Authenticated users with active bookings can access streams via robot_id
+3. WebSocket signaling info is properly returned with robot_id
+4. Security: RTSP URLs are never exposed to clients
+5. Bridge can authorize and get RTSP URL with secret
+6. No regression for existing functionality
 """
 
 import os
@@ -20,22 +23,24 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Set test environment variables
-os.environ["ADMIN_API_KEY"] = "test-admin-key-integration"
 os.environ["BRIDGE_WS_URL"] = "ws://localhost:8081/ws/stream"
-os.environ["BRIDGE_CONTROL_URL"] = "http://localhost:8081"
+os.environ["BRIDGE_CONTROL_SECRET"] = "test-bridge-secret-integration"
 os.environ["ENVIRONMENT"] = "development"
+# Mock database for testing
+os.environ["DATABASE_TYPE"] = "mock"
 
 from fastapi.testclient import TestClient
 
 # Import app after setting environment variables
-from main import app
+from main import app, db
 
 # Test client
 client = TestClient(app)
 
 # Test data
 TEST_RTSP_URL = "rtsp://10.0.0.2:8554/stream"
-TEST_BOOKING_ID = "booking-123"
+TEST_ROBOT_NAME = "Test RTSP Robot"
+TEST_ROBOT_TYPE = "turtlebot"
 
 def print_section(title):
     """Print a formatted section header"""
@@ -53,66 +58,60 @@ def print_test(name, status="RUNNING"):
         print(f"❌ {name} - FAILED")
 
 def cleanup_test_data():
-    """Clean up test data files"""
-    streams_file = Path(__file__).parent / "data" / "streams.json"
-    if streams_file.exists():
-        streams_file.unlink()
+    """Clean up test data - remove test robots from mock database"""
+    try:
+        # In mock database, we can just reset the robots list
+        if hasattr(db, '_robots'):
+            db._robots = [r for r in db._robots if not r.get('name', '').startswith('Test RTSP')]
         print("🧹 Cleaned up test data")
+    except Exception as e:
+        print(f"⚠️  Failed to clean up test data: {e}")
 
-def test_admin_register_rtsp_stream():
-    """Test that admin can register an RTSP stream"""
-    print_test("Admin can register RTSP stream")
+def create_test_robot_with_rtsp():
+    """Create a test robot with RTSP URL in Robot Registry"""
+    print_test("Create robot with RTSP in Robot Registry")
     
-    response = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": TEST_RTSP_URL,
-            "booking_id": TEST_BOOKING_ID,
-            "stream_id": "test-stream-001",
-            "type": "rtsp"
-        },
-        headers={"X-ADMIN-KEY": "test-admin-key-integration"}
+    # Create robot via database (simulating admin action)
+    robot = db.create_robot(
+        name=TEST_ROBOT_NAME,
+        robot_type=TEST_ROBOT_TYPE,
+        rtsp_url=TEST_RTSP_URL,
+        status='active'
     )
     
-    assert response.status_code == 201, f"Expected 201, got {response.status_code}: {response.text}"
-    data = response.json()
+    assert robot is not None, "Robot should be created"
+    assert robot["id"] is not None, "Robot should have an ID"
+    assert robot["rtsp_url"] == TEST_RTSP_URL, "Robot should have RTSP URL"
     
-    # Verify response structure
-    assert "stream_id" in data, "Response should include stream_id"
-    assert data["stream_id"] == "test-stream-001", "Stream ID should match request"
-    
-    # Security: Ensure RTSP URL is NOT in response
-    assert "rtsp_url" not in data, "RTSP URL should NOT be exposed in response"
-    
-    print_test("Admin can register RTSP stream", "PASSED")
-    return data["stream_id"]
+    print_test("Create robot with RTSP in Robot Registry", "PASSED")
+    return robot["id"]
 
-def test_get_stream_metadata(stream_id):
-    """Test getting stream metadata without RTSP URL"""
+def test_get_stream_metadata(robot_id):
+    """Test getting stream metadata without RTSP URL (stream_id = robot_id)"""
     print_test("Get stream metadata (no RTSP URL)")
     
-    response = client.get(f"/api/streams/{stream_id}")
+    response = client.get(f"/api/streams/{robot_id}")
     
     assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
     data = response.json()
     
     # Verify metadata structure
-    assert data["stream_id"] == stream_id, "Stream ID should match"
-    assert data["type"] == "rtsp", "Type should be rtsp"
-    assert data["booking_id"] == TEST_BOOKING_ID, "Booking ID should match"
-    assert data["status"] == "running", "Status should be running"
-    assert "created_at" in data, "Should include created_at timestamp"
+    assert data["stream_id"] == str(robot_id), "Stream ID should match robot ID"
+    assert data["robot_id"] == robot_id, "Robot ID should be included"
+    assert data["robot_name"] == TEST_ROBOT_NAME, "Robot name should match"
+    assert data["robot_type"] == TEST_ROBOT_TYPE, "Robot type should match"
+    assert data["status"] == "active", "Status should be active"
     
     # Security: Ensure RTSP URL is NOT exposed
     assert "rtsp_url" not in data, "RTSP URL should NOT be in metadata"
     
     print_test("Get stream metadata (no RTSP URL)", "PASSED")
 
-def test_get_signaling_info(stream_id):
-    """Test getting WebSocket signaling info for stream"""
+def test_get_signaling_info(robot_id):
+    """Test getting WebSocket signaling info for stream (stream_id = robot_id)"""
     print_test("Get WebSocket signaling info")
     
-    response = client.get(f"/api/streams/{stream_id}/signaling-info")
+    response = client.get(f"/api/streams/{robot_id}/signaling-info")
     
     assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
     data = response.json()
@@ -120,7 +119,7 @@ def test_get_signaling_info(stream_id):
     # Verify signaling info structure
     assert "ws_url" in data, "Should include ws_url"
     assert data["ws_url"].startswith("ws://"), "WebSocket URL should use ws:// protocol"
-    assert "stream_id" in data["ws_url"], "WebSocket URL should include stream_id parameter"
+    assert f"robot_id={robot_id}" in data["ws_url"], "WebSocket URL should include robot_id parameter"
     
     # Security: Ensure RTSP URL is NOT exposed
     assert "rtsp_url" not in data, "RTSP URL should NOT be in signaling info"
@@ -129,105 +128,85 @@ def test_get_signaling_info(stream_id):
     print(f"   WebSocket URL: {data['ws_url']}")
     print_test("Get WebSocket signaling info", "PASSED")
 
-def test_stop_stream(stream_id):
-    """Test stopping a stream"""
-    print_test("Admin can stop stream")
+def test_bridge_authorization(robot_id):
+    """Test that bridge can authorize and get RTSP URL with secret"""
+    print_test("Bridge can authorize with secret")
     
-    response = client.post(
-        "/api/streams/stop",
-        json={"stream_id": stream_id},
-        headers={"X-ADMIN-KEY": "test-admin-key-integration"}
+    response = client.get(
+        f"/api/streams/bridge/authorize?robot_id={robot_id}",
+        headers={"X-BRIDGE-SECRET": "test-bridge-secret-integration"}
     )
     
     assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
     data = response.json()
     
-    assert data["stream_id"] == stream_id, "Stream ID should match"
+    # Verify bridge can get RTSP URL
+    assert "rtsp_url" in data, "Bridge should receive RTSP URL"
+    assert data["rtsp_url"] == TEST_RTSP_URL, "RTSP URL should match"
+    assert data["robot_id"] == robot_id, "Robot ID should match"
     
-    # Verify status was updated
-    metadata_response = client.get(f"/api/streams/{stream_id}")
-    assert metadata_response.status_code == 200
-    metadata = metadata_response.json()
-    assert metadata["status"] == "stopped", "Status should be updated to stopped"
-    
-    print_test("Admin can stop stream", "PASSED")
+    print_test("Bridge can authorize with secret", "PASSED")
 
-def test_invalid_rtsp_url():
-    """Test that invalid RTSP URLs are rejected"""
-    print_test("Invalid RTSP URL is rejected")
+def test_bridge_authorization_fails_without_secret(robot_id):
+    """Test that bridge authorization fails without secret"""
+    print_test("Bridge authorization fails without secret")
     
-    response = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": "http://10.0.0.2:8554/stream",  # Wrong protocol
-            "booking_id": "booking-invalid",
-            "type": "rtsp"
-        },
-        headers={"X-ADMIN-KEY": "test-admin-key-integration"}
-    )
-    
-    assert response.status_code == 400, f"Expected 400, got {response.status_code}"
-    assert "Invalid RTSP URL" in response.json()["detail"]
-    
-    print_test("Invalid RTSP URL is rejected", "PASSED")
-
-def test_unauthorized_access():
-    """Test that unauthorized requests are rejected"""
-    print_test("Unauthorized access is rejected")
-    
-    response = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": TEST_RTSP_URL,
-            "booking_id": "booking-unauth",
-            "type": "rtsp"
-        },
-        headers={"X-ADMIN-KEY": "wrong-key"}
+    response = client.get(
+        f"/api/streams/bridge/authorize?robot_id={robot_id}"
     )
     
     assert response.status_code == 401, f"Expected 401, got {response.status_code}"
     
-    print_test("Unauthorized access is rejected", "PASSED")
+    print_test("Bridge authorization fails without secret", "PASSED")
 
-def test_nonexistent_stream():
-    """Test accessing non-existent stream"""
-    print_test("Non-existent stream returns 404")
+def test_robot_without_rtsp():
+    """Test that robot without RTSP returns 404"""
+    print_test("Robot without RTSP returns 404")
     
-    response = client.get("/api/streams/nonexistent-stream-xyz")
+    # Create robot without RTSP URL
+    robot = db.create_robot(
+        name="Test Robot No RTSP",
+        robot_type="arm",
+        status='active'
+    )
+    robot_id = robot["id"]
+    
+    # Try to get signaling info
+    response = client.get(f"/api/streams/{robot_id}/signaling-info")
+    
+    assert response.status_code == 404, f"Expected 404, got {response.status_code}"
+    assert "not configured" in response.json()["detail"].lower()
+    
+    print_test("Robot without RTSP returns 404", "PASSED")
+
+def test_nonexistent_robot():
+    """Test accessing non-existent robot"""
+    print_test("Non-existent robot returns 404")
+    
+    response = client.get("/api/streams/999999")
     assert response.status_code == 404, f"Expected 404, got {response.status_code}"
     
-    print_test("Non-existent stream returns 404", "PASSED")
+    print_test("Non-existent robot returns 404", "PASSED")
 
-def test_stopped_stream_signaling():
-    """Test that stopped streams cannot be accessed"""
-    print_test("Stopped stream denies signaling access")
+def test_inactive_robot_signaling():
+    """Test that inactive robots cannot be accessed"""
+    print_test("Inactive robot denies signaling access")
     
-    # Create and stop a stream
-    create_response = client.post(
-        "/api/streams/start",
-        json={
-            "rtsp_url": TEST_RTSP_URL,
-            "booking_id": "booking-stopped",
-            "stream_id": "stopped-stream",
-            "type": "rtsp"
-        },
-        headers={"X-ADMIN-KEY": "test-admin-key-integration"}
+    # Create an inactive robot with RTSP
+    robot = db.create_robot(
+        name="Test Inactive Robot",
+        robot_type="hand",
+        rtsp_url=TEST_RTSP_URL,
+        status='inactive'
     )
-    assert create_response.status_code == 201
+    robot_id = robot["id"]
     
-    stop_response = client.post(
-        "/api/streams/stop",
-        json={"stream_id": "stopped-stream"},
-        headers={"X-ADMIN-KEY": "test-admin-key-integration"}
-    )
-    assert stop_response.status_code == 200
-    
-    # Try to get signaling info for stopped stream
-    signaling_response = client.get("/api/streams/stopped-stream/signaling-info")
+    # Try to get signaling info for inactive robot
+    signaling_response = client.get(f"/api/streams/{robot_id}/signaling-info")
     assert signaling_response.status_code == 403, f"Expected 403, got {signaling_response.status_code}"
-    assert "not running" in signaling_response.json()["detail"].lower()
+    assert "not active" in signaling_response.json()["detail"].lower()
     
-    print_test("Stopped stream denies signaling access", "PASSED")
+    print_test("Inactive robot denies signaling access", "PASSED")
 
 def test_existing_endpoints_work():
     """Test that existing endpoints still work (no regression)"""
@@ -249,7 +228,7 @@ def test_existing_endpoints_work():
 
 def main():
     """Run all integration tests"""
-    print_section("RTSP Streaming Integration Tests")
+    print_section("RTSP Streaming Integration Tests (Robot Registry)")
     
     # Clean up before tests
     cleanup_test_data()
@@ -258,36 +237,36 @@ def main():
     tests_failed = 0
     
     try:
-        # Test 1: Admin registers stream
-        stream_id = test_admin_register_rtsp_stream()
+        # Test 1: Create robot with RTSP
+        robot_id = create_test_robot_with_rtsp()
         tests_passed += 1
         
         # Test 2: Get metadata
-        test_get_stream_metadata(stream_id)
+        test_get_stream_metadata(robot_id)
         tests_passed += 1
         
         # Test 3: Get signaling info
-        test_get_signaling_info(stream_id)
+        test_get_signaling_info(robot_id)
         tests_passed += 1
         
-        # Test 4: Stop stream
-        test_stop_stream(stream_id)
+        # Test 4: Bridge authorization
+        test_bridge_authorization(robot_id)
         tests_passed += 1
         
-        # Test 5: Invalid RTSP URL
-        test_invalid_rtsp_url()
+        # Test 5: Bridge auth fails without secret
+        test_bridge_authorization_fails_without_secret(robot_id)
         tests_passed += 1
         
-        # Test 6: Unauthorized access
-        test_unauthorized_access()
+        # Test 6: Robot without RTSP
+        test_robot_without_rtsp()
         tests_passed += 1
         
-        # Test 7: Non-existent stream
-        test_nonexistent_stream()
+        # Test 7: Non-existent robot
+        test_nonexistent_robot()
         tests_passed += 1
         
-        # Test 8: Stopped stream signaling
-        test_stopped_stream_signaling()
+        # Test 8: Inactive robot signaling
+        test_inactive_robot_signaling()
         tests_passed += 1
         
         # Test 9: No regression

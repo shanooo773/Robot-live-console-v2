@@ -38,19 +38,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Track active streams
-active_streams: Dict[str, dict] = {}
+# Track active robots (robot_id based)
+active_robots: Dict[int, dict] = {}
 connected_clients: Set[websockets.WebSocketServerProtocol] = set()
 
 # WebSocket handler
 async def handle_websocket(websocket, path):
     """Handle WebSocket connections from viewers"""
-    # Extract stream_id from path or query string
-    stream_id = None
-    if "stream_id=" in path:
-        stream_id = path.split("stream_id=")[1].split("&")[0]
+    # Extract robot_id from path or query string (updated from stream_id)
+    robot_id = None
+    if "robot_id=" in path:
+        robot_id = int(path.split("robot_id=")[1].split("&")[0])
     
-    logger.info(f"New WebSocket connection: {path}, stream_id: {stream_id}")
+    logger.info(f"New WebSocket connection: {path}, robot_id: {robot_id}")
     connected_clients.add(websocket)
     
     try:
@@ -58,7 +58,7 @@ async def handle_websocket(websocket, path):
         await websocket.send(json.dumps({
             "type": "connected",
             "message": "Connected to WebRTC bridge",
-            "stream_id": stream_id,
+            "robot_id": robot_id,
             "timestamp": datetime.utcnow().isoformat()
         }))
         
@@ -75,19 +75,19 @@ async def handle_websocket(websocket, path):
                     response = {
                         "type": "answer",
                         "sdp": "v=0\r\no=- 123456 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\nc=IN IP4 0.0.0.0\r\na=rtcp:9 IN IP4 0.0.0.0\r\na=ice-ufrag:mock\r\na=ice-pwd:mockpassword\r\na=fingerprint:sha-256 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF\r\na=setup:active\r\na=mid:0\r\na=sendonly\r\na=rtcp-mux\r\na=rtpmap:96 H264/90000\r\n",
-                        "stream_id": stream_id
+                        "robot_id": robot_id
                     }
                     await websocket.send(json.dumps(response))
-                    logger.info(f"Sent SDP answer for stream {stream_id}")
+                    logger.info(f"Sent SDP answer for robot {robot_id}")
                 
                 elif msg_type == "ice":
                     # Acknowledge ICE candidate
                     response = {
                         "type": "ice-ack",
-                        "stream_id": stream_id
+                        "robot_id": robot_id
                     }
                     await websocket.send(json.dumps(response))
-                    logger.info(f"Acknowledged ICE candidate for stream {stream_id}")
+                    logger.info(f"Acknowledged ICE candidate for robot {robot_id}")
                 
                 else:
                     logger.warning(f"Unknown message type: {msg_type}")
@@ -98,7 +98,7 @@ async def handle_websocket(websocket, path):
                 logger.error(f"Error handling message: {e}")
     
     except websockets.exceptions.ConnectionClosed:
-        logger.info(f"WebSocket connection closed for stream {stream_id}")
+        logger.info(f"WebSocket connection closed for robot {robot_id}")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
     finally:
@@ -106,60 +106,74 @@ async def handle_websocket(websocket, path):
         logger.info(f"Client disconnected. Active connections: {len(connected_clients)}")
 
 # HTTP Control handlers
+# NOTE: Start/stop control handlers are deprecated - robots are managed via Robot Registry
 async def handle_start_stream(request):
-    """Handle stream start control request"""
+    """Handle stream start control request (deprecated - kept for backward compatibility)"""
     try:
         data = await request.json()
-        stream_id = data.get("stream_id")
+        robot_id = data.get("robot_id") or data.get("stream_id")  # Accept both for compatibility
         
-        if not stream_id:
+        if not robot_id:
             return web.json_response(
-                {"error": "stream_id required"},
+                {"error": "robot_id required"},
                 status=400
             )
         
-        active_streams[stream_id] = {
-            "stream_id": stream_id,
+        try:
+            robot_id = int(robot_id)
+        except ValueError:
+            return web.json_response(
+                {"error": "robot_id must be an integer"},
+                status=400
+            )
+        
+        active_robots[robot_id] = {
+            "robot_id": robot_id,
             "status": "running",
             "started_at": datetime.utcnow().isoformat()
         }
         
-        logger.info(f"Stream started: {stream_id}")
+        logger.info(f"Robot stream started: {robot_id}")
         return web.json_response({
-            "message": "Stream started",
-            "stream_id": stream_id
+            "message": "Robot stream started",
+            "robot_id": robot_id
         })
     
     except Exception as e:
-        logger.error(f"Error starting stream: {e}")
+        logger.error(f"Error starting robot stream: {e}")
         return web.json_response(
             {"error": str(e)},
             status=500
         )
 
 async def handle_stop_stream(request):
-    """Handle stream stop control request"""
+    """Handle stream stop control request (deprecated - kept for backward compatibility)"""
     try:
         data = await request.json()
-        stream_id = data.get("stream_id")
+        robot_id = data.get("robot_id") or data.get("stream_id")  # Accept both for compatibility
         
-        if not stream_id:
+        if not robot_id:
             return web.json_response(
-                {"error": "stream_id required"},
+                {"error": "robot_id required"},
                 status=400
             )
         
-        if stream_id in active_streams:
-            del active_streams[stream_id]
-            logger.info(f"Stream stopped: {stream_id}")
+        try:
+            robot_id = int(robot_id)
+        except ValueError:
+            pass
+        
+        if robot_id in active_robots:
+            del active_robots[robot_id]
+            logger.info(f"Robot stream stopped: {robot_id}")
         
         return web.json_response({
-            "message": "Stream stopped",
-            "stream_id": stream_id
+            "message": "Robot stream stopped",
+            "robot_id": robot_id
         })
     
     except Exception as e:
-        logger.error(f"Error stopping stream: {e}")
+        logger.error(f"Error stopping robot stream: {e}")
         return web.json_response(
             {"error": str(e)},
             status=500
@@ -169,9 +183,9 @@ async def handle_status(request):
     """Handle status check request"""
     return web.json_response({
         "status": "running",
-        "active_streams": len(active_streams),
+        "active_robots": len(active_robots),
         "connected_clients": len(connected_clients),
-        "streams": list(active_streams.keys())
+        "robots": list(active_robots.keys())
     })
 
 async def start_http_server():
