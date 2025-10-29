@@ -365,7 +365,8 @@ export const deleteRobot = async (robotId, token) => {
 // Stream API - for RTSP bridge support
 // NOTE: POST /api/streams/start and POST /api/streams/stop have been removed from backend.
 // All stream management is now done through the Robot Registry (rtsp_url field).
-// Legacy startStream() and stopStream() functions have been removed - use Robot Registry instead.
+// Legacy startStream() and stopStream() functions have been removed - configure RTSP URLs 
+// via the rtsp_url field in Robot Registry instead.
 
 export const getStreamMetadata = async (streamId, token) => {
   const response = await API.get(`/streams/${streamId}`, {
