@@ -100,7 +100,9 @@ cd docker/deploy
 docker compose up -d --build
 ```
 
-> **⚠️ IMPORTANT**: The Docker setup requires `services/webrtc-bridge/bridge_service.py` to exist. This file must implement the GStreamer webrtcbin pipeline for WebRTC streaming. If this file doesn't exist, the Docker Compose build will fail.
+> **⚠️ IMPORTANT**: 
+> 1. The Docker setup requires `services/webrtc-bridge/bridge_service.py` to exist. This file must implement the GStreamer webrtcbin pipeline for WebRTC streaming. If this file doesn't exist, the Docker Compose build will fail.
+> 2. You must add `BRIDGE_CONTROL_SECRET` to `backend/.env` for bridge authorization to work.
 
 **What's included:**
 - Frontend: React dev server in Docker with hot-reload

@@ -35,17 +35,19 @@ If `bridge_service.py` doesn't exist, you must implement it first. The compose b
 
 ### 2. Configure Environment
 
-Edit `backend/.env` and ensure these variables are set:
+Edit `backend/.env` and **add** these variables (they may not exist yet):
 
 ```bash
-# Required: Secret for bridge-to-backend authorization
+# Required: Secret for bridge-to-backend authorization (ADD THIS)
 BRIDGE_CONTROL_SECRET=your-secure-secret-here
 
-# Optional: Backend host configuration
+# Optional: Backend host configuration (ADD THIS if not present)
 BRIDGE_BACKEND_HOST=host.docker.internal  # Mac/Windows
 # Or use: 172.17.0.1 (Linux default Docker bridge)
 # Or use your host machine's IP address
 ```
+
+**Note**: `BRIDGE_CONTROL_SECRET` is a new variable required for bridge authorization. Add it to your `backend/.env` file before running docker compose.
 
 ### 3. Build and Run
 
