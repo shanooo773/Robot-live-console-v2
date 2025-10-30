@@ -163,8 +163,155 @@ For production:
 4. Configure SSL/TLS termination
 5. Consider deploying backend and bridge on same host to avoid network configuration issues
 
+## Testing the RTSP → WebRTC Flow
+
+### 1. Setup Test Environment
+
+Ensure backend is running locally:
+
+```bash
+cd ../../backend
+uvicorn main:app --port 8000 --reload
+```
+
+### 2. Create Test Robot with RTSP URL
+
+Use curl with admin token to create a test robot:
+
+```bash
+# First, login as admin to get token
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@robot-console.com", "password": "admin123"}'
+
+# Save the token from response, then create robot
+TOKEN="your-token-here"
+
+curl -X POST http://localhost:8000/admin/robots \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Test RTSP Camera",
+    "type": "turtlebot",
+    "rtsp_url": "rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mp4",
+    "status": "active"
+  }'
+
+# Note the robot ID from the response
+```
+
+### 3. Test Signaling Info Endpoint (User with Booking)
+
+Test the signaling-info endpoint (requires active booking):
+
+```bash
+# Get signaling info for robot ID 1
+curl -X GET http://localhost:8000/api/streams/1/signaling-info \
+  -H "Authorization: Bearer $TOKEN"
+
+# Expected response:
+# {
+#   "ws_url": "ws://localhost:8081/ws/stream?robot_id=1"
+# }
+```
+
+### 4. Test Bridge Authorization (Bridge-Only)
+
+Test the bridge authorize endpoint with secret:
+
+```bash
+# Get BRIDGE_CONTROL_SECRET from backend/.env
+SECRET=$(grep BRIDGE_CONTROL_SECRET ../../backend/.env | cut -d'=' -f2)
+
+# Call authorize endpoint (only bridge should call this)
+curl -X GET "http://localhost:8000/api/streams/bridge/authorize?robot_id=1" \
+  -H "X-BRIDGE-SECRET: $SECRET"
+
+# Expected response (bridge-only, contains RTSP URL):
+# {
+#   "rtsp_url": "rtsp://...",
+#   "robot_id": 1,
+#   "robot_name": "Test RTSP Camera"
+# }
+```
+
+### 5. Test from Within Bridge Container
+
+Once docker compose is running:
+
+```bash
+# Test backend reachability from bridge
+docker compose exec bridge curl http://host.docker.internal:8000/health
+
+# Test authorize endpoint from bridge
+docker compose exec bridge sh -c '
+  curl -X GET "http://host.docker.internal:8000/api/streams/bridge/authorize?robot_id=1" \
+    -H "X-BRIDGE-SECRET: $BRIDGE_CONTROL_SECRET"
+'
+```
+
+## Verification Script
+
+Run the automated verification script:
+
+```bash
+cd ../..
+python scripts/verify_streaming_setup.py \
+  --backend-url http://localhost:8000 \
+  --test-robot-id 1
+```
+
+This script checks:
+- ✓ All required files exist
+- ✓ No legacy stream management code
+- ✓ Backend endpoints respond correctly
+- ✓ Bridge authorization works (if secret provided)
+- ✓ Pytest integration tests pass
+
+## Security Notes
+
+### RTSP URL Security
+
+**CRITICAL**: RTSP URLs must NEVER be exposed to client applications.
+
+- ✅ **Backend** stores RTSP URLs in database (rtsp_url column)
+- ✅ **Admin UI** allows admins to configure RTSP URLs
+- ✅ **GET /api/streams/{robot_id}** returns metadata but NOT rtsp_url
+- ✅ **GET /api/streams/{robot_id}/signaling-info** returns ws_url but NOT rtsp_url
+- ✅ **GET /api/streams/bridge/authorize** returns rtsp_url ONLY to bridge with X-BRIDGE-SECRET
+- ✅ **Bridge** obtains RTSP URL via authorize endpoint and does NOT log it
+- ❌ **Client applications** NEVER receive RTSP URLs
+
+### Bridge Authorization Flow
+
+1. User with active booking requests stream via frontend
+2. Frontend calls GET /api/streams/{robot_id}/signaling-info
+3. Backend validates booking and returns ws_url
+4. Frontend opens WebSocket to bridge using ws_url
+5. Bridge receives connection with robot_id query param
+6. Bridge calls GET /api/streams/bridge/authorize?robot_id={robot_id} with X-BRIDGE-SECRET header
+7. Backend verifies secret and returns rtsp_url to bridge
+8. Bridge creates GStreamer pipeline and forwards stream to frontend
+
+## Common Error Messages
+
+### "Bridge authorization not configured"
+- Add BRIDGE_CONTROL_SECRET to backend/.env
+
+### "Access denied. You need an active booking"
+- User must have an active booking for the robot
+- Create a booking for the robot type or robot_id
+
+### "Robot does not have RTSP URL configured"
+- Admin must add rtsp_url field in Robot Registry via admin dashboard
+
+### "bridge_service.py not found"
+- Implement services/webrtc-bridge/bridge_service.py with GStreamer pipeline
+- See stub file for implementation requirements
+
 ## Additional Resources
 
 - GStreamer documentation: https://gstreamer.freedesktop.org/documentation/
 - WebRTC integration guide: https://gstreamer.freedesktop.org/documentation/webrtc/
 - Docker Compose reference: https://docs.docker.com/compose/
+- GStreamer WebRTC demos: https://github.com/centricular/gstwebrtc-demos
