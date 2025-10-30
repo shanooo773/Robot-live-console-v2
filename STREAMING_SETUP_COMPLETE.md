@@ -68,6 +68,10 @@ The `services/webrtc-bridge/bridge_service.py` file is a documented stub that re
 **Why It's a Stub:**
 Per requirements: "If any required file is missing... do NOT invent a mock - instead add a failing unit test or a clear TODO in the PR stating bridge_service.py must be implemented."
 
+The stub approach (rather than a failing unit test) was chosen because it provides both:
+- Clear TODO documentation for implementers
+- Functional example code for authorization
+
 The stub provides:
 - Functional authorization example
 - Detailed implementation requirements
