@@ -1,0 +1,79 @@
+# Docker Compose for Robot Live Console - Frontend + WebRTC Bridge
+# This compose file is additive only - does NOT include or modify backend/editor services
+# Backend must be run separately on the host for the bridge to authorize with it
+
+services:
+  # Frontend service - React dev server
+  frontend:
+    build:
+      context: ../../
+      dockerfile: docker/frontend/Dockerfile
+    image: robot-live-frontend:local
+    container_name: robot_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount frontend source for hot-reload in dev mode
+      - ../../frontend:/app/frontend:rw
+    environment:
+      # Optional: Override frontend environment variables here
+      - NODE_ENV=development
+    # Use frontend .env if it exists (optional)
+    # env_file:
+    #   - ../../frontend/.env
+    restart: unless-stopped
+    networks:
+      - robot_network
+
+  # WebRTC Bridge service - Real GStreamer bridge (NO mock stage)
+  # IMPORTANT: Requires services/webrtc-bridge/bridge_service.py to exist
+  bridge:
+    build:
+      context: ../../
+      dockerfile: services/webrtc-bridge/Dockerfile
+      # NO target specified - gst-base is the only stage
+    image: robot-webrtc-bridge:local
+    container_name: robot_bridge
+    ports:
+      - "8081:8081"
+    volumes:
+      # Mount bridge source for dev mode
+      - ../../services/webrtc-bridge:/app:rw
+    env_file:
+      # Bridge needs backend secrets to authorize with backend
+      - ../../backend/.env
+    environment:
+      # Bridge configuration - adjust these for your setup
+      # The bridge must be able to reach the backend to authorize using X-BRIDGE-SECRET header
+      # For Docker-to-host communication, use host.docker.internal on Mac/Windows
+      # or host network mode on Linux, or the host IP address
+      - BRIDGE_WS_URL=ws://localhost:8081/ws/stream
+      # BRIDGE_BACKEND_HOST tells the bridge where to find the backend API
+      # Options: host.docker.internal (Mac/Win), 172.17.0.1 (Linux), or your host IP
+      - BRIDGE_BACKEND_HOST=host.docker.internal
+      - BRIDGE_BACKEND_PORT=8000
+    # Uncomment for hardware acceleration (requires host drivers)
+    # devices:
+    #   - /dev/dri:/dev/dri  # For VAAPI (Intel/AMD)
+    # To use NVIDIA GPU, uncomment below and install nvidia-docker2
+    # runtime: nvidia
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all
+    #   - NVIDIA_DRIVER_CAPABILITIES=video,compute,utility
+    restart: unless-stopped
+    networks:
+      - robot_network
+    # Alternative: Use host network mode for easier backend access (Linux only)
+    # network_mode: host
+    # Note: If using host network mode, comment out the networks section above
+
+networks:
+  robot_network:
+    driver: bridge
+
+# IMPORTANT NOTES:
+# 1. Backend service is NOT included here - run it separately on the host
+# 2. The bridge authorizes with backend using BRIDGE_CONTROL_SECRET from backend/.env
+# 3. Ensure backend is accessible from the bridge container (use BRIDGE_BACKEND_HOST)
+# 4. No mock bridge implementation - bridge_service.py MUST implement real GStreamer pipeline
+# 5. For production, update BRIDGE_WS_URL to match your deployment domain

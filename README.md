@@ -91,6 +91,27 @@ npm run dev
 - **Email**: admin@example.com  
 - **Password**: admin123
 
+## 🐳 Docker Deployment (Optional)
+
+Docker support is available for the **frontend** and **WebRTC bridge** services:
+
+```bash
+cd docker/deploy
+docker compose up -d --build
+```
+
+> **⚠️ IMPORTANT**: The Docker setup requires `services/webrtc-bridge/bridge_service.py` to exist. This file must implement the GStreamer webrtcbin pipeline for WebRTC streaming. If this file doesn't exist, the Docker Compose build will fail.
+
+**What's included:**
+- Frontend: React dev server in Docker with hot-reload
+- WebRTC Bridge: GStreamer-based bridge with hardware acceleration support (NVENC/VAAPI)
+
+**What's NOT included:**
+- Backend: Must run separately on host (see "Quick Start" above)
+- Editor/Theia: Use existing Theia setup (not part of this Docker compose)
+
+For detailed Docker setup instructions, hardware acceleration configuration, and troubleshooting, see [`docker/deploy/README.md`](docker/deploy/README.md).
+
 ## 🛠️ Configuration
 
 ### Environment Variables
