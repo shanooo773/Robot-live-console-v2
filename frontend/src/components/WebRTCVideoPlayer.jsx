@@ -194,19 +194,13 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
       setWebrtcStatus("connecting");
       console.log('Initializing RTSP bridge connection with signaling info:', signalingInfo);
 
-      // Determine WebSocket URL with secure protocol preference
-      let wsUrl = signalingInfo.ws_url || process.env.REACT_APP_BRIDGE_WS_URL;
-      if (!wsUrl) {
-        // Fallback: use secure WebSocket if page is HTTPS, otherwise use WS
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const port = process.env.REACT_APP_BRIDGE_WS_PORT || '8081';
-        wsUrl = `${protocol}//${window.location.hostname}:${port}`;
+      // Use ws_url from backend signaling-info endpoint (already includes robot_id)
+      // The backend has already validated booking and returns the correct ws_url
+      const wsEndpoint = signalingInfo.ws_url;
+      
+      if (!wsEndpoint) {
+        throw new Error('No WebSocket URL provided in signaling info');
       }
-
-      // Construct WebSocket URL with stream_id query parameter (URL-encoded for security)
-      const wsEndpoint = streamId 
-        ? `${wsUrl}/ws/stream?stream_id=${encodeURIComponent(streamId)}`
-        : `${wsUrl}/ws/stream`;
 
       console.log('Connecting to WebSocket:', wsEndpoint);
 
