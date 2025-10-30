@@ -221,7 +221,8 @@ Test the bridge authorize endpoint with secret:
 
 ```bash
 # Get BRIDGE_CONTROL_SECRET from backend/.env
-SECRET=$(grep BRIDGE_CONTROL_SECRET ../../backend/.env | cut -d'=' -f2)
+# Extract the value after '=' and remove any quotes or whitespace
+SECRET=$(grep '^BRIDGE_CONTROL_SECRET=' ../../backend/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" | xargs)
 
 # Call authorize endpoint (only bridge should call this)
 curl -X GET "http://localhost:8000/api/streams/bridge/authorize?robot_id=1" \

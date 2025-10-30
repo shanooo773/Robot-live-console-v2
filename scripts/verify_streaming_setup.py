@@ -75,6 +75,8 @@ class StreamingSetupVerifier:
     
     def search_legacy_references(self) -> List[str]:
         """Search for legacy stream management references."""
+        import subprocess
+        
         legacy_patterns = [
             'streams.json',
             '/api/streams/start',
@@ -87,34 +89,32 @@ class StreamingSetupVerifier:
             self.repo_root / 'frontend' / 'src'
         ]
         
-        for search_dir in search_dirs:
-            if not search_dir.exists():
-                continue
-            
-            for pattern in legacy_patterns:
-                # Use git grep if available for better performance
-                try:
-                    import subprocess
-                    result = subprocess.run(
-                        ['git', 'grep', '-l', pattern],
-                        cwd=self.repo_root,
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
-                    if result.returncode == 0:
-                        files = result.stdout.strip().split('\n')
-                        for file in files:
-                            if file:
-                                found.append(f"{pattern} found in {file}")
-                except:
-                    # Fall back to manual search
+        # Use git grep if available for better performance
+        for pattern in legacy_patterns:
+            try:
+                result = subprocess.run(
+                    ['git', 'grep', '-l', pattern],
+                    cwd=self.repo_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    files = result.stdout.strip().split('\n')
+                    for file in files:
+                        if file:
+                            found.append(f"{pattern} found in {file}")
+            except (subprocess.SubprocessError, FileNotFoundError):
+                # Fall back to manual search if git grep fails
+                for search_dir in search_dirs:
+                    if not search_dir.exists():
+                        continue
                     for file_path in search_dir.rglob('*.py'):
                         try:
                             content = file_path.read_text()
                             if pattern in content:
                                 found.append(f"{pattern} found in {file_path.relative_to(self.repo_root)}")
-                        except:
+                        except (IOError, OSError):
                             pass
         
         return found
@@ -212,12 +212,12 @@ class StreamingSetupVerifier:
                 "Found in .env" if has_secret else "Not found in .env - add this variable"
             )
             
-            # Check for BRIDGE_WS_URL
+            # Check for BRIDGE_WS_URL (required for signaling-info endpoint)
             has_ws_url = 'BRIDGE_WS_URL=' in env_content
             self.print_test(
                 "BRIDGE_WS_URL configured",
                 has_ws_url,
-                "Found in .env" if has_ws_url else "Optional: Not configured"
+                "Found in .env - required for signaling" if has_ws_url else "Not configured - may use defaults"
             )
             
         except Exception as e:

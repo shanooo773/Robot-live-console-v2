@@ -95,7 +95,8 @@ class WebRTCBridge:
                         data = await response.json()
                         rtsp_url = data.get('rtsp_url')
                         if rtsp_url:
-                            logger.info(f"Authorized for robot {robot_id} - RTSP URL obtained (NOT LOGGED)")
+                            # NOTE: RTSP URL is obtained but NOT logged for security
+                            logger.info(f"Successfully authorized for robot {robot_id}")
                             return rtsp_url
                         else:
                             logger.error(f"Backend returned 200 but no rtsp_url for robot {robot_id}")
@@ -130,11 +131,18 @@ class WebRTCBridge:
         6. Generate SDP answer and send to browser
         7. Handle ICE candidates bidirectionally
         
-        Example GStreamer pipeline:
-            rtspsrc location={rtsp_url} ! 
+        Example GStreamer pipeline with caps filters:
+            rtspsrc location={rtsp_url} protocols=tcp latency=0 ! 
+            application/x-rtp,media=video,encoding-name=H264 ! 
             rtph264depay ! 
             h264parse ! 
-            webrtcbin name=webrtc
+            video/x-h264,stream-format=byte-stream ! 
+            webrtcbin. 
+            
+            webrtcbin name=webrtcbin
+            
+        Note: Connect video stream to webrtcbin using request pad:
+            webrtc_pad = webrtcbin.get_request_pad("sink_%u")
         
         Args:
             websocket: WebSocket connection
