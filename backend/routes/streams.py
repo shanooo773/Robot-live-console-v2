@@ -9,6 +9,12 @@ This module provides minimal endpoints for managing RTSP streams:
 
 All RTSP URLs are resolved from the Robot Registry (database). The stream_id corresponds to robot_id.
 Booking-based access control is enforced for all stream access.
+
+SECURITY REQUIREMENTS:
+- RTSP URLs must NEVER be exposed to client applications or logged in plaintext
+- Only the bridge can access RTSP URLs via the /bridge/authorize endpoint
+- Bridge must authenticate using X-BRIDGE-SECRET header matching BRIDGE_CONTROL_SECRET
+- All client endpoints return only ws_url for signaling, never rtsp_url
 """
 
 import os
@@ -114,7 +120,8 @@ def resolve_robot_rtsp(robot_id: int) -> Optional[str]:
             logger.warning(f"Robot {robot_id} ({robot.get('name')}) has no valid RTSP URL configured")
             return None
         
-        logger.info(f"Resolved RTSP URL for robot {robot_id} ({robot.get('name')})")
+        # NOTE: Do NOT log rtsp_url to prevent exposure in logs
+        logger.info(f"Resolved RTSP URL for robot {robot_id} ({robot.get('name')}) - URL NOT LOGGED FOR SECURITY")
         return rtsp_url
         
     except Exception as e:
