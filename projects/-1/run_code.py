@@ -7,7 +7,7 @@ from sensor_msgs.msg import Image
 
 class SimpleTalker(Node):
     def __init__(self):
-        super().__init__('simple1_talker')
+        super().__init__('simple2_talker')
         self.publisher_ = self.create_publisher(String, 'chatter', 10)
         self.timer = self.create_timer(1.0, self.timer_callback)  # 1 Hz
         self.get_logger().info("✅ SimpleTalker node started, publishing on /chatter")
