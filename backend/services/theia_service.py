@@ -19,7 +19,7 @@ class TheiaContainerManager:
         self.base_port = base_port or int(os.getenv('THEIA_BASE_PORT', 4000))
         self.max_port = int(os.getenv('THEIA_MAX_PORT', 9000))
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
-        self.theia_image = os.getenv('THEIA_IMAGE', 'elswork/theia')  # Use working image that matches start-user-container.sh
+        self.theia_image = os.getenv('THEIA_IMAGE', 'muneeb/theia-ros-humble:v1')  # Use working image that matches start-user-container.sh
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
         
         # Container lifecycle configuration
