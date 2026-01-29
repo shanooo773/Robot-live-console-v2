@@ -96,7 +96,7 @@ docker run -d \
     --name "$CONTAINER_NAME" \
     -p "$PORT:3000" \
     -v "$(pwd)/$PROJECT_DIR:/home/project:cached" \
-    elswork/theia
+    muneeb/theia-ros-humble:v1
 
 echo "Container $CONTAINER_NAME started successfully!"
 echo "Theia IDE will be available at: http://localhost:$PORT"
