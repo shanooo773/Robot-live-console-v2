@@ -421,16 +421,24 @@ class DatabaseManager:
         placeholder = self._get_placeholder()
         
         try:
-            # Check if user exists
+            # First, check if user exists by google_id (most specific)
             cursor.execute(f"""
                 SELECT id, name, email, role, google_id, created_at
-                FROM users WHERE email = {placeholder} OR google_id = {placeholder}
-            """, (email, google_id))
+                FROM users WHERE google_id = {placeholder}
+            """, (google_id,))
             
             existing_user = cursor.fetchone()
             
+            # If not found by google_id, check by email
+            if not existing_user:
+                cursor.execute(f"""
+                    SELECT id, name, email, role, google_id, created_at
+                    FROM users WHERE email = {placeholder}
+                """, (email,))
+                existing_user = cursor.fetchone()
+            
             if existing_user:
-                # Update existing user
+                # Update existing user with Google info
                 cursor.execute(f"""
                     UPDATE users 
                     SET google_id = {placeholder}, google_name = {placeholder}, 

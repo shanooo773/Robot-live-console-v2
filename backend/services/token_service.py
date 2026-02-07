@@ -26,10 +26,13 @@ class TokenService:
         """
         # Use JWT_SECRET_KEY or SECRET_KEY from environment
         env_secret = os.getenv('JWT_SECRET_KEY') or os.getenv('SECRET_KEY')
-        self.secret_key = secret_key or env_secret or 'dev-secret-key'
+        self.secret_key = secret_key or env_secret
         
-        if self.secret_key == 'dev-secret-key':
-            logger.warning("⚠️ Using default secret key for token service. Set JWT_SECRET_KEY or SECRET_KEY in production!")
+        if not self.secret_key:
+            raise ValueError(
+                "No secret key provided for TokenService. "
+                "Please set JWT_SECRET_KEY or SECRET_KEY environment variable."
+            )
         
         self.serializer = URLSafeTimedSerializer(self.secret_key)
         self.salt = 'email-confirmation-salt'

@@ -299,10 +299,11 @@ class AuthService:
                 # Extract user information from Google token
                 google_user_id = idinfo['sub']
                 email = idinfo.get('email')
-                name = idinfo.get('name', email.split('@')[0])
                 
                 if not email:
                     raise HTTPException(status_code=400, detail="Email not provided by Google")
+                
+                name = idinfo.get('name', email.split('@')[0])
                 
                 logger.info(f"✅ Google token verified for: {email}")
                 
