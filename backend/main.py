@@ -4,7 +4,7 @@ import json
 import asyncio
 import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends, WebSocket
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -551,9 +551,22 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
+class GoogleLogin(BaseModel):
+    id_token: str
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
+    user: dict
+
+class RegistrationResponse(BaseModel):
+    message: str
+    email: str
+    confirm_url: str
+    user: dict
+
+class ConfirmationResponse(BaseModel):
+    message: str
     user: dict
 
 class UserResponse(BaseModel):
@@ -661,17 +674,29 @@ async def root():
     return {"message": "Robot Programming Console API", "version": "1.0.0"}
 
 # Authentication Endpoints
-@app.post("/auth/register", response_model=TokenResponse)
+@app.post("/auth/register", response_model=RegistrationResponse)
 async def register(user_data: UserRegister):
-    """Register a new user"""
+    """Register a new user and send confirmation email"""
     auth_service = service_manager.get_auth_service()
-    return auth_service.register_user(user_data.name, user_data.email, user_data.password)
+    return await auth_service.register_user(user_data.name, user_data.email, user_data.password)
+
+@app.get("/auth/confirm", response_model=ConfirmationResponse)
+async def confirm_email(token: str):
+    """Confirm user email with token"""
+    auth_service = service_manager.get_auth_service()
+    return auth_service.confirm_email(token)
 
 @app.post("/auth/login", response_model=TokenResponse)
 async def login(user_data: UserLogin):
     """Login user"""
     auth_service = service_manager.get_auth_service()
     return auth_service.login_user(user_data.email, user_data.password)
+
+@app.post("/auth/google", response_model=TokenResponse)
+async def google_login(google_data: GoogleLogin):
+    """Login or register user with Google OAuth"""
+    auth_service = service_manager.get_auth_service()
+    return auth_service.login_with_google(google_data.id_token)
 
 @app.get("/auth/me", response_model=UserResponse)
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):

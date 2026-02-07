@@ -9,6 +9,8 @@ from typing import Optional, Dict, Any
 from fastapi import HTTPException
 from auth import auth_manager
 from database import DatabaseManager
+from services.token_service import TokenService
+from services.mail_service import MailService
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +31,18 @@ class AuthService:
         self.status = "available"
         self.theia_manager = theia_manager
         
+        # Initialize token and mail services
+        self.token_service = TokenService()
+        self.mail_service = MailService()
+        
         # Load demo credentials from environment variables
         self.demo_user_email = os.getenv("DEMO_USER_EMAIL", "demo@user.com")
         self.demo_user_password = os.getenv("DEMO_USER_PASSWORD", "password")
         self.demo_admin_email = os.getenv("DEMO_ADMIN_EMAIL", "admin@demo.com")
         self.demo_admin_password = os.getenv("DEMO_ADMIN_PASSWORD", "password")
+        
+        # Get server host for confirmation URLs
+        self.server_host = os.getenv("SERVER_HOST", "http://localhost:8000")
         
         logger.info("✅ Auth service initialized successfully")
         logger.info(f"🎯 Demo user email: {self.demo_user_email}")
@@ -45,7 +54,7 @@ class AuthService:
             "service": "auth",
             "available": self.available,
             "status": self.status,
-            "features": ["registration", "login", "jwt_tokens", "role_management"]
+            "features": ["registration", "login", "jwt_tokens", "role_management", "email_confirmation", "google_oauth"]
         }
     
     def _check_demo_user(self, email: str, password: str) -> Optional[Dict[str, Any]]:
@@ -70,23 +79,54 @@ class AuthService:
             }
         return None
     
-    def register_user(self, name: str, email: str, password: str) -> Dict[str, Any]:
-        """Register a new user"""
+    async def send_confirmation_email(self, email: str, name: str) -> str:
+        """
+        Send confirmation email to user
+        
+        Args:
+            email: User's email address
+            name: User's name
+            
+        Returns:
+            Confirmation URL (for development/testing)
+        """
+        try:
+            # Generate confirmation token
+            token = self.token_service.generate_confirmation_token(email)
+            
+            # Build confirmation URL
+            confirmation_url = f"{self.server_host}/auth/confirm?token={token}"
+            
+            # Send email asynchronously
+            await self.mail_service.send_confirmation_email(email, confirmation_url, name)
+            
+            return confirmation_url
+        except Exception as e:
+            logger.error(f"❌ Failed to send confirmation email for {email}: {e}")
+            raise
+    
+    async def register_user(self, name: str, email: str, password: str) -> Dict[str, Any]:
+        """Register a new user and send confirmation email (no immediate JWT)"""
         try:
             logger.info(f"📝 Registration attempt for email: {email}")
             user = self.db.create_user(name, email, password)
             logger.info(f"✅ User registered successfully: {email} (ID: {user['id']})")
             
-            # Ensure user onboarding setup (theia port assignment and directory creation)
-            self._ensure_user_onboarding(user['id'], user['email'])
+            # Send confirmation email (async)
+            confirmation_url = await self.send_confirmation_email(user['email'], user['name'])
             
-            token = self.auth_manager.create_access_token(
-                data={"sub": str(user["id"]), "email": user["email"], "role": user["role"]}
-            )
+            # Return success message without JWT
             return {
-                "access_token": token,
-                "token_type": "bearer",
-                "user": user
+                "message": "Registration successful! Please check your email to confirm your account.",
+                "email": user['email'],
+                "confirm_url": confirmation_url,  # Include for dev/testing
+                "user": {
+                    "id": user['id'],
+                    "name": user['name'],
+                    "email": user['email'],
+                    "role": user['role'],
+                    "is_active": False
+                }
             }
         except ValueError as e:
             logger.warning(f"⚠️ Registration failed for {email}: {str(e)}")
@@ -95,8 +135,53 @@ class AuthService:
             logger.error(f"❌ Registration failed with exception for {email}: {e}")
             raise AuthServiceException(f"Registration failed: {str(e)}")
     
+    def confirm_email(self, token: str) -> Dict[str, Any]:
+        """
+        Confirm user email with token
+        
+        Args:
+            token: Email confirmation token
+            
+        Returns:
+            Success message and user info
+        """
+        try:
+            # Validate token and get email
+            email = self.token_service.validate_confirmation_token(token)
+            
+            # Activate user
+            success = self.db.activate_user_by_email(email)
+            
+            if not success:
+                raise HTTPException(status_code=404, detail="User not found")
+            
+            # Get updated user info
+            user = self.db.get_user_by_email(email)
+            
+            logger.info(f"✅ Email confirmed for: {email}")
+            
+            return {
+                "message": "Email confirmed successfully! You can now log in.",
+                "user": {
+                    "id": user['id'],
+                    "name": user['name'],
+                    "email": user['email'],
+                    "role": user['role'],
+                    "is_active": True
+                }
+            }
+        except ValueError as e:
+            # Token validation errors (expired, invalid)
+            logger.warning(f"⚠️ Email confirmation failed: {str(e)}")
+            raise HTTPException(status_code=400, detail=str(e))
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ Email confirmation failed with exception: {e}")
+            raise AuthServiceException(f"Email confirmation failed: {str(e)}")
+    
     def login_user(self, email: str, password: str) -> Dict[str, Any]:
-        """Login user and return token"""
+        """Login user and return token (requires email confirmation for non-demo users)"""
         try:
             logger.info(f"🔐 Login attempt for email: {email}")
             
@@ -135,6 +220,14 @@ class AuthService:
                 logger.warning(f"❌ Database authentication failed for: {email}")
                 raise HTTPException(status_code=401, detail="Invalid email or password")
             
+            # Check if user's email is confirmed
+            if not user.get('is_active', False):
+                logger.warning(f"⚠️ Login attempt for unconfirmed email: {email}")
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Email not confirmed. Please check your inbox for a confirmation link."
+                )
+            
             logger.info(f"✅ Database authentication successful for: {email} (ID: {user['id']}, Role: {user['role']})")
             
             # Ensure user onboarding setup (theia port assignment and directory creation)
@@ -169,6 +262,77 @@ class AuthService:
     def verify_admin_role(self, user: Dict[str, Any]) -> bool:
         """Verify if user has admin role"""
         return user.get("role") == "admin"
+    
+    def login_with_google(self, id_token: str) -> Dict[str, Any]:
+        """
+        Login or register user with Google OAuth
+        
+        Args:
+            id_token: Google ID token from client
+            
+        Returns:
+            JWT token and user info
+        """
+        try:
+            from google.oauth2 import id_token as google_id_token
+            from google.auth.transport import requests
+            
+            # Get Google Client ID from environment
+            google_client_id = os.getenv('GOOGLE_CLIENT_ID')
+            if not google_client_id:
+                logger.error("❌ GOOGLE_CLIENT_ID not configured")
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Google OAuth not configured. Please contact administrator."
+                )
+            
+            logger.info("🔐 Google OAuth login attempt")
+            
+            # Verify the Google ID token
+            try:
+                idinfo = google_id_token.verify_oauth2_token(
+                    id_token, 
+                    requests.Request(), 
+                    google_client_id
+                )
+                
+                # Extract user information from Google token
+                google_user_id = idinfo['sub']
+                email = idinfo.get('email')
+                name = idinfo.get('name', email.split('@')[0])
+                
+                if not email:
+                    raise HTTPException(status_code=400, detail="Email not provided by Google")
+                
+                logger.info(f"✅ Google token verified for: {email}")
+                
+            except ValueError as e:
+                logger.warning(f"⚠️ Invalid Google token: {e}")
+                raise HTTPException(status_code=401, detail="Invalid Google token")
+            
+            # Upsert user in database (create or update)
+            user = self.db.upsert_google_user(email, name, google_user_id)
+            logger.info(f"✅ Google user upserted: {email} (ID: {user['id']})")
+            
+            # Ensure user onboarding setup
+            self._ensure_user_onboarding(user['id'], user['email'])
+            
+            # Create JWT token
+            token = self.auth_manager.create_access_token(
+                data={"sub": str(user["id"]), "email": user["email"], "role": user["role"]}
+            )
+            
+            return {
+                "access_token": token,
+                "token_type": "bearer",
+                "user": user
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ Google OAuth login failed: {e}")
+            raise AuthServiceException(f"Google OAuth login failed: {str(e)}")
     
     def _ensure_user_onboarding(self, user_id: int, user_email: str) -> None:
         """Ensure user has required onboarding setup (theia port and project directory)"""
