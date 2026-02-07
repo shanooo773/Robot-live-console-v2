@@ -24,7 +24,7 @@ class MailService:
         # Get SMTP configuration from environment
         mail_username = os.getenv('MAIL_USERNAME', '')
         mail_password = os.getenv('MAIL_PASSWORD', '')
-        mail_from = os.getenv('MAIL_FROM', mail_username)
+        mail_from = os.getenv('MAIL_FROM', mail_username if mail_username else 'noreply@example.com')
         mail_server = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
         mail_port = int(os.getenv('MAIL_PORT', '587'))
         mail_starttls = os.getenv('MAIL_STARTTLS', 'true').lower() == 'true'
@@ -32,12 +32,14 @@ class MailService:
         
         # Validate required configuration
         if not mail_username or not mail_password:
-            logger.warning("⚠️ MAIL_USERNAME or MAIL_PASSWORD not configured. Email sending will fail.")
+            logger.warning("⚠️ MAIL_USERNAME or MAIL_PASSWORD not configured. Email sending will be disabled.")
             self.enabled = False
+            self.fastmail = None
+            return
         else:
             self.enabled = True
         
-        # Configure FastMail
+        # Configure FastMail only if credentials are available
         self.conf = ConnectionConfig(
             MAIL_USERNAME=mail_username,
             MAIL_PASSWORD=mail_password,
@@ -52,10 +54,7 @@ class MailService:
         
         self.fastmail = FastMail(self.conf)
         
-        if self.enabled:
-            logger.info(f"✅ Mail service initialized with server: {mail_server}:{mail_port}")
-        else:
-            logger.warning("⚠️ Mail service initialized but DISABLED (missing credentials)")
+        logger.info(f"✅ Mail service initialized with server: {mail_server}:{mail_port}")
     
     async def send_confirmation_email(self, email: str, confirmation_url: str, name: str = "User"):
         """
