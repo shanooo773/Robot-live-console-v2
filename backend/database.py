@@ -156,6 +156,30 @@ class DatabaseManager:
         except pymysql.Error:
             pass
         
+        # Add is_active column for email confirmation
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_active TINYINT(1) DEFAULT 0")
+        except pymysql.Error:
+            pass
+        
+        # Add email_confirmed_at column for tracking confirmation timestamp
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN email_confirmed_at DATETIME NULL")
+        except pymysql.Error:
+            pass
+        
+        # Add google_id column for Google OAuth
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN google_id VARCHAR(255) NULL")
+        except pymysql.Error:
+            pass
+        
+        # Add google_name column for Google OAuth
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN google_name VARCHAR(255) NULL")
+        except pymysql.Error:
+            pass
+        
         # Migration: Copy code_api_url to upload_endpoint if upload_endpoint is empty
         try:
             cursor.execute("""
@@ -213,7 +237,7 @@ class DatabaseManager:
             return False
     
     def create_user(self, name: str, email: str, password: str, role: str = "user") -> Dict[str, Any]:
-        """Create a new user"""
+        """Create a new user (inactive by default, requires email confirmation)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
@@ -221,8 +245,8 @@ class DatabaseManager:
         try:
             password_hash = self._hash_password(password)
             cursor.execute(f"""
-                INSERT INTO users (name, email, password_hash, role)
-                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
+                INSERT INTO users (name, email, password_hash, role, is_active)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, 0)
             """, (name, email, password_hash, role))
             
             user_id = cursor.lastrowid
@@ -233,6 +257,7 @@ class DatabaseManager:
                 "name": name,
                 "email": email,
                 "role": role,
+                "is_active": False,
                 "created_at": datetime.now().isoformat()
             }
         except pymysql.IntegrityError:
@@ -241,13 +266,13 @@ class DatabaseManager:
             conn.close()
     
     def authenticate_user(self, email: str, password: str) -> Optional[Dict[str, Any]]:
-        """Authenticate a user and return user data if valid"""
+        """Authenticate a user and return user data if valid and active"""
         conn = self.get_connection()
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
         
         cursor.execute(f"""
-            SELECT id, name, email, password_hash, role, created_at
+            SELECT id, name, email, password_hash, role, created_at, is_active
             FROM users WHERE email = {placeholder}
         """, (email,))
         
@@ -257,14 +282,18 @@ class DatabaseManager:
         if not user:
             # User not found in database
             return None
-            
+        
+        # Check if user is active
+        is_active = user[6] if len(user) > 6 else False
+        
         if self._verify_password(password, user[3]):
             return {
                 "id": user[0],
                 "name": user[1],
                 "email": user[2],
                 "role": user[4],
-                "created_at": user[5]
+                "created_at": user[5],
+                "is_active": is_active
             }
         else:
             # Password verification failed
@@ -339,6 +368,120 @@ class DatabaseManager:
         conn.close()
         
         return updated
+    
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Get user by email address"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            SELECT id, name, email, role, is_active, email_confirmed_at, google_id, google_name, created_at
+            FROM users WHERE email = {placeholder}
+        """, (email,))
+        
+        user = cursor.fetchone()
+        conn.close()
+        
+        if user:
+            return {
+                "id": user[0],
+                "name": user[1],
+                "email": user[2],
+                "role": user[3],
+                "is_active": user[4] if user[4] is not None else False,
+                "email_confirmed_at": user[5],
+                "google_id": user[6],
+                "google_name": user[7],
+                "created_at": user[8]
+            }
+        return None
+    
+    def activate_user_by_email(self, email: str) -> bool:
+        """Activate user account by email and set confirmation timestamp"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            UPDATE users 
+            SET is_active = 1, email_confirmed_at = {placeholder}
+            WHERE email = {placeholder}
+        """, (datetime.now(), email))
+        
+        updated = cursor.rowcount > 0
+        conn.close()
+        
+        return updated
+    
+    def upsert_google_user(self, email: str, name: str, google_id: str) -> Dict[str, Any]:
+        """Create or update user from Google OAuth"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        try:
+            # First, check if user exists by google_id (most specific)
+            cursor.execute(f"""
+                SELECT id, name, email, role, google_id, created_at
+                FROM users WHERE google_id = {placeholder}
+            """, (google_id,))
+            
+            existing_user = cursor.fetchone()
+            
+            # If not found by google_id, check by email
+            if not existing_user:
+                cursor.execute(f"""
+                    SELECT id, name, email, role, google_id, created_at
+                    FROM users WHERE email = {placeholder}
+                """, (email,))
+                existing_user = cursor.fetchone()
+            
+            if existing_user:
+                # Update existing user with Google info
+                cursor.execute(f"""
+                    UPDATE users 
+                    SET google_id = {placeholder}, google_name = {placeholder}, 
+                        is_active = 1, email_confirmed_at = {placeholder}
+                    WHERE id = {placeholder}
+                """, (google_id, name, datetime.now(), existing_user[0]))
+                
+                return {
+                    "id": existing_user[0],
+                    "name": name,
+                    "email": email,
+                    "role": existing_user[3],
+                    "google_id": google_id,
+                    "google_name": name,
+                    "is_active": True,
+                    "created_at": existing_user[5]
+                }
+            else:
+                # Create new user
+                # Generate a random password hash (not used for Google auth)
+                password_hash = self._hash_password(secrets.token_urlsafe(32))
+                
+                cursor.execute(f"""
+                    INSERT INTO users (name, email, password_hash, role, is_active, 
+                                     email_confirmed_at, google_id, google_name)
+                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, 
+                            1, {placeholder}, {placeholder}, {placeholder})
+                """, (name, email, password_hash, "user", datetime.now(), google_id, name))
+                
+                user_id = cursor.lastrowid
+                
+                return {
+                    "id": user_id,
+                    "name": name,
+                    "email": email,
+                    "role": "user",
+                    "google_id": google_id,
+                    "google_name": name,
+                    "is_active": True,
+                    "created_at": datetime.now().isoformat()
+                }
+        finally:
+            conn.close()
     
     def get_all_assigned_ports(self) -> List[int]:
         """Get all currently assigned Theia ports"""

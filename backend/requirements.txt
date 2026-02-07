@@ -5,6 +5,12 @@ python-dotenv==1.0.0
 aiofiles==23.2.1
 # Authentication
 PyJWT==2.8.0
+itsdangerous==2.1.2
+# Email
+fastapi-mail==1.4.1
+# Google OAuth
+google-auth==2.26.2
+google-auth-oauthlib==1.2.0
 # Production server
 gunicorn==21.2.0
 # Database
