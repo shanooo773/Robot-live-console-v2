@@ -19,7 +19,7 @@ class TheiaContainerManager:
         self.base_port = base_port or int(os.getenv('THEIA_BASE_PORT', 4000))
         self.max_port = int(os.getenv('THEIA_MAX_PORT', 9000))
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
-        self.theia_image = os.getenv('THEIA_IMAGE', 'muneeb/theia-ros-humble:v1')  # Use working image that matches start-user-container.sh
+        self.theia_image = os.getenv('THEIA_IMAGE', 'muneeb/theia-ros-humble:v2')  # Use working image that matches start-user-container.sh
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
         
         # Container lifecycle configuration
@@ -480,15 +480,10 @@ int main() {
                 "--name", container_name,
                 "-p", f"{port}:3000",
                 "-v", f"{project_dir.absolute()}:/home/project",
-                "-e", f"THEIA_HOST={server_host}",
-                "-e", f"THEIA_PORT={port}",
-                "-e", f"PUBLIC_URL=http://{server_host}:{port}",
-                "-e", f"THEIA_WEBVIEW_EXTERNAL_ENDPOINT=http://{server_host}:{port}",
-                "-e", f"THEIA_MINI_BROWSER_HOST_PATTERN=http://{server_host}:{port}",
-                "-e", f"HOSTNAME={server_host}",
-                # Additional Theia-specific environment variables
-                "-e", f"THEIA_OPEN_HANDLER_URL=http://{server_host}:{port}",
-                "-e", f"SHELL=/bin/bash",
+                "-v", "/var/lib/husarnet:/var/lib/husarnet",
+                "--cap-add", "NET_ADMIN",
+                "--device", "/dev/net/tun",
+                "--sysctl", "net.ipv6.conf.all.disable_ipv6=0",
                 self.theia_image
             ]
             

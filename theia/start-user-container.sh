@@ -95,8 +95,12 @@ echo "Starting Theia container for user $USER_ID on port $PORT..."
 docker run -d \
     --name "$CONTAINER_NAME" \
     -p "$PORT:3000" \
-    -v "$(pwd)/$PROJECT_DIR:/home/project:cached" \
-    muneeb/theia-ros-humble:v1
+    -v "$(pwd)/$PROJECT_DIR:/home/projec/:cached" \
+    -v "/var/lib/husarnet:/var/lib/husarnet" \
+    --cap-add "NET_ADMIN" \
+    --device "/dev/net/tun" \
+    --sysctl "net.ipv6.conf.all.disable_ipv6=0" \
+    muneeb/theia-ros-humble:v2
 
 echo "Container $CONTAINER_NAME started successfully!"
 echo "Theia IDE will be available at: http://localhost:$PORT"

@@ -7,6 +7,9 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true, // Allow external access for local testing
+    allowedHosts: [
+      'anybot.brainswarmrobotics.com'
+    ],
     proxy: {
       // Proxy API calls to backend during development
       '/theia': {

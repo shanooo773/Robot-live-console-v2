@@ -27,4 +27,4 @@ exec theia start \
     --plugins=local-dir:plugins \
     --hostname=0.0.0.0 \
     --port=3000 \
-    --app-project-path=/home/project
+    --app-project-path=/home/user

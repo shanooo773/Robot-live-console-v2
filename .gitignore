@@ -46,7 +46,7 @@ admin-backend/venv/
 simulation-service/venv/
 
 # Video files and temporary data
-
+projects/
 
 # IDE files
 .vscode/

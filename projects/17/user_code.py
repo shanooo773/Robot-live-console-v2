@@ -8,3 +8,4 @@ robot = RobotMover()
 
 while True:
     robot.forward()
+    robot.backward()
