@@ -37,8 +37,7 @@ __pycache__/
 .Python
 venv/
 test_venv/
-env/
-ENV/
+
 backend_test_env/
 
 # NEW: Virtual environments for separated architecture
