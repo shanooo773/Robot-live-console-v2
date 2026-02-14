@@ -37,7 +37,7 @@ const ResetPasswordPage = ({ onBack, onSuccess }) => {
         isClosable: true,
       });
     }
-  }, []);
+  }, [toast]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

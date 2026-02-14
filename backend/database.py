@@ -413,9 +413,14 @@ class DatabaseManager:
             try:
                 cursor.execute(f"DELETE FROM announcements WHERE created_by = {placeholder}", (user_id,))
                 announcements_deleted = cursor.rowcount
-                logger.info(f"🗑️ Deleted {announcements_deleted} announcements for user {user_id}")
-            except Exception as e:
+                if announcements_deleted > 0:
+                    logger.info(f"🗑️ Deleted {announcements_deleted} announcements for user {user_id}")
+            except pymysql.OperationalError as e:
+                # Table might not exist in older database versions
                 logger.warning(f"⚠️ Could not delete announcements for user {user_id}: {e}")
+            except Exception as e:
+                # Log but don't fail - announcements are not critical
+                logger.warning(f"⚠️ Non-critical error deleting announcements for user {user_id}: {e}")
             
             # Delete the user
             cursor.execute(f"DELETE FROM users WHERE id = {placeholder}", (user_id,))

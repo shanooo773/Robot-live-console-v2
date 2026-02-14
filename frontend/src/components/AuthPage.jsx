@@ -56,8 +56,22 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword }) => {
       }
 
       // Initialize Google Sign-In
+      const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      
+      if (!googleClientId) {
+        toast({
+          title: "Google Sign-In not configured",
+          description: "Please contact support to enable Google Sign-In",
+          status: "warning",
+          duration: 5000,
+          isClosable: true,
+        });
+        setIsGoogleLoading(false);
+        return;
+      }
+      
       window.google.accounts.id.initialize({
-        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID",
+        client_id: googleClientId,
         callback: async (response) => {
           try {
             const result = await googleLogin(response.credential);

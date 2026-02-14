@@ -713,7 +713,7 @@ async def register(user_data: UserRegister, background_tasks: BackgroundTasks):
         return {
             "message": "Registration successful! Please check your email to confirm your account.",
             "email": user['email'],
-            "confirm_url": confirmation_url if ENVIRONMENT == 'development' else '',  # Only expose in dev
+            "confirm_url": confirmation_url if os.getenv('ENVIRONMENT', 'development') == 'development' else '',  # Only expose in dev
             "user": {
                 "id": user['id'],
                 "name": user['name'],

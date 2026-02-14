@@ -301,7 +301,7 @@ class AuthService:
             user = self.db.get_user_by_email(email)
             if not user:
                 # Don't reveal if user exists or not for security
-                logger.info(f"🔑 Password reset requested for non-existent email: {email}")
+                logger.info(f"🔑 Password reset requested")
                 return {
                     "message": "If an account exists with that email, a password reset link has been sent."
                 }
@@ -316,14 +316,14 @@ class AuthService:
             # Send email asynchronously
             await self.mail_service.send_password_reset_email(email, reset_url, user['name'])
             
-            logger.info(f"✅ Password reset email sent to: {email}")
+            logger.info(f"✅ Password reset email sent")
             
             return {
                 "message": "If an account exists with that email, a password reset link has been sent.",
                 "reset_url": reset_url  # Include for dev/testing
             }
         except Exception as e:
-            logger.error(f"❌ Failed to send password reset for {email}: {e}")
+            logger.error(f"❌ Failed to send password reset: {e}")
             # Return generic message even on error to not reveal user existence
             return {
                 "message": "If an account exists with that email, a password reset link has been sent."
