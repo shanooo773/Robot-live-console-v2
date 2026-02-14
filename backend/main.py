@@ -486,6 +486,30 @@ else:
 async def lifespan(app: FastAPI):
     """Handle application lifespan events"""
     logger.info("🚀 Admin Backend API starting up...")
+    
+    # Validate production configuration
+    if ENVIRONMENT == 'production':
+        logger.info("🔐 Validating production configuration...")
+        required_vars = [
+            'JWT_SECRET_KEY',
+            'MAIL_USERNAME',
+            'MAIL_PASSWORD',
+            'SERVER_HOST'
+        ]
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        
+        if missing_vars:
+            error_msg = f"Production requires these environment variables: {', '.join(missing_vars)}"
+            logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+        
+        # Validate SERVER_HOST uses HTTPS in production
+        server_host = os.getenv('SERVER_HOST', '')
+        if not server_host.startswith('https://'):
+            logger.warning("⚠️ SERVER_HOST should use HTTPS in production for security")
+        
+        logger.info("✅ Production configuration validated")
+    
     logger.info("📊 Database initialized")
     
     # Log environment variables for streams feature
