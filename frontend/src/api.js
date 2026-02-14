@@ -42,6 +42,24 @@ export const getCurrentUser = async (token) => {
   return response.data;
 };
 
+export const forgotPassword = async (email) => {
+  const response = await API.post("/auth/forgot-password", { email });
+  return response.data;
+};
+
+export const resetPassword = async (token, newPassword) => {
+  const response = await API.post("/auth/reset-password", {
+    token,
+    new_password: newPassword
+  });
+  return response.data;
+};
+
+export const googleLogin = async (idToken) => {
+  const response = await API.post("/auth/google", { id_token: idToken });
+  return response.data;
+};
+
 // Booking API
 export const createBooking = async (bookingData, token) => {
   const response = await API.post("/bookings", bookingData, {
@@ -79,6 +97,13 @@ export const getAvailableSlots = async (date, robotType, token) => {
 // Admin API
 export const getAllUsers = async (token) => {
   const response = await API.get("/admin/users", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const deleteUser = async (userId, token) => {
+  const response = await API.delete(`/admin/users/${userId}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;

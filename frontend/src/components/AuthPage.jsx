@@ -19,12 +19,16 @@ import {
   useToast,
   Alert,
   AlertIcon,
+  Link,
+  Divider,
 } from "@chakra-ui/react";
 import { useState } from "react";
-import { loginUser, registerUser } from "../api";
+import { loginUser, registerUser, googleLogin } from "../api";
+import { FcGoogle } from "react-icons/fc";
 
 const AuthPage = ({ onAuth, onBack }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [loginData, setLoginData] = useState({ email: "", password: "" });
   const [registerData, setRegisterData] = useState({
     name: "",
@@ -33,6 +37,79 @@ const AuthPage = ({ onAuth, onBack }) => {
     confirmPassword: ""
   });
   const toast = useToast();
+
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true);
+    
+    try {
+      // Load Google Identity Services library
+      if (!window.google) {
+        toast({
+          title: "Google Sign-In unavailable",
+          description: "Please check your internet connection or contact support",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+        setIsGoogleLoading(false);
+        return;
+      }
+
+      // Initialize Google Sign-In
+      window.google.accounts.id.initialize({
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID",
+        callback: async (response) => {
+          try {
+            const result = await googleLogin(response.credential);
+            
+            // Store token in localStorage
+            localStorage.setItem('authToken', result.access_token);
+            
+            onAuth(result.user, result.access_token);
+            toast({
+              title: "Google Sign-In successful",
+              status: "success",
+              duration: 3000,
+              isClosable: true,
+            });
+          } catch (error) {
+            console.error('Google login error:', error);
+            toast({
+              title: "Google Sign-In failed",
+              description: error.response?.data?.detail || "Failed to authenticate with Google",
+              status: "error",
+              duration: 5000,
+              isClosable: true,
+            });
+          } finally {
+            setIsGoogleLoading(false);
+          }
+        }
+      });
+
+      // Prompt the user to sign in
+      window.google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          // Fallback to button click
+          window.google.accounts.id.renderButton(
+            document.getElementById("google-signin-button"),
+            { theme: "outline", size: "large", width: "100%" }
+          );
+          setIsGoogleLoading(false);
+        }
+      });
+    } catch (error) {
+      console.error('Google Sign-In initialization error:', error);
+      toast({
+        title: "Google Sign-In unavailable",
+        description: "Please try again or use email/password login",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+      setIsGoogleLoading(false);
+    }
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -102,16 +179,21 @@ const AuthPage = ({ onAuth, onBack }) => {
           password: registerData.password
         });
         
-        // Store token in localStorage
-        localStorage.setItem('authToken', response.access_token);
-        
-        onAuth(response.user, response.access_token);
+        // Registration successful - email confirmation required
         toast({
-          title: "Registration successful",
-          description: "Welcome to Robot Programming Console!",
+          title: "Registration successful!",
+          description: response.message || "Please check your email to confirm your account.",
           status: "success",
-          duration: 3000,
+          duration: 10000,
           isClosable: true,
+        });
+        
+        // Clear form
+        setRegisterData({
+          name: "",
+          email: "",
+          password: "",
+          confirmPassword: ""
         });
       } else {
         toast({
@@ -166,6 +248,29 @@ const AuthPage = ({ onAuth, onBack }) => {
                 <TabPanel px={0}>
                   <form onSubmit={handleLogin}>
                     <VStack spacing={4}>
+                      {/* Google Sign-In Button */}
+                      <Button
+                        leftIcon={<FcGoogle />}
+                        colorScheme="gray"
+                        variant="outline"
+                        width="100%"
+                        onClick={handleGoogleSignIn}
+                        isLoading={isGoogleLoading}
+                        loadingText="Signing in with Google..."
+                      >
+                        Continue with Google
+                      </Button>
+                      
+                      <div id="google-signin-button" style={{ width: '100%' }}></div>
+                      
+                      <HStack width="100%" spacing={4}>
+                        <Divider />
+                        <Text fontSize="sm" color="gray.400" whiteSpace="nowrap">
+                          or
+                        </Text>
+                        <Divider />
+                      </HStack>
+
                       <FormControl>
                         <FormLabel color="gray.300">Email</FormLabel>
                         <Input
@@ -196,6 +301,16 @@ const AuthPage = ({ onAuth, onBack }) => {
                         />
                       </FormControl>
 
+                      <Link
+                        href="/forgot-password"
+                        fontSize="sm"
+                        color="blue.400"
+                        alignSelf="flex-end"
+                        _hover={{ color: "blue.300", textDecoration: "underline" }}
+                      >
+                        Forgot Password?
+                      </Link>
+
                       <Button
                         type="submit"
                         colorScheme="blue"
@@ -214,6 +329,27 @@ const AuthPage = ({ onAuth, onBack }) => {
                 <TabPanel px={0}>
                   <form onSubmit={handleRegister}>
                     <VStack spacing={4}>
+                      {/* Google Sign-In Button */}
+                      <Button
+                        leftIcon={<FcGoogle />}
+                        colorScheme="gray"
+                        variant="outline"
+                        width="100%"
+                        onClick={handleGoogleSignIn}
+                        isLoading={isGoogleLoading}
+                        loadingText="Signing in with Google..."
+                      >
+                        Continue with Google
+                      </Button>
+                      
+                      <HStack width="100%" spacing={4}>
+                        <Divider />
+                        <Text fontSize="sm" color="gray.400" whiteSpace="nowrap">
+                          or
+                        </Text>
+                        <Divider />
+                      </HStack>
+
                       <FormControl>
                         <FormLabel color="gray.300">Full Name</FormLabel>
                         <Input
