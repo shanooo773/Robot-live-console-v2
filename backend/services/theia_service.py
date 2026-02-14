@@ -545,6 +545,110 @@ int main() {
             logger.error(f"Error stopping container for user {user_id}: {e}")
             return {"success": False, "error": str(e)}
     
+    def delete_user_container_and_files(self, user_id: int) -> Dict[str, Any]:
+        """
+        Delete user's Theia container and project files (for admin user deletion)
+        
+        Args:
+            user_id: User ID
+            
+        Returns:
+            Dictionary with success status and details
+        """
+        import shutil
+        
+        results = {
+            "container_stopped": False,
+            "files_deleted": False,
+            "errors": []
+        }
+        
+        try:
+            container_name = self.get_container_name(user_id)
+            
+            # Stop and remove container if running
+            try:
+                # Check if container exists (running or stopped)
+                check_result = subprocess.run(
+                    ["docker", "ps", "-a", "-q", "-f", f"name={container_name}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                
+                if check_result.stdout.strip():
+                    # Container exists, stop it
+                    subprocess.run(
+                        ["docker", "stop", container_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    
+                    # Remove container
+                    subprocess.run(
+                        ["docker", "rm", container_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    
+                    logger.info(f"✅ Container {container_name} stopped and removed")
+                    results["container_stopped"] = True
+                else:
+                    logger.info(f"ℹ️ No container found for user {user_id}")
+                    results["container_stopped"] = True  # No container to stop
+                    
+            except subprocess.TimeoutExpired:
+                error_msg = f"Docker operation timed out for user {user_id}"
+                logger.error(error_msg)
+                results["errors"].append(error_msg)
+            except Exception as e:
+                error_msg = f"Failed to stop container for user {user_id}: {e}"
+                logger.error(error_msg)
+                results["errors"].append(error_msg)
+            
+            # Delete project directory
+            try:
+                project_dir = self.get_user_project_dir(user_id)
+                
+                if project_dir.exists():
+                    shutil.rmtree(project_dir)
+                    logger.info(f"✅ Project directory deleted: {project_dir}")
+                    results["files_deleted"] = True
+                else:
+                    logger.info(f"ℹ️ No project directory found for user {user_id}")
+                    results["files_deleted"] = True  # No files to delete
+                    
+            except Exception as e:
+                error_msg = f"Failed to delete project directory for user {user_id}: {e}"
+                logger.error(error_msg)
+                results["errors"].append(error_msg)
+            
+            # Release port mapping from cache and database
+            try:
+                self.release_user_port(user_id)
+                logger.info(f"✅ Port mapping released for user {user_id}")
+            except Exception as e:
+                error_msg = f"Failed to release port for user {user_id}: {e}"
+                logger.warning(error_msg)
+                results["errors"].append(error_msg)
+            
+            success = results["container_stopped"] and results["files_deleted"]
+            
+            return {
+                "success": success,
+                "details": results
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Unexpected error deleting user {user_id} resources: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "details": results
+            }
+    
     def restart_container(self, user_id: int) -> Dict:
         """Restart user's Theia container with better error handling for crashed containers"""
         try:

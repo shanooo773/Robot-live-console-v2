@@ -569,6 +569,16 @@ class ConfirmationResponse(BaseModel):
     message: str
     user: dict
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class PasswordResetRequest(BaseModel):
+    token: str
+    new_password: str
+
+class PasswordResetResponse(BaseModel):
+    message: str
+
 class UserResponse(BaseModel):
     id: int
     name: str
@@ -675,10 +685,49 @@ async def root():
 
 # Authentication Endpoints
 @app.post("/auth/register", response_model=RegistrationResponse)
-async def register(user_data: UserRegister):
-    """Register a new user and send confirmation email"""
+async def register(user_data: UserRegister, background_tasks: BackgroundTasks):
+    """Register a new user and send confirmation email in background"""
     auth_service = service_manager.get_auth_service()
-    return await auth_service.register_user(user_data.name, user_data.email, user_data.password)
+    
+    # Create user synchronously
+    try:
+        logger.info(f"📝 Registration attempt for email: {user_data.email}")
+        user = db.create_user(user_data.name, user_data.email, user_data.password)
+        logger.info(f"✅ User registered successfully: {user_data.email} (ID: {user['id']})")
+        
+        # Send confirmation email in background
+        async def send_confirmation():
+            try:
+                confirmation_url = await auth_service.send_confirmation_email(user['email'], user['name'])
+                logger.info(f"📧 Confirmation email sent for: {user['email']}")
+            except Exception as e:
+                logger.error(f"❌ Failed to send confirmation email: {e}")
+        
+        background_tasks.add_task(send_confirmation)
+        
+        # Build confirmation URL for response (dev/testing)
+        token = auth_service.token_service.generate_confirmation_token(user['email'])
+        confirmation_url = f"{auth_service.server_host}/auth/confirm?token={token}"
+        
+        # Return success message without JWT
+        return {
+            "message": "Registration successful! Please check your email to confirm your account.",
+            "email": user['email'],
+            "confirm_url": confirmation_url if ENVIRONMENT == 'development' else '',
+            "user": {
+                "id": user['id'],
+                "name": user['name'],
+                "email": user['email'],
+                "role": user['role'],
+                "is_active": False
+            }
+        }
+    except ValueError as e:
+        logger.warning(f"⚠️ Registration failed for {user_data.email}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"❌ Registration failed with exception for {user_data.email}: {e}")
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 @app.get("/auth/confirm", response_model=ConfirmationResponse)
 async def confirm_email(token: str):
@@ -697,6 +746,31 @@ async def google_login(google_data: GoogleLogin):
     """Login or register user with Google OAuth"""
     auth_service = service_manager.get_auth_service()
     return auth_service.login_with_google(google_data.id_token)
+
+@app.post("/auth/forgot-password", response_model=PasswordResetResponse)
+async def forgot_password(request: ForgotPasswordRequest, background_tasks: BackgroundTasks):
+    """Request a password reset email"""
+    auth_service = service_manager.get_auth_service()
+    
+    # Send reset email in background
+    async def send_reset():
+        try:
+            await auth_service.request_password_reset(request.email)
+        except Exception as e:
+            logger.error(f"❌ Failed to send password reset: {e}")
+    
+    background_tasks.add_task(send_reset)
+    
+    # Always return success to not reveal user existence
+    return {
+        "message": "If an account exists with that email, a password reset link has been sent."
+    }
+
+@app.post("/auth/reset-password", response_model=PasswordResetResponse)
+async def reset_password(request: PasswordResetRequest):
+    """Reset password with token"""
+    auth_service = service_manager.get_auth_service()
+    return auth_service.reset_password(request.token, request.new_password)
 
 @app.get("/auth/me", response_model=UserResponse)
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
@@ -853,6 +927,65 @@ async def get_all_users(current_user: dict = Depends(require_admin)):
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve user data. Please check system status."
+        )
+
+@app.delete("/admin/users/{user_id}")
+async def delete_user(user_id: int, current_user: dict = Depends(require_admin)):
+    """Delete user and all associated data (admin only)"""
+    try:
+        if not DATABASE_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="Database service unavailable"
+            )
+        
+        logger.info(f"🗑️ Admin {current_user.get('email')} deleting user {user_id}")
+        
+        # Get user info before deletion for logging
+        user = db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Prevent self-deletion
+        if int(current_user.get("sub")) == user_id:
+            raise HTTPException(status_code=400, detail="Cannot delete your own account")
+        
+        # Delete user's Theia container and project files
+        theia_manager = service_manager.get_theia_manager()
+        if theia_manager:
+            try:
+                deletion_result = theia_manager.delete_user_container_and_files(user_id)
+                if deletion_result.get("success"):
+                    logger.info(f"✅ Container and files deleted for user {user_id}")
+                else:
+                    logger.warning(f"⚠️ Partial deletion for user {user_id}: {deletion_result}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to delete Theia resources for user {user_id}: {e}")
+        
+        # Delete user from database (cascade delete for bookings, sessions, etc.)
+        success = db.delete_user_cascade(user_id)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete user from database")
+        
+        logger.info(f"✅ User {user_id} ({user['email']}) deleted successfully by admin")
+        
+        return {
+            "message": f"User {user['email']} and all associated data deleted successfully",
+            "deleted_user": {
+                "id": user_id,
+                "email": user['email'],
+                "name": user['name']
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to delete user {user_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete user: {str(e)}"
         )
 
 @app.get("/admin/stats")

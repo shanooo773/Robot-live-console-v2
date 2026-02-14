@@ -35,18 +35,10 @@ class AuthService:
         self.token_service = TokenService()
         self.mail_service = MailService()
         
-        # Load demo credentials from environment variables
-        self.demo_user_email = os.getenv("DEMO_USER_EMAIL", "demo@user.com")
-        self.demo_user_password = os.getenv("DEMO_USER_PASSWORD", "password")
-        self.demo_admin_email = os.getenv("DEMO_ADMIN_EMAIL", "admin@demo.com")
-        self.demo_admin_password = os.getenv("DEMO_ADMIN_PASSWORD", "password")
-        
         # Get server host for confirmation URLs
         self.server_host = os.getenv("SERVER_HOST", "http://localhost:8000")
         
         logger.info("✅ Auth service initialized successfully")
-        logger.info(f"🎯 Demo user email: {self.demo_user_email}")
-        logger.info(f"👑 Demo admin email: {self.demo_admin_email}")
     
     def get_status(self) -> Dict[str, Any]:
         """Get current service status"""
@@ -54,30 +46,8 @@ class AuthService:
             "service": "auth",
             "available": self.available,
             "status": self.status,
-            "features": ["registration", "login", "jwt_tokens", "role_management", "email_confirmation", "google_oauth"]
+            "features": ["registration", "login", "jwt_tokens", "role_management", "email_confirmation", "google_oauth", "password_reset"]
         }
-    
-    def _check_demo_user(self, email: str, password: str) -> Optional[Dict[str, Any]]:
-        """Check if credentials match demo user accounts"""
-        if email == self.demo_user_email and password == self.demo_user_password:
-            return {
-                "id": -1,  # Use negative ID for demo users to avoid conflicts
-                "name": "Demo User",
-                "email": self.demo_user_email,
-                "role": "user",
-                "isDemoUser": True,
-                "created_at": "2024-01-01T00:00:00"
-            }
-        elif email == self.demo_admin_email and password == self.demo_admin_password:
-            return {
-                "id": -2,  # Use negative ID for demo admin to avoid conflicts
-                "name": "Demo Admin", 
-                "email": self.demo_admin_email,
-                "role": "admin",
-                "isDemoAdmin": True,
-                "created_at": "2024-01-01T00:00:00"
-            }
-        return None
     
     async def send_confirmation_email(self, email: str, name: str) -> str:
         """
@@ -181,39 +151,11 @@ class AuthService:
             raise AuthServiceException(f"Email confirmation failed: {str(e)}")
     
     def login_user(self, email: str, password: str) -> Dict[str, Any]:
-        """Login user and return token (requires email confirmation for non-demo users)"""
+        """Login user and return token (requires email confirmation)"""
         try:
             logger.info(f"🔐 Login attempt for email: {email}")
             
-            # First check if this is a demo user
-            demo_user = self._check_demo_user(email, password)
-            if demo_user:
-                # Create token data with demo user flags
-                token_data = {
-                    "sub": str(demo_user["id"]),
-                    "email": demo_user["email"],
-                    "role": demo_user["role"]
-                }
-                
-                # Add demo flags to token data
-                if demo_user.get("isDemoUser"):
-                    token_data["isDemoUser"] = True
-                if demo_user.get("isDemoAdmin"):
-                    token_data["isDemoAdmin"] = True
-                
-                token = self.auth_manager.create_access_token(data=token_data)
-                
-                # Ensure demo user onboarding setup
-                self._ensure_user_onboarding(demo_user['id'], demo_user['email'])
-                
-                logger.info(f"🎯 Demo user login successful: {email} with role {demo_user['role']}")
-                return {
-                    "access_token": token,
-                    "token_type": "bearer",
-                    "user": demo_user
-                }
-            
-            # Otherwise, authenticate against database
+            # Authenticate against database
             logger.info(f"📊 Checking database authentication for: {email}")
             user = self.db.authenticate_user(email, password)
             if not user:
@@ -303,6 +245,15 @@ class AuthService:
                 if not email:
                     raise HTTPException(status_code=400, detail="Email not provided by Google")
                 
+                # Check if email is verified
+                email_verified = idinfo.get("email_verified")
+                if email_verified is not True:
+                    logger.warning(f"⚠️ Google account email not verified for: {email}")
+                    raise HTTPException(
+                        status_code=401,
+                        detail="Google account email is not verified"
+                    )
+                
                 name = idinfo.get('name', email.split('@')[0])
                 
                 logger.info(f"✅ Google token verified for: {email}")
@@ -334,6 +285,85 @@ class AuthService:
         except Exception as e:
             logger.error(f"❌ Google OAuth login failed: {e}")
             raise AuthServiceException(f"Google OAuth login failed: {str(e)}")
+    
+    async def request_password_reset(self, email: str) -> Dict[str, Any]:
+        """
+        Request a password reset for a user
+        
+        Args:
+            email: User's email address
+            
+        Returns:
+            Success message and reset URL (for dev/testing)
+        """
+        try:
+            # Check if user exists
+            user = self.db.get_user_by_email(email)
+            if not user:
+                # Don't reveal if user exists or not for security
+                logger.info(f"🔑 Password reset requested for non-existent email: {email}")
+                return {
+                    "message": "If an account exists with that email, a password reset link has been sent."
+                }
+            
+            # Generate reset token
+            token = self.token_service.generate_password_reset_token(email)
+            
+            # Build reset URL
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+            reset_url = f"{frontend_url}/reset-password?token={token}"
+            
+            # Send email asynchronously
+            await self.mail_service.send_password_reset_email(email, reset_url, user['name'])
+            
+            logger.info(f"✅ Password reset email sent to: {email}")
+            
+            return {
+                "message": "If an account exists with that email, a password reset link has been sent.",
+                "reset_url": reset_url  # Include for dev/testing
+            }
+        except Exception as e:
+            logger.error(f"❌ Failed to send password reset for {email}: {e}")
+            # Return generic message even on error to not reveal user existence
+            return {
+                "message": "If an account exists with that email, a password reset link has been sent."
+            }
+    
+    def reset_password(self, token: str, new_password: str) -> Dict[str, Any]:
+        """
+        Reset user password with token
+        
+        Args:
+            token: Password reset token
+            new_password: New password
+            
+        Returns:
+            Success message
+        """
+        try:
+            # Validate token and get email
+            email = self.token_service.validate_password_reset_token(token)
+            
+            # Update password
+            success = self.db.update_user_password(email, new_password)
+            
+            if not success:
+                raise HTTPException(status_code=404, detail="User not found")
+            
+            logger.info(f"✅ Password reset successful for: {email}")
+            
+            return {
+                "message": "Password has been reset successfully. You can now log in with your new password."
+            }
+        except ValueError as e:
+            # Token validation errors (expired, invalid)
+            logger.warning(f"⚠️ Password reset failed: {str(e)}")
+            raise HTTPException(status_code=400, detail=str(e))
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ Password reset failed with exception: {e}")
+            raise AuthServiceException(f"Password reset failed: {str(e)}")
     
     def _ensure_user_onboarding(self, user_id: int, user_email: str) -> None:
         """Ensure user has required onboarding setup (theia port and project directory)"""

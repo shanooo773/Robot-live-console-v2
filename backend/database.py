@@ -2,6 +2,7 @@ import pymysql
 import os
 import hashlib
 import secrets
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import json
@@ -10,6 +11,8 @@ from fastapi import HTTPException
 
 # Load environment variables
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     def __init__(self):
@@ -369,6 +372,68 @@ class DatabaseManager:
         
         return updated
     
+    def delete_user_cascade(self, user_id: int) -> bool:
+        """
+        Delete user and all related data (cascade delete)
+        
+        Deletes:
+        - User record
+        - User's bookings
+        - User's messages (if any)
+        - User's sessions
+        
+        Args:
+            user_id: User ID to delete
+            
+        Returns:
+            True if user was deleted, False otherwise
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        try:
+            # Check if user exists
+            cursor.execute(f"SELECT id FROM users WHERE id = {placeholder}", (user_id,))
+            if not cursor.fetchone():
+                logger.warning(f"⚠️ Cannot delete: User {user_id} not found")
+                return False
+            
+            # Delete user's bookings
+            cursor.execute(f"DELETE FROM bookings WHERE user_id = {placeholder}", (user_id,))
+            bookings_deleted = cursor.rowcount
+            logger.info(f"🗑️ Deleted {bookings_deleted} bookings for user {user_id}")
+            
+            # Delete user's sessions
+            cursor.execute(f"DELETE FROM sessions WHERE user_id = {placeholder}", (user_id,))
+            sessions_deleted = cursor.rowcount
+            logger.info(f"🗑️ Deleted {sessions_deleted} sessions for user {user_id}")
+            
+            # Delete user's announcements (if they created any)
+            try:
+                cursor.execute(f"DELETE FROM announcements WHERE created_by = {placeholder}", (user_id,))
+                announcements_deleted = cursor.rowcount
+                logger.info(f"🗑️ Deleted {announcements_deleted} announcements for user {user_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not delete announcements for user {user_id}: {e}")
+            
+            # Delete the user
+            cursor.execute(f"DELETE FROM users WHERE id = {placeholder}", (user_id,))
+            user_deleted = cursor.rowcount > 0
+            
+            if user_deleted:
+                logger.info(f"✅ User {user_id} and all related data deleted successfully")
+            else:
+                logger.warning(f"⚠️ User {user_id} was not deleted")
+            
+            return user_deleted
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to delete user {user_id}: {e}")
+            return False
+        finally:
+            conn.close()
+    
     def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Get user by email address"""
         conn = self.get_connection()
@@ -413,6 +478,37 @@ class DatabaseManager:
         conn.close()
         
         return updated
+    
+    def update_user_password(self, email: str, new_password: str) -> bool:
+        """Update user password by email"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        try:
+            # Hash the new password
+            password_hash = self._hash_password(new_password)
+            
+            # Update password
+            cursor.execute(f"""
+                UPDATE users 
+                SET password_hash = {placeholder}
+                WHERE email = {placeholder}
+            """, (password_hash, email))
+            
+            updated = cursor.rowcount > 0
+            
+            if updated:
+                logger.info(f"✅ Password updated for user: {email}")
+            else:
+                logger.warning(f"⚠️ No user found to update password for: {email}")
+            
+            return updated
+        except Exception as e:
+            logger.error(f"❌ Failed to update password for {email}: {e}")
+            return False
+        finally:
+            conn.close()
     
     def upsert_google_user(self, email: str, name: str, google_id: str) -> Dict[str, Any]:
         """Create or update user from Google OAuth"""
