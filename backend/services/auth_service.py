@@ -186,6 +186,9 @@ class AuthService:
             
             logger.info(f"✅ Database authentication successful for: {email} (ID: {user['id']}, Role: {user['role']})")
             
+            # Update user activity tracking
+            self.db.update_user_activity(user['id'], 'login')
+            
             # Ensure user onboarding setup (theia port assignment and directory creation)
             self._ensure_user_onboarding(user['id'], user['email'])
             
@@ -493,3 +496,67 @@ class AuthService:
             return {
                 "message": "If your account needs confirmation, an email has been sent."
             }
+    
+    def change_admin_password(self, email: str, current_password: str, new_password: str, confirm_password: str) -> Dict[str, Any]:
+        """
+        Change admin password
+        
+        Args:
+            email: Admin's email address
+            current_password: Current password
+            new_password: New password
+            confirm_password: Confirmation of new password
+            
+        Returns:
+            Success message
+        """
+        try:
+            # Verify current password
+            user = self.db.authenticate_user(email, current_password)
+            if not user:
+                raise HTTPException(status_code=401, detail="Current password is incorrect")
+            
+            # Verify user is admin
+            if user.get('role') != 'admin':
+                raise HTTPException(status_code=403, detail="Admin access required")
+            
+            # Validate new passwords match
+            if new_password != confirm_password:
+                raise HTTPException(status_code=400, detail="New passwords do not match")
+            
+            # Validate new password requirements
+            if len(new_password) < 8:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Password must be at least 8 characters long"
+                )
+            
+            # Validate new password is different from current
+            if current_password == new_password:
+                raise HTTPException(
+                    status_code=400,
+                    detail="New password must be different from current password"
+                )
+            
+            # Update password
+            success = self.db.update_user_password(email, new_password)
+            
+            if not success:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to update password. Please try again."
+                )
+            
+            logger.info(f"✅ Admin password changed successfully for: {email}")
+            
+            return {
+                "message": "Password updated successfully"
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ Admin password change failed for {email}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to change password. Please try again."
+            )

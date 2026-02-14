@@ -545,6 +545,43 @@ int main() {
             logger.error(f"Error stopping container for user {user_id}: {e}")
             return {"success": False, "error": str(e)}
     
+    def delete_user_container_and_files(self, user_id: int):
+        """Delete user's container and project files"""
+        import shutil
+        
+        try:
+            # Stop and remove container if running
+            container_name = self.get_container_name(user_id)
+            
+            try:
+                # Force remove container
+                subprocess.run(
+                    ["docker", "rm", "-f", container_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                logger.info(f"✅ Removed container {container_name} for user {user_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to remove container (may not exist): {e}")
+            
+            # Release port
+            self.release_user_port(user_id)
+            
+            # Delete project directory
+            user_project_dir = self.projects_dir / str(user_id)
+            if user_project_dir.exists():
+                shutil.rmtree(user_project_dir)
+                logger.info(f"✅ Deleted project directory for user {user_id}: {user_project_dir}")
+            else:
+                logger.info(f"ℹ️ No project directory found for user {user_id}")
+            
+            logger.info(f"✅ Successfully deleted all resources for user {user_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error deleting resources for user {user_id}: {e}")
+            raise
+    
     def restart_container(self, user_id: int) -> Dict:
         """Restart user's Theia container with better error handling for crashed containers"""
         try:
