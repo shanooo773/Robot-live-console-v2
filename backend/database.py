@@ -414,6 +414,180 @@ class DatabaseManager:
         
         return updated
     
+    def store_password_reset_token(self, email: str, token: str, expires: datetime) -> bool:
+        """Store password reset token for user"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            UPDATE users 
+            SET password_reset_token = {placeholder}, 
+                password_reset_expires = {placeholder}
+            WHERE email = {placeholder}
+        """, (token, expires, email))
+        
+        updated = cursor.rowcount > 0
+        conn.close()
+        
+        return updated
+    
+    def validate_password_reset_token(self, token: str) -> Optional[str]:
+        """Validate password reset token and return email if valid"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            SELECT email, password_reset_expires 
+            FROM users 
+            WHERE password_reset_token = {placeholder}
+        """, (token,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            return None
+        
+        email, expires = result
+        
+        # Check if token has expired
+        if expires:
+            # Ensure expires is a datetime object
+            if isinstance(expires, str):
+                from datetime import datetime
+                expires = datetime.fromisoformat(expires)
+            
+            if datetime.now() > expires:
+                return None
+        
+        return email
+    
+    def update_user_password(self, email: str, new_password: str) -> bool:
+        """Update user password and clear reset token"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        # Hash the new password
+        password_hash = self._hash_password(new_password)
+        
+        cursor.execute(f"""
+            UPDATE users 
+            SET password_hash = {placeholder}, 
+                password_reset_token = NULL, 
+                password_reset_expires = NULL
+            WHERE email = {placeholder}
+        """, (password_hash, email))
+        
+        updated = cursor.rowcount > 0
+        conn.close()
+        
+        return updated
+    
+    def update_user_role(self, user_id: int, new_role: str) -> Dict[str, Any]:
+        """Update user role (admin or user)"""
+        if new_role not in ["admin", "user"]:
+            raise ValueError(f"Invalid role: {new_role}. Must be 'admin' or 'user'.")
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            UPDATE users SET role = {placeholder} WHERE id = {placeholder}
+        """, (new_role, user_id))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            raise ValueError(f"User with ID {user_id} not found")
+        
+        # Get updated user info
+        cursor.execute(f"""
+            SELECT id, name, email, role, is_active, created_at
+            FROM users WHERE id = {placeholder}
+        """, (user_id,))
+        
+        user = cursor.fetchone()
+        conn.close()
+        
+        if user:
+            return {
+                "id": user[0],
+                "name": user[1],
+                "email": user[2],
+                "role": user[3],
+                "is_active": user[4],
+                "created_at": user[5]
+            }
+        return None
+    
+    def update_user_activity(self, user_id: int, activity_type: str = 'login'):
+        """Update user activity tracking"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        now = datetime.now()
+        
+        if activity_type == 'login':
+            cursor.execute(f"""
+                UPDATE users 
+                SET last_login = {placeholder}, 
+                    last_activity = {placeholder}, 
+                    login_count = COALESCE(login_count, 0) + 1
+                WHERE id = {placeholder}
+            """, (now, now, user_id))
+        else:
+            cursor.execute(f"""
+                UPDATE users 
+                SET last_activity = {placeholder}
+                WHERE id = {placeholder}
+            """, (now, user_id))
+        
+        conn.close()
+    
+    def delete_user_cascade(self, user_id: int) -> Dict[str, Any]:
+        """Delete user and all related data (bookings, sessions, messages)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        # Track deleted records
+        deleted = {
+            "user_id": user_id,
+            "bookings": 0,
+            "sessions": 0,
+            "messages": 0
+        }
+        
+        # Delete bookings
+        cursor.execute(f"""
+            DELETE FROM bookings WHERE user_id = {placeholder}
+        """, (user_id,))
+        deleted["bookings"] = cursor.rowcount
+        
+        # Delete sessions
+        cursor.execute(f"""
+            DELETE FROM sessions WHERE user_id = {placeholder}
+        """, (user_id,))
+        deleted["sessions"] = cursor.rowcount
+        
+        # Note: Messages don't have user_id foreign key in current schema
+        # but we'll handle it if they're associated
+        
+        # Delete user
+        cursor.execute(f"""
+            DELETE FROM users WHERE id = {placeholder}
+        """, (user_id,))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            raise ValueError(f"User with ID {user_id} not found")
+        
+        conn.close()
+        return deleted
+    
     def upsert_google_user(self, email: str, name: str, google_id: str) -> Dict[str, Any]:
         """Create or update user from Google OAuth"""
         conn = self.get_connection()

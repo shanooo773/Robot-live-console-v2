@@ -4,7 +4,7 @@ import json
 import asyncio
 import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends, WebSocket, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +13,11 @@ from typing import Optional, List, Dict, Any
 import logging
 from pathlib import Path
 from datetime import datetime
+
+# Rate limiting
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Import environment support
 import os
@@ -481,6 +486,42 @@ else:
 async def lifespan(app: FastAPI):
     """Handle application lifespan events"""
     logger.info("🚀 Admin Backend API starting up...")
+    
+    # Validate production configuration
+    if ENVIRONMENT == 'production':
+        logger.info("🔐 Validating production configuration...")
+        required_vars = [
+            'JWT_SECRET_KEY',
+            'MAIL_USERNAME',
+            'MAIL_PASSWORD',
+            'SERVER_HOST'
+        ]
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        
+        if missing_vars:
+            error_msg = f"Production requires these environment variables: {', '.join(missing_vars)}"
+            logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+        
+        # Validate JWT_SECRET_KEY is not a placeholder
+        jwt_secret = os.getenv('JWT_SECRET_KEY', '')
+        if ('placeholder' in jwt_secret.lower() or 
+            'your_secret' in jwt_secret.lower() or 
+            'change_me' in jwt_secret.lower() or
+            len(jwt_secret) < 32):
+            error_msg = "JWT_SECRET_KEY must be changed from default placeholder and be at least 32 characters"
+            logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+        
+        # Validate SERVER_HOST uses HTTPS in production
+        server_host = os.getenv('SERVER_HOST', '')
+        if not server_host.startswith('https://'):
+            error_msg = "SERVER_HOST must use HTTPS in production for security"
+            logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+        
+        logger.info("✅ Production configuration validated")
+    
     logger.info("📊 Database initialized")
     
     # Log environment variables for streams feature
@@ -505,6 +546,11 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app with lifespan
 app = FastAPI(title="Robot Admin Backend API", version="1.0.0", lifespan=lifespan)
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Global exception handler for better error logging
 @app.exception_handler(500)
@@ -553,6 +599,16 @@ class UserLogin(BaseModel):
 
 class GoogleLogin(BaseModel):
     id_token: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+class ResendConfirmationRequest(BaseModel):
+    email: str
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -675,10 +731,11 @@ async def root():
 
 # Authentication Endpoints
 @app.post("/auth/register", response_model=RegistrationResponse)
-async def register(user_data: UserRegister):
+@limiter.limit("5/hour")
+async def register(request: Request, user_data: UserRegister, background_tasks: BackgroundTasks):
     """Register a new user and send confirmation email"""
     auth_service = service_manager.get_auth_service()
-    return await auth_service.register_user(user_data.name, user_data.email, user_data.password)
+    return await auth_service.register_user(user_data.name, user_data.email, user_data.password, background_tasks)
 
 @app.get("/auth/confirm", response_model=ConfirmationResponse)
 async def confirm_email(token: str):
@@ -687,13 +744,15 @@ async def confirm_email(token: str):
     return auth_service.confirm_email(token)
 
 @app.post("/auth/login", response_model=TokenResponse)
-async def login(user_data: UserLogin):
+@limiter.limit("10/minute")
+async def login(request: Request, user_data: UserLogin):
     """Login user"""
     auth_service = service_manager.get_auth_service()
     return auth_service.login_user(user_data.email, user_data.password)
 
 @app.post("/auth/google", response_model=TokenResponse)
-async def google_login(google_data: GoogleLogin):
+@limiter.limit("10/minute")
+async def google_login(request: Request, google_data: GoogleLogin):
     """Login or register user with Google OAuth"""
     auth_service = service_manager.get_auth_service()
     return auth_service.login_with_google(google_data.id_token)
@@ -706,6 +765,26 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return UserResponse(**user)
+
+@app.post("/auth/forgot-password")
+@limiter.limit("3/hour")
+async def forgot_password(request: Request, req: ForgotPasswordRequest, background_tasks: BackgroundTasks):
+    """Request password reset email"""
+    auth_service = service_manager.get_auth_service()
+    return auth_service.request_password_reset(req.email, background_tasks)
+
+@app.post("/auth/reset-password")
+async def reset_password(req: ResetPasswordRequest):
+    """Reset password with token"""
+    auth_service = service_manager.get_auth_service()
+    return auth_service.reset_password(req.token, req.new_password)
+
+@app.post("/auth/resend-confirmation")
+@limiter.limit("3/hour")
+async def resend_confirmation(request: Request, req: ResendConfirmationRequest, background_tasks: BackgroundTasks):
+    """Resend confirmation email"""
+    auth_service = service_manager.get_auth_service()
+    return auth_service.resend_confirmation_email(req.email, background_tasks)
 
 # Booking Endpoints
 @app.post("/bookings", response_model=BookingResponse)
@@ -918,6 +997,84 @@ async def get_admin_stats(current_user: dict = Depends(require_admin)):
             status_code=500,
             detail="Failed to retrieve admin statistics. Please check system status."
         )
+
+@app.delete("/admin/users/{user_id}")
+async def delete_user(user_id: int, current_user: dict = Depends(require_admin)):
+    """Delete user and all associated data (admin only)"""
+    if not DATABASE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Database service unavailable")
+    
+    # Prevent self-deletion
+    current_user_id = int(current_user["sub"])
+    if current_user_id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    
+    # Delete user's workspace and container
+    try:
+        theia_service = service_manager.get_theia_service()
+        if theia_service:
+            theia_service.delete_user_container_and_files(user_id)
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to delete user workspace: {e}")
+    
+    # Delete user from database (cascade deletes bookings, sessions)
+    deleted = db.delete_user_cascade(user_id)
+    
+    return {
+        "message": "User deleted successfully",
+        "deleted": deleted
+    }
+
+@app.patch("/admin/users/{user_id}/role")
+async def update_user_role(
+    user_id: int,
+    role_data: dict,
+    current_user: dict = Depends(require_admin)
+):
+    """Update user role (admin only)"""
+    if not DATABASE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Database service unavailable")
+    
+    # Prevent self-demotion
+    current_user_id = int(current_user["sub"])
+    if current_user_id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot change your own role")
+    
+    new_role = role_data.get("role")
+    if not new_role:
+        raise HTTPException(status_code=400, detail="Role is required")
+    
+    user = db.update_user_role(user_id, new_role)
+    
+    return {
+        "message": f"User role updated to {new_role}",
+        "user": user
+    }
+
+@app.post("/admin/change-password")
+async def admin_change_password(
+    password_data: dict,
+    current_user: dict = Depends(require_admin)
+):
+    """Change admin password (admin only)"""
+    auth_service = service_manager.get_auth_service()
+    
+    current_password = password_data.get("current_password")
+    new_password = password_data.get("new_password")
+    confirm_password = password_data.get("confirm_password")
+    
+    if not all([current_password, new_password, confirm_password]):
+        raise HTTPException(
+            status_code=400,
+            detail="All password fields are required"
+        )
+    
+    return auth_service.change_admin_password(
+        current_user["email"],
+        current_password,
+        new_password,
+        confirm_password
+    )
 
 # Robot Admin Endpoints
 @app.post("/admin/robots", response_model=RobotResponse)

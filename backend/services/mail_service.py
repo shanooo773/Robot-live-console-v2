@@ -120,8 +120,7 @@ class MailService:
             message = MessageSchema(
                 subject="Confirm Your Email - Robot Live Console",
                 recipients=[email],
-                body=text,
-                html=html,
+                body=html,
                 subtype=MessageType.html
             )
             
@@ -132,3 +131,63 @@ class MailService:
             logger.error(f"❌ Failed to send confirmation email to {email}: {e}")
             # Don't raise exception - we want registration to continue even if email fails
             # The confirmation URL is also returned in the response for development/testing
+    
+    async def send_password_reset_email(self, email: str, reset_url: str, name: str = "User"):
+        """
+        Send password reset email to a user
+        
+        Args:
+            email: Recipient email address
+            reset_url: Full URL for password reset
+            name: User's name for personalization
+        """
+        if not self.enabled:
+            logger.warning(f"⚠️ Email sending disabled. Would send password reset to: {email}")
+            logger.info(f"🔐 Password reset URL: {reset_url}")
+            return
+        
+        try:
+            # Create HTML email body
+            html = f"""
+            <html>
+                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                        <h2 style="color: #2563eb;">Password Reset Request</h2>
+                        <p>Hi {name},</p>
+                        <p>We received a request to reset your password for Robot Live Console. Click the button below to reset your password:</p>
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="{reset_url}" 
+                               style="background-color: #2563eb; color: white; padding: 12px 30px; 
+                                      text-decoration: none; border-radius: 5px; display: inline-block;">
+                                Reset Password
+                            </a>
+                        </div>
+                        <p>Or copy and paste this link into your browser:</p>
+                        <p style="word-break: break-all; color: #666;">{reset_url}</p>
+                        <p style="margin-top: 30px; font-size: 0.9em; color: #666;">
+                            This link will expire in 1 hour. If you didn't request a password reset, 
+                            you can safely ignore this email. Your password will not be changed.
+                        </p>
+                        <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
+                        <p style="font-size: 0.8em; color: #999;">
+                            Robot Live Console - Your Remote Robot Programming Platform
+                        </p>
+                    </div>
+                </body>
+            </html>
+            """
+            
+            message = MessageSchema(
+                subject="Password Reset - Robot Live Console",
+                recipients=[email],
+                body=html,
+                subtype=MessageType.html
+            )
+            
+            await self.fastmail.send_message(message)
+            logger.info(f"✅ Password reset email sent to: {email}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to send password reset email to {email}: {e}")
+            # Don't raise exception - we want the reset request to continue
+

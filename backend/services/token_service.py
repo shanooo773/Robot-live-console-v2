@@ -22,21 +22,23 @@ class TokenService:
         Initialize TokenService with secret key
         
         Args:
-            secret_key: Secret key for token signing (falls back to env variables)
+            secret_key: Secret key for token signing (falls back to JWT_SECRET_KEY)
         """
-        # Use JWT_SECRET_KEY or SECRET_KEY from environment
-        env_secret = os.getenv('JWT_SECRET_KEY') or os.getenv('SECRET_KEY')
+        # Use JWT_SECRET_KEY from environment (same as AuthManager)
+        env_secret = os.getenv('JWT_SECRET_KEY')
         self.secret_key = secret_key or env_secret
         
         if not self.secret_key:
             raise ValueError(
                 "No secret key provided for TokenService. "
-                "Please set JWT_SECRET_KEY or SECRET_KEY environment variable."
+                "Please set JWT_SECRET_KEY environment variable."
             )
         
         self.serializer = URLSafeTimedSerializer(self.secret_key)
         self.salt = 'email-confirmation-salt'
+        self.password_reset_salt = 'password-reset-salt'
         self.max_age = 3600  # 1 hour in seconds
+        self.password_reset_max_age = 3600  # 1 hour for password reset
         
         logger.info("✅ Token service initialized")
     
@@ -89,3 +91,53 @@ class TokenService:
         except Exception as e:
             logger.error(f"❌ Token validation error: {e}")
             raise ValueError("Failed to validate confirmation token. Please try again.")
+    
+    def generate_password_reset_token(self, email: str) -> str:
+        """
+        Generate a time-limited password reset token for an email address
+        
+        Args:
+            email: Email address to generate token for
+            
+        Returns:
+            URL-safe password reset token string
+        """
+        try:
+            token = self.serializer.dumps(email, salt=self.password_reset_salt)
+            logger.info(f"🔐 Generated password reset token for: {email}")
+            return token
+        except Exception as e:
+            logger.error(f"❌ Failed to generate password reset token for {email}: {e}")
+            raise
+    
+    def validate_password_reset_token(self, token: str) -> Optional[str]:
+        """
+        Validate a password reset token and return the email if valid
+        
+        Args:
+            token: The password reset token to validate
+            
+        Returns:
+            Email address if token is valid
+            
+        Raises:
+            ValueError: If token is expired or invalid
+        """
+        try:
+            email = self.serializer.loads(
+                token,
+                salt=self.password_reset_salt,
+                max_age=self.password_reset_max_age
+            )
+            logger.info(f"✅ Validated password reset token for: {email}")
+            return email
+        except SignatureExpired:
+            logger.warning("⚠️ Password reset token expired")
+            raise ValueError("Password reset token has expired. Please request a new password reset link.")
+        except BadSignature:
+            logger.warning("⚠️ Invalid password reset token signature")
+            raise ValueError("Invalid password reset token. Please check the link or request a new password reset.")
+        except Exception as e:
+            logger.error(f"❌ Password reset token validation error: {e}")
+            raise ValueError("Failed to validate password reset token. Please try again.")
+
