@@ -29,7 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
 DELETE FROM users WHERE email IN ('demo@user.com', 'admin@demo.com');
 DELETE FROM users WHERE id < 0;
 DELETE FROM users WHERE email LIKE '%@example.com%';
-DELETE FROM users WHERE email LIKE '%demo%test%' AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY);
+DELETE FROM users WHERE (email LIKE '%demo%' OR email LIKE '%test%') AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY);
 
 -- Part 7: Activate existing legitimate users (one-time migration)
 -- This is for existing users who were created before email confirmation was required

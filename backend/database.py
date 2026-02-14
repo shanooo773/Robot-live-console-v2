@@ -453,8 +453,14 @@ class DatabaseManager:
         email, expires = result
         
         # Check if token has expired
-        if expires and datetime.now() > expires:
-            return None
+        if expires:
+            # Ensure expires is a datetime object
+            if isinstance(expires, str):
+                from datetime import datetime
+                expires = datetime.fromisoformat(expires)
+            
+            if datetime.now() > expires:
+                return None
         
         return email
     

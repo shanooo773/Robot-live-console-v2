@@ -463,11 +463,14 @@ class AuthService:
         Returns:
             Success message (doesn't reveal if user exists)
         """
+        import time
         try:
             user = self.db.get_user_by_email(email)
             
             # Don't reveal if user exists (security)
             if not user or user.get('is_active'):
+                # Add small delay to prevent timing attacks
+                time.sleep(0.2)
                 logger.info(f"📧 Confirmation resend requested for {email} (no action needed)")
                 return {
                     "message": "If your account needs confirmation, an email has been sent."
@@ -493,6 +496,8 @@ class AuthService:
             }
         except Exception as e:
             logger.error(f"❌ Resend confirmation failed for {email}: {e}")
+            # Add small delay to prevent timing attacks
+            time.sleep(0.2)
             return {
                 "message": "If your account needs confirmation, an email has been sent."
             }

@@ -58,12 +58,19 @@ def create_admin():
         existing_user = db.get_user_by_email(email)
         if existing_user:
             print(f"⚠️  User with email {email} already exists!")
+            
+            # Check if account is active
+            if not existing_user.get('is_active'):
+                print("❌ Cannot promote unconfirmed account to admin. User must confirm email first.")
+                return
+            
             update = input("Update existing user to admin? (y/n): ").strip().lower()
             if update == 'y':
                 # Update role to admin
                 conn = db.get_connection()
                 cursor = conn.cursor()
                 cursor.execute("UPDATE users SET role = 'admin' WHERE email = %s", (email,))
+                conn.commit()
                 conn.close()
                 print(f"✅ User {email} has been promoted to admin!")
                 return

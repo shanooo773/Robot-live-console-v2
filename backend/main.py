@@ -503,10 +503,22 @@ async def lifespan(app: FastAPI):
             logger.error(f"❌ {error_msg}")
             raise ValueError(error_msg)
         
+        # Validate JWT_SECRET_KEY is not a placeholder
+        jwt_secret = os.getenv('JWT_SECRET_KEY', '')
+        if ('placeholder' in jwt_secret.lower() or 
+            'your_secret' in jwt_secret.lower() or 
+            'change_me' in jwt_secret.lower() or
+            len(jwt_secret) < 32):
+            error_msg = "JWT_SECRET_KEY must be changed from default placeholder and be at least 32 characters"
+            logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+        
         # Validate SERVER_HOST uses HTTPS in production
         server_host = os.getenv('SERVER_HOST', '')
         if not server_host.startswith('https://'):
-            logger.warning("⚠️ SERVER_HOST should use HTTPS in production for security")
+            error_msg = "SERVER_HOST must use HTTPS in production for security"
+            logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
         
         logger.info("✅ Production configuration validated")
     
@@ -993,7 +1005,8 @@ async def delete_user(user_id: int, current_user: dict = Depends(require_admin))
         raise HTTPException(status_code=503, detail="Database service unavailable")
     
     # Prevent self-deletion
-    if int(current_user["sub"]) == user_id:
+    current_user_id = int(current_user["sub"])
+    if current_user_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
     
     # Delete user's workspace and container
@@ -1023,7 +1036,8 @@ async def update_user_role(
         raise HTTPException(status_code=503, detail="Database service unavailable")
     
     # Prevent self-demotion
-    if int(current_user["sub"]) == user_id:
+    current_user_id = int(current_user["sub"])
+    if current_user_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot change your own role")
     
     new_role = role_data.get("role")
