@@ -26,7 +26,7 @@ import { useState } from "react";
 import { loginUser, registerUser, googleLogin } from "../api";
 import { FcGoogle } from "react-icons/fc";
 
-const AuthPage = ({ onAuth, onBack }) => {
+const AuthPage = ({ onAuth, onBack, onForgotPassword }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [loginData, setLoginData] = useState({ email: "", password: "" });
@@ -302,10 +302,11 @@ const AuthPage = ({ onAuth, onBack }) => {
                       </FormControl>
 
                       <Link
-                        href="/forgot-password"
+                        onClick={() => onForgotPassword && onForgotPassword()}
                         fontSize="sm"
                         color="blue.400"
                         alignSelf="flex-end"
+                        cursor="pointer"
                         _hover={{ color: "blue.300", textDecoration: "underline" }}
                       >
                         Forgot Password?

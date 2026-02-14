@@ -10,7 +10,6 @@ itsdangerous==2.1.2
 fastapi-mail==1.4.1
 # Google OAuth
 google-auth==2.26.2
-google-auth-oauthlib==1.2.0
 # Production server
 gunicorn==21.2.0
 # Database

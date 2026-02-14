@@ -5,36 +5,38 @@ import AuthPage from "./components/AuthPage";
 import BookingPage from "./components/BookingPage";
 import NeonRobotConsole from "./components/NeonRobotConsole";
 import AdminDashboard from "./components/AdminDashboard";
+import ForgotPasswordPage from "./components/ForgotPasswordPage";
+import ResetPasswordPage from "./components/ResetPasswordPage";
 import { getCurrentUser } from "./api";
 
 function App() {
-  const [currentPage, setCurrentPage] = useState("landing"); // landing, auth, booking, editor, admin
+  const [currentPage, setCurrentPage] = useState("landing"); // landing, auth, booking, editor, admin, forgot-password, reset-password
   const [user, setUser] = useState(null);
   const [authToken, setAuthToken] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
 
   useEffect(() => {
+    // Check URL for password reset token
+    const params = new URLSearchParams(window.location.search);
+    const resetToken = params.get("token");
+    
+    if (resetToken && window.location.pathname === "/reset-password") {
+      setCurrentPage("reset-password");
+      return;
+    }
+    
+    if (window.location.pathname === "/forgot-password") {
+      setCurrentPage("forgot-password");
+      return;
+    }
+    
     // Check for existing token on app load
     const token = localStorage.getItem('authToken');
-    const isDemoUser = localStorage.getItem('isDemoUser');
-    const isDemoAdmin = localStorage.getItem('isDemoAdmin');
     const isDemoMode = localStorage.getItem('isDemoMode');
     
     // Handle demo sessions
-    if (isDemoUser || isDemoAdmin || isDemoMode) {
-      const demoUser = isDemoUser ? {
-        username: "demo_user",
-        name: "Demo User", 
-        email: "demo.user@example.com",
-        role: "user",
-        isDemoUser: true,
-      } : isDemoAdmin ? {
-        username: "demo_admin",
-        name: "Demo Admin",
-        email: "demo.admin@example.com", 
-        role: "admin",
-        isDemoAdmin: true,
-      } : {
+    if (isDemoMode) {
+      const demoUser = {
         id: "demo",
         name: "Demo User",
         email: "demo@example.com",
@@ -79,9 +81,6 @@ function App() {
     setSelectedSlot(null);
     // Clear all session storage including demo flags
     localStorage.removeItem('authToken');
-    localStorage.removeItem('isDemoUser');
-    localStorage.removeItem('isDemoAdmin');
-    localStorage.removeItem('isDummy');
     localStorage.removeItem('isDemoMode');
     setCurrentPage("landing");
   };
@@ -105,7 +104,20 @@ function App() {
         <LandingPage onGetStarted={() => setCurrentPage("auth")} />
       )}
       {currentPage === "auth" && (
-        <AuthPage onAuth={handleAuth} onBack={() => setCurrentPage("landing")} />
+        <AuthPage 
+          onAuth={handleAuth} 
+          onBack={() => setCurrentPage("landing")}
+          onForgotPassword={() => setCurrentPage("forgot-password")}
+        />
+      )}
+      {currentPage === "forgot-password" && (
+        <ForgotPasswordPage onBack={() => setCurrentPage("auth")} />
+      )}
+      {currentPage === "reset-password" && (
+        <ResetPasswordPage 
+          onBack={() => setCurrentPage("auth")}
+          onSuccess={() => setCurrentPage("auth")}
+        />
       )}
       {currentPage === "booking" && (
         <BookingPage 
