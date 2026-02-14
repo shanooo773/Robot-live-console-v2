@@ -105,15 +105,28 @@ class AuthService:
             logger.error(f"❌ Failed to send confirmation email for {email}: {e}")
             raise
     
-    async def register_user(self, name: str, email: str, password: str) -> Dict[str, Any]:
+    async def register_user(self, name: str, email: str, password: str, background_tasks=None) -> Dict[str, Any]:
         """Register a new user and send confirmation email (no immediate JWT)"""
         try:
             logger.info(f"📝 Registration attempt for email: {email}")
             user = self.db.create_user(name, email, password)
             logger.info(f"✅ User registered successfully: {email} (ID: {user['id']})")
             
-            # Send confirmation email (async)
-            confirmation_url = await self.send_confirmation_email(user['email'], user['name'])
+            # Generate confirmation token
+            token = self.token_service.generate_confirmation_token(user['email'])
+            confirmation_url = f"{self.server_host}/auth/confirm?token={token}"
+            
+            # Send confirmation email in background if BackgroundTasks provided
+            if background_tasks:
+                background_tasks.add_task(
+                    self.mail_service.send_confirmation_email,
+                    user['email'], 
+                    confirmation_url, 
+                    user['name']
+                )
+            else:
+                # Fallback to synchronous email sending
+                await self.send_confirmation_email(user['email'], user['name'])
             
             # Return success message without JWT
             return {
@@ -295,6 +308,14 @@ class AuthService:
                     requests.Request(), 
                     google_client_id
                 )
+                
+                # Check if Google email is verified
+                if idinfo.get("email_verified") is not True:
+                    logger.warning(f"⚠️ Unverified Google email attempted login")
+                    raise HTTPException(
+                        status_code=401, 
+                        detail="Google email not verified. Please verify your email with Google first."
+                    )
                 
                 # Extract user information from Google token
                 google_user_id = idinfo['sub']

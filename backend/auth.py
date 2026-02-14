@@ -11,9 +11,14 @@ security = HTTPBearer()
 
 class AuthManager:
     def __init__(self, secret_key: Optional[str] = None):
-        # Use environment variable for secret key, fallback to provided key, or generate random
+        # Use environment variable for secret key - JWT_SECRET_KEY is required
         env_secret = os.getenv('JWT_SECRET_KEY')
-        self.secret_key = env_secret or secret_key or secrets.token_urlsafe(32)
+        if not env_secret and not secret_key:
+            raise ValueError(
+                "JWT_SECRET_KEY environment variable is required. "
+                "Please set JWT_SECRET_KEY in your .env file."
+            )
+        self.secret_key = env_secret or secret_key
         self.algorithm = "HS256"
         self.access_token_expire_hours = 24
     

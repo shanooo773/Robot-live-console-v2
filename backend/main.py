@@ -675,10 +675,10 @@ async def root():
 
 # Authentication Endpoints
 @app.post("/auth/register", response_model=RegistrationResponse)
-async def register(user_data: UserRegister):
+async def register(user_data: UserRegister, background_tasks: BackgroundTasks):
     """Register a new user and send confirmation email"""
     auth_service = service_manager.get_auth_service()
-    return await auth_service.register_user(user_data.name, user_data.email, user_data.password)
+    return await auth_service.register_user(user_data.name, user_data.email, user_data.password, background_tasks)
 
 @app.get("/auth/confirm", response_model=ConfirmationResponse)
 async def confirm_email(token: str):

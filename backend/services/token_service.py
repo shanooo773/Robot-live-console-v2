@@ -22,16 +22,16 @@ class TokenService:
         Initialize TokenService with secret key
         
         Args:
-            secret_key: Secret key for token signing (falls back to env variables)
+            secret_key: Secret key for token signing (falls back to JWT_SECRET_KEY)
         """
-        # Use JWT_SECRET_KEY or SECRET_KEY from environment
-        env_secret = os.getenv('JWT_SECRET_KEY') or os.getenv('SECRET_KEY')
+        # Use JWT_SECRET_KEY from environment (same as AuthManager)
+        env_secret = os.getenv('JWT_SECRET_KEY')
         self.secret_key = secret_key or env_secret
         
         if not self.secret_key:
             raise ValueError(
                 "No secret key provided for TokenService. "
-                "Please set JWT_SECRET_KEY or SECRET_KEY environment variable."
+                "Please set JWT_SECRET_KEY environment variable."
             )
         
         self.serializer = URLSafeTimedSerializer(self.secret_key)

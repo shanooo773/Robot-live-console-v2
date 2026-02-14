@@ -120,8 +120,7 @@ class MailService:
             message = MessageSchema(
                 subject="Confirm Your Email - Robot Live Console",
                 recipients=[email],
-                body=text,
-                html=html,
+                body=html,
                 subtype=MessageType.html
             )
             
