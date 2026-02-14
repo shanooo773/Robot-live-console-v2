@@ -414,6 +414,72 @@ class DatabaseManager:
         
         return updated
     
+    def store_password_reset_token(self, email: str, token: str, expires: datetime) -> bool:
+        """Store password reset token for user"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            UPDATE users 
+            SET password_reset_token = {placeholder}, 
+                password_reset_expires = {placeholder}
+            WHERE email = {placeholder}
+        """, (token, expires, email))
+        
+        updated = cursor.rowcount > 0
+        conn.close()
+        
+        return updated
+    
+    def validate_password_reset_token(self, token: str) -> Optional[str]:
+        """Validate password reset token and return email if valid"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            SELECT email, password_reset_expires 
+            FROM users 
+            WHERE password_reset_token = {placeholder}
+        """, (token,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            return None
+        
+        email, expires = result
+        
+        # Check if token has expired
+        if expires and datetime.now() > expires:
+            return None
+        
+        return email
+    
+    def update_user_password(self, email: str, new_password: str) -> bool:
+        """Update user password and clear reset token"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        # Hash the new password
+        password_hash = self._hash_password(new_password)
+        
+        cursor.execute(f"""
+            UPDATE users 
+            SET password_hash = {placeholder}, 
+                password_reset_token = NULL, 
+                password_reset_expires = NULL
+            WHERE email = {placeholder}
+        """, (password_hash, email))
+        
+        updated = cursor.rowcount > 0
+        conn.close()
+        
+        return updated
+    
     def upsert_google_user(self, email: str, name: str, google_id: str) -> Dict[str, Any]:
         """Create or update user from Google OAuth"""
         conn = self.get_connection()

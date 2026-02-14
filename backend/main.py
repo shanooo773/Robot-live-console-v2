@@ -554,6 +554,16 @@ class UserLogin(BaseModel):
 class GoogleLogin(BaseModel):
     id_token: str
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+class ResendConfirmationRequest(BaseModel):
+    email: str
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
@@ -706,6 +716,24 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return UserResponse(**user)
+
+@app.post("/auth/forgot-password")
+async def forgot_password(req: ForgotPasswordRequest, background_tasks: BackgroundTasks):
+    """Request password reset email"""
+    auth_service = service_manager.get_auth_service()
+    return auth_service.request_password_reset(req.email, background_tasks)
+
+@app.post("/auth/reset-password")
+async def reset_password(req: ResetPasswordRequest):
+    """Reset password with token"""
+    auth_service = service_manager.get_auth_service()
+    return auth_service.reset_password(req.token, req.new_password)
+
+@app.post("/auth/resend-confirmation")
+async def resend_confirmation(req: ResendConfirmationRequest, background_tasks: BackgroundTasks):
+    """Resend confirmation email"""
+    auth_service = service_manager.get_auth_service()
+    return auth_service.resend_confirmation_email(req.email, background_tasks)
 
 # Booking Endpoints
 @app.post("/bookings", response_model=BookingResponse)

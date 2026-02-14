@@ -75,13 +75,7 @@ class AuthManager:
                 detail="Admin access required. Only administrators can access this resource."
             )
         
-        # Additional validation for demo admin accounts
-        # Demo admins should have full access but we log it separately
-        is_demo_admin = any(demo_indicator in user_email.lower() for demo_indicator in ['demo', 'test'])
-        if is_demo_admin:
-            logger.info(f"🎯 DEMO ADMIN ACCESS - Demo admin {user_id} ({user_email}) granted access")
-        else:
-            logger.info(f"✅ ADMIN ACCESS GRANTED - Real admin {user_id} ({user_email}) granted access")
+        logger.info(f"✅ ADMIN ACCESS GRANTED - Admin {user_id} ({user_email}) granted access")
         
         return current_user
 

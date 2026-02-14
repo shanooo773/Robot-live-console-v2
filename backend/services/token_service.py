@@ -36,7 +36,9 @@ class TokenService:
         
         self.serializer = URLSafeTimedSerializer(self.secret_key)
         self.salt = 'email-confirmation-salt'
+        self.password_reset_salt = 'password-reset-salt'
         self.max_age = 3600  # 1 hour in seconds
+        self.password_reset_max_age = 3600  # 1 hour for password reset
         
         logger.info("✅ Token service initialized")
     
@@ -89,3 +91,53 @@ class TokenService:
         except Exception as e:
             logger.error(f"❌ Token validation error: {e}")
             raise ValueError("Failed to validate confirmation token. Please try again.")
+    
+    def generate_password_reset_token(self, email: str) -> str:
+        """
+        Generate a time-limited password reset token for an email address
+        
+        Args:
+            email: Email address to generate token for
+            
+        Returns:
+            URL-safe password reset token string
+        """
+        try:
+            token = self.serializer.dumps(email, salt=self.password_reset_salt)
+            logger.info(f"🔐 Generated password reset token for: {email}")
+            return token
+        except Exception as e:
+            logger.error(f"❌ Failed to generate password reset token for {email}: {e}")
+            raise
+    
+    def validate_password_reset_token(self, token: str) -> Optional[str]:
+        """
+        Validate a password reset token and return the email if valid
+        
+        Args:
+            token: The password reset token to validate
+            
+        Returns:
+            Email address if token is valid
+            
+        Raises:
+            ValueError: If token is expired or invalid
+        """
+        try:
+            email = self.serializer.loads(
+                token,
+                salt=self.password_reset_salt,
+                max_age=self.password_reset_max_age
+            )
+            logger.info(f"✅ Validated password reset token for: {email}")
+            return email
+        except SignatureExpired:
+            logger.warning("⚠️ Password reset token expired")
+            raise ValueError("Password reset token has expired. Please request a new password reset link.")
+        except BadSignature:
+            logger.warning("⚠️ Invalid password reset token signature")
+            raise ValueError("Invalid password reset token. Please check the link or request a new password reset.")
+        except Exception as e:
+            logger.error(f"❌ Password reset token validation error: {e}")
+            raise ValueError("Failed to validate password reset token. Please try again.")
+
