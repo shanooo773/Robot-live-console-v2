@@ -11,6 +11,8 @@ import {
   Container,
   Card,
   CardBody,
+  Alert,
+  AlertIcon,
 } from "@chakra-ui/react";
 import { useState, useEffect } from "react";
 import { resetPassword } from "../api";
@@ -20,6 +22,19 @@ const ResetPasswordPage = ({ onSuccess, resetToken }) => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const toast = useToast();
+
+  // Validate resetToken is provided
+  useEffect(() => {
+    if (!resetToken) {
+      toast({
+        title: "Invalid reset link",
+        description: "This password reset link is invalid or expired",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  }, [resetToken, toast]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -74,6 +89,31 @@ const ResetPasswordPage = ({ onSuccess, resetToken }) => {
       setLoading(false);
     }
   };
+
+  // Show error if no token
+  if (!resetToken) {
+    return (
+      <Container maxW="md" py={20}>
+        <Card bg="gray.800" border="1px solid" borderColor="red.600">
+          <CardBody>
+            <VStack spacing={4}>
+              <Text fontSize="4xl">❌</Text>
+              <Heading size="lg" color="white">Invalid Reset Link</Heading>
+              <Alert status="error" bg="red.900" color="red.100" border="1px solid" borderColor="red.600">
+                <AlertIcon color="red.300" />
+                <Text fontSize="sm">
+                  This password reset link is invalid or has expired. Please request a new one.
+                </Text>
+              </Alert>
+              <Button colorScheme="blue" onClick={onSuccess}>
+                Go to Login
+              </Button>
+            </VStack>
+          </CardBody>
+        </Card>
+      </Container>
+    );
+  }
 
   return (
     <Container maxW="md" py={20}>

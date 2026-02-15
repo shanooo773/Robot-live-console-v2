@@ -254,7 +254,9 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       await updateUserRole(userId, newRole, authToken);
       await loadDashboardData();
       toast({
-        title: `User ${newRole === 'admin' ? 'promoted to' : 'demoted from'} admin`,
+        title: newRole === 'admin' 
+          ? 'User promoted to admin' 
+          : 'User role changed to user',
         status: "success",
         duration: 3000,
         isClosable: true,

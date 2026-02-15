@@ -22,7 +22,7 @@ import {
   Link,
   Divider,
 } from "@chakra-ui/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { loginUser, registerUser, googleLogin } from "../api";
 import { FcGoogle } from "react-icons/fc";
 
@@ -37,23 +37,8 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword }) => {
   });
   const toast = useToast();
 
-  // Initialize Google Sign-In
-  useEffect(() => {
-    // Check if Google Sign-In script is loaded
-    if (window.google && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
-      try {
-        window.google.accounts.id.initialize({
-          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-          callback: handleGoogleResponse,
-          auto_select: false,
-        });
-      } catch (error) {
-        console.error('Google Sign-In initialization failed:', error);
-      }
-    }
-  }, []);
-
-  const handleGoogleResponse = async (response) => {
+  // Memoize Google response handler to prevent unnecessary re-renders
+  const handleGoogleResponse = useCallback(async (response) => {
     try {
       setIsLoading(true);
       const result = await googleLogin(response.credential);
@@ -81,7 +66,23 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [onAuth, toast]);
+
+  // Initialize Google Sign-In
+  useEffect(() => {
+    // Check if Google Sign-In script is loaded
+    if (window.google && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+      try {
+        window.google.accounts.id.initialize({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          callback: handleGoogleResponse,
+          auto_select: false,
+        });
+      } catch (error) {
+        console.error('Google Sign-In initialization failed:', error);
+      }
+    }
+  }, [handleGoogleResponse]);
 
   const handleGoogleSignIn = () => {
     if (window.google && import.meta.env.VITE_GOOGLE_CLIENT_ID) {

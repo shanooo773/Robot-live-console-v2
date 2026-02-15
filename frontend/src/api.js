@@ -112,7 +112,7 @@ export const getUserBookings = async (token) => {
     headers: { Authorization: `Bearer ${token}` }
   });
   // Handle both array response and object wrapper with bookings property
-  return Array.isArray(response.data) ? response.data : (response.data.bookings || response.data);
+  return Array.isArray(response.data) ? response.data : (response.data.bookings ?? response.data);
 };
 
 export const getMyActiveBookings = async (token) => {
@@ -120,7 +120,7 @@ export const getMyActiveBookings = async (token) => {
     headers: { Authorization: `Bearer ${token}` }
   });
   // Handle both array response and object wrapper with bookings property
-  return Array.isArray(response.data) ? response.data : (response.data.bookings || response.data);
+  return Array.isArray(response.data) ? response.data : (response.data.bookings ?? response.data);
 };
 
 export const getBookingSchedule = async (startDate, endDate) => {
@@ -145,7 +145,7 @@ export const getAllUsers = async (token) => {
     headers: { Authorization: `Bearer ${token}` }
   });
   // Handle both array response and object wrapper with users property
-  return Array.isArray(response.data) ? response.data : (response.data.users || response.data);
+  return Array.isArray(response.data) ? response.data : (response.data.users ?? response.data);
 };
 
 // Admin user management
@@ -178,7 +178,7 @@ export const getAllBookings = async (token) => {
     headers: { Authorization: `Bearer ${token}` }
   });
   // Handle both array response and object wrapper with bookings property
-  return Array.isArray(response.data) ? response.data : (response.data.bookings || response.data);
+  return Array.isArray(response.data) ? response.data : (response.data.bookings ?? response.data);
 };
 
 export const getAdminStats = async (token) => {
