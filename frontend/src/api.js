@@ -162,13 +162,6 @@ export const getAllUsers = async (token) => {
   return ensureArray(response.data);
 };
 
-export const getAdminUsers = async (token) => {
-  const response = await API.get("/admin/users", {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return ensureArray(response.data);
-};
-
 // Admin user management
 export const deleteUser = async (userId, token) => {
   const response = await API.delete(`/admin/users/${userId}`, {
@@ -196,13 +189,6 @@ export const changeAdminPassword = async (passwordData, token) => {
 
 export const getAllBookings = async (token) => {
   const response = await API.get("/bookings/all", {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return ensureArray(response.data);
-};
-
-export const getAdminBookings = async (token) => {
-  const response = await API.get("/admin/bookings", {
     headers: { Authorization: `Bearer ${token}` }
   });
   return ensureArray(response.data);

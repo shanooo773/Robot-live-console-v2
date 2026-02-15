@@ -75,7 +75,7 @@ def check_frontend_api():
         print("  ✗ MISSING: ensureArray helper")
         return False
     
-    functions = ['getUserBookings', 'getAdminUsers', 'getAdminBookings', 'getRobots']
+    functions = ['getUserBookings', 'getAllUsers', 'getAllBookings', 'getRobots']
     for func in functions:
         pattern = rf'{func}.*ensureArray'
         if re.search(pattern, content, re.DOTALL):
