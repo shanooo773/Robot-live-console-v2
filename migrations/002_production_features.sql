@@ -1,38 +1,63 @@
--- Migration 002: Production Features
--- This migration adds all production-ready authentication features
--- Run this migration after deploying the updated codebase
+# Run this interactive migration (paste the whole block)
+mysql -h localhost -u robot_console -p robot_console << 'EOF'
 
--- Part 1: Add new columns for password reset
-ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token VARCHAR(500) NULL;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires DATETIME NULL;
+-- Check and add columns only if they don't exist
+SET @db = DATABASE();
 
--- Part 2: Add new columns for user activity tracking
-ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login DATETIME NULL;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity DATETIME NULL;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS login_count INT DEFAULT 0;
+-- Add password_reset_token if missing
+SET @col = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'users' AND COLUMN_NAME = 'password_reset_token');
+SET @sql = IF(@col = 0, 
+  'ALTER TABLE users ADD COLUMN password_reset_token VARCHAR(500) NULL', 
+  'SELECT "✓ password_reset_token exists" AS Status');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- Part 3: Add Google OAuth column if not exists
-ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255) NULL;
+-- Add password_reset_expires if missing
+SET @col = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'users' AND COLUMN_NAME = 'password_reset_expires');
+SET @sql = IF(@col = 0, 
+  'ALTER TABLE users ADD COLUMN password_reset_expires DATETIME NULL', 
+  'SELECT "✓ password_reset_expires exists" AS Status');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- Part 4: Add email confirmation columns if not exists
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT 0;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS email_confirmed_at DATETIME NULL;
+-- Add last_login if missing
+SET @col = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'users' AND COLUMN_NAME = 'last_login');
+SET @sql = IF(@col = 0, 
+  'ALTER TABLE users ADD COLUMN last_login DATETIME NULL', 
+  'SELECT "✓ last_login exists" AS Status');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- Part 5: Add indexes for performance
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
-CREATE INDEX IF NOT EXISTS idx_users_password_reset_token ON users(password_reset_token);
-CREATE INDEX IF NOT EXISTS idx_users_last_activity ON users(last_activity);
-CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
+-- Add last_activity if missing
+SET @col = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'users' AND COLUMN_NAME = 'last_activity');
+SET @sql = IF(@col = 0, 
+  'ALTER TABLE users ADD COLUMN last_activity DATETIME NULL', 
+  'SELECT "✓ last_activity exists" AS Status');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- Part 6: Clean up demo/test data (IMPORTANT: Run this in production)
+-- Add login_count if missing
+SET @col = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'users' AND COLUMN_NAME = 'login_count');
+SET @sql = IF(@col = 0, 
+  'ALTER TABLE users ADD COLUMN login_count INT DEFAULT 0', 
+  'SELECT "✓ login_count exists" AS Status');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Add indexes (ignore errors if exist)
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_google_id ON users(google_id);
+CREATE INDEX idx_users_password_reset_token ON users(password_reset_token);
+CREATE INDEX idx_users_last_activity ON users(last_activity);
+
+-- Clean up demo/test data
 DELETE FROM users WHERE email IN ('demo@user.com', 'admin@demo.com');
 DELETE FROM users WHERE id < 0;
 DELETE FROM users WHERE email LIKE '%@example.com%';
-DELETE FROM users WHERE (email LIKE '%demo%' OR email LIKE '%test%') AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY);
+DELETE FROM users WHERE email LIKE '%demo%' AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY);
+DELETE FROM users WHERE email LIKE '%test%' AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY);
 
--- Part 7: Activate existing legitimate users (one-time migration)
--- This is for existing users who were created before email confirmation was required
+-- Activate existing legitimate users
 UPDATE users 
 SET is_active = 1, email_confirmed_at = NOW() 
 WHERE (is_active IS NULL OR is_active = 0)
@@ -41,9 +66,24 @@ WHERE (is_active IS NULL OR is_active = 0)
   AND email NOT LIKE '%test%'
   AND id > 0;
 
--- Part 8: Initialize activity tracking for existing users
+-- Initialize activity tracking
 UPDATE users SET last_activity = created_at WHERE last_activity IS NULL;
 UPDATE users SET login_count = 0 WHERE login_count IS NULL;
 
--- Part 9: Ensure created_at has default if missing
-ALTER TABLE users MODIFY COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+-- Show final schema
+SELECT 'Migration completed! Column summary:' AS Info;
+SELECT 
+  COUNT(*) as total_columns,
+  SUM(CASE WHEN COLUMN_NAME IN ('password_reset_token','password_reset_expires','last_login','last_activity','login_count') THEN 1 ELSE 0 END) as new_columns
+FROM INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users';
+
+-- Show user statistics
+SELECT 'User statistics:' AS Info;
+SELECT 
+  COUNT(*) as total_users,
+  SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_users,
+  SUM(CASE WHEN email LIKE '%demo%' OR email LIKE '%test%' THEN 1 ELSE 0 END) as demo_test_users
+FROM users;
+
+EOF

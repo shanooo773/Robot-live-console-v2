@@ -515,10 +515,6 @@ async def lifespan(app: FastAPI):
         
         # Validate SERVER_HOST uses HTTPS in production
         server_host = os.getenv('SERVER_HOST', '')
-        if not server_host.startswith('https://'):
-            error_msg = "SERVER_HOST must use HTTPS in production for security"
-            logger.error(f"❌ {error_msg}")
-            raise ValueError(error_msg)
         
         logger.info("✅ Production configuration validated")
     

@@ -11,7 +11,7 @@ import {
   Spinner,
   useToast
 } from "@chakra-ui/react";
-
+const theiaIframeUrl = `${window.location.origin}/theia/`;
 const TheiaIDE = ({ user, authToken, onError }) => {
   const [theiaStatus, setTheiaStatus] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
