@@ -63,6 +63,26 @@ API.interceptors.response.use(
 // Log the API URL for debugging
 console.log("API Base URL:", getApiUrl());
 
+/**
+ * Normalize API responses to ensure array results
+ * Handles various response formats: arrays, object wrappers, nested data
+ * @param {*} data - API response data
+ * @returns {Array} - Normalized array
+ */
+export const ensureArray = (data) => {
+  if (Array.isArray(data)) return data;
+  if (data?.bookings) return Array.isArray(data.bookings) ? data.bookings : [];
+  if (data?.users)    return Array.isArray(data.users) ? data.users : [];
+  if (data?.robots)   return Array.isArray(data.robots) ? data.robots : [];
+  if (data?.data)     return Array.isArray(data.data) ? data.data : [];
+  if (data && typeof data === "object") {
+    for (const k of Object.keys(data)) {
+      if (Array.isArray(data[k])) return data[k];
+    }
+  }
+  return [];
+};
+
 // Authentication API
 export const registerUser = async (userData) => {
   const response = await API.post("/auth/register", userData);
@@ -111,25 +131,20 @@ export const getUserBookings = async (token) => {
   const response = await API.get("/bookings", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  // Handle both array response and object wrapper with bookings property
-  return Array.isArray(response.data) ? response.data : (response.data.bookings ?? response.data);
+  return ensureArray(response.data);
 };
 
 export const getMyActiveBookings = async (token) => {
   const response = await API.get("/my-bookings", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  // Handle both array response and object wrapper with bookings property
-  return Array.isArray(response.data) ? response.data : (response.data.bookings ?? response.data);
+  return ensureArray(response.data);
 };
 
 export const getBookingSchedule = async (startDate, endDate) => {
   const response = await API.get(`/bookings/schedule?start_date=${startDate}&end_date=${endDate}`);
-  // Ensure bookings is always an array
-  if (response.data.bookings) {
-    return { ...response.data, bookings: Array.isArray(response.data.bookings) ? response.data.bookings : [] };
-  }
-  return response.data;
+  const data = response.data || {};
+  return { ...data, available_slots: ensureArray(data.available_slots) };
 };
 
 export const getAvailableSlots = async (date, robotType, token) => {
@@ -144,8 +159,14 @@ export const getAllUsers = async (token) => {
   const response = await API.get("/admin/users", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  // Handle both array response and object wrapper with users property
-  return Array.isArray(response.data) ? response.data : (response.data.users ?? response.data);
+  return ensureArray(response.data);
+};
+
+export const getAdminUsers = async (token) => {
+  const response = await API.get("/admin/users", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return ensureArray(response.data);
 };
 
 // Admin user management
@@ -177,8 +198,14 @@ export const getAllBookings = async (token) => {
   const response = await API.get("/bookings/all", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  // Handle both array response and object wrapper with bookings property
-  return Array.isArray(response.data) ? response.data : (response.data.bookings ?? response.data);
+  return ensureArray(response.data);
+};
+
+export const getAdminBookings = async (token) => {
+  const response = await API.get("/admin/bookings", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return ensureArray(response.data);
 };
 
 export const getAdminStats = async (token) => {
@@ -229,6 +256,13 @@ export const getAvailableVideos = async (token) => {
 export const getAvailableRobots = async () => {
   const response = await API.get("/robots");
   return response.data;
+};
+
+export const getRobots = async (token) => {
+  const response = await API.get("/robots", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return ensureArray(response.data);
 };
 
 

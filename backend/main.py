@@ -756,7 +756,10 @@ async def google_login(request: Request, google_data: GoogleLogin):
 @app.get("/auth/me")
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     """Get current user information"""
+    # JWT contains `sub` as user id
     user_id = current_user.get("sub") or current_user.get("id")
+    if isinstance(user_id, str) and user_id.isdigit():
+        user_id = int(user_id)
     
     # Fetch full user data from database
     try:
