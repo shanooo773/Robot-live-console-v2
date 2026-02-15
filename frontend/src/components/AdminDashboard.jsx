@@ -67,7 +67,10 @@ import {
   getAllRobots,
   createRobot,
   updateRobot,
-  deleteRobot
+  deleteRobot,
+  deleteUser,
+  updateUserRole,
+  changeAdminPassword
 } from "../api";
 import { ChevronDownIcon, DeleteIcon, EditIcon, AddIcon, ViewIcon } from "@chakra-ui/icons";
 
@@ -101,6 +104,14 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   });
   const [isEditingAnnouncement, setIsEditingAnnouncement] = useState(false);
   const [isEditingRobot, setIsEditingRobot] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [isUserDeleteModalOpen, setIsUserDeleteModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    current_password: '',
+    new_password: '',
+    confirm_password: ''
+  });
   const toast = useToast();
   
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -208,6 +219,101 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const confirmDeleteBooking = (booking) => {
     setSelectedBooking(booking);
     onOpen();
+  };
+
+  // User management handlers
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+    
+    try {
+      await deleteUser(selectedUser.id, authToken);
+      await loadDashboardData();
+      setIsUserDeleteModalOpen(false);
+      setSelectedUser(null);
+      toast({
+        title: "User deleted",
+        description: "User and their workspace have been removed",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast({
+        title: "Delete failed",
+        description: error.response?.data?.detail || "Could not delete user",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const handlePromoteUser = async (userId, newRole) => {
+    try {
+      await updateUserRole(userId, newRole, authToken);
+      await loadDashboardData();
+      toast({
+        title: newRole === 'admin' 
+          ? 'User promoted to admin' 
+          : 'User role changed to user',
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      toast({
+        title: "Role update failed",
+        description: error.response?.data?.detail || "Could not update user role",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (passwordData.new_password !== passwordData.confirm_password) {
+      toast({
+        title: "Passwords do not match",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    try {
+      await changeAdminPassword({
+        current_password: passwordData.current_password,
+        new_password: passwordData.new_password
+      }, authToken);
+      
+      toast({
+        title: "Password updated successfully",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      
+      setIsPasswordModalOpen(false);
+      setPasswordData({ current_password: '', new_password: '', confirm_password: '' });
+    } catch (error) {
+      console.error('Error changing password:', error);
+      toast({
+        title: "Password change failed",
+        description: error.response?.data?.detail || "Could not change password",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const confirmDeleteUser = (user) => {
+    setSelectedUser(user);
+    setIsUserDeleteModalOpen(true);
   };
 
   // Message handlers
@@ -623,40 +729,54 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
           ) : null}
         </SimpleGrid>
 
-        {/* Recent Users */}
+        {/* User Management */}
         <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
           <CardHeader>
-            <Text fontSize="lg" fontWeight="bold" color="white">
-              Recent Users
-            </Text>
+            <HStack justify="space-between">
+              <Text fontSize="lg" fontWeight="bold" color="white">
+                User Management
+              </Text>
+              <Button
+                colorScheme="blue"
+                size="sm"
+                onClick={() => setIsPasswordModalOpen(true)}
+              >
+                Change My Password
+              </Button>
+            </HStack>
           </CardHeader>
           <CardBody>
             <TableContainer>
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>
+                    <Th color="gray.300">ID</Th>
                     <Th color="gray.300">Name</Th>
                     <Th color="gray.300">Email</Th>
                     <Th color="gray.300">Role</Th>
-                    <Th color="gray.300">Joined</Th>
+                    <Th color="gray.300">Active</Th>
+                    <Th color="gray.300">Last Login</Th>
+                    <Th color="gray.300">Login Count</Th>
+                    <Th color="gray.300">Actions</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
                   {isLoading ? (
                     <Tr>
-                      <Td colSpan={4} textAlign="center" color="gray.400" py={8}>
+                      <Td colSpan={8} textAlign="center" color="gray.400" py={8}>
                         Loading users...
                       </Td>
                     </Tr>
                   ) : hasError ? (
                     <Tr>
-                      <Td colSpan={4} textAlign="center" color="red.400" py={8}>
+                      <Td colSpan={8} textAlign="center" color="red.400" py={8}>
                         ❌ Failed to load users data
                       </Td>
                     </Tr>
                   ) : users.length > 0 ? (
-                    users.slice(0, 5).map((userData) => (
+                    users.map((userData) => (
                       <Tr key={userData.id}>
+                        <Td color="white">{userData.id}</Td>
                         <Td color="white">
                           <HStack>
                             <Avatar size="xs" name={userData.name} />
@@ -665,16 +785,53 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                         </Td>
                         <Td color="gray.300">{userData.email}</Td>
                         <Td>
-                          <Badge colorScheme={userData.role === 'admin' ? 'purple' : 'blue'}>
+                          <Badge colorScheme={userData.role === 'admin' ? 'purple' : 'gray'}>
                             {userData.role}
                           </Badge>
                         </Td>
-                        <Td color="gray.400">{formatDate(userData.created_at)}</Td>
+                        <Td>
+                          <Badge colorScheme={userData.is_active ? 'green' : 'red'}>
+                            {userData.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </Td>
+                        <Td color="gray.400">
+                          {userData.last_login ? new Date(userData.last_login).toLocaleDateString() : 'Never'}
+                        </Td>
+                        <Td color="gray.400">{userData.login_count || 0}</Td>
+                        <Td>
+                          <HStack spacing={2}>
+                            {userData.role !== 'admin' && (
+                              <Button
+                                size="xs"
+                                colorScheme="green"
+                                onClick={() => handlePromoteUser(userData.id, 'admin')}
+                              >
+                                Promote
+                              </Button>
+                            )}
+                            {userData.role === 'admin' && (
+                              <Button
+                                size="xs"
+                                colorScheme="orange"
+                                onClick={() => handlePromoteUser(userData.id, 'user')}
+                              >
+                                Demote
+                              </Button>
+                            )}
+                            <Button
+                              size="xs"
+                              colorScheme="red"
+                              onClick={() => confirmDeleteUser(userData)}
+                            >
+                              Delete
+                            </Button>
+                          </HStack>
+                        </Td>
                       </Tr>
                     ))
                   ) : (
                     <Tr>
-                      <Td colSpan={4} textAlign="center" color="gray.400" py={8}>
+                      <Td colSpan={8} textAlign="center" color="gray.400" py={8}>
                         No users found
                       </Td>
                     </Tr>
@@ -1299,6 +1456,97 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
               isDisabled={!robotForm.name || !robotForm.type}
             >
               {isEditingRobot ? 'Update' : 'Create'}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* User Delete Confirmation Modal */}
+      <Modal isOpen={isUserDeleteModalOpen} onClose={() => setIsUserDeleteModalOpen(false)}>
+        <ModalOverlay />
+        <ModalContent bg="gray.800" border="1px solid" borderColor="gray.600">
+          <ModalHeader color="white">Confirm Delete User</ModalHeader>
+          <ModalCloseButton color="gray.400" />
+          <ModalBody>
+            <Text color="gray.300">
+              Are you sure you want to delete user <strong>{selectedUser?.email}</strong>?
+            </Text>
+            <Text mt={2} color="red.400" fontSize="sm">
+              This will permanently delete:
+            </Text>
+            <VStack align="start" mt={2} spacing={1} pl={4}>
+              <Text color="red.300" fontSize="sm">• User account</Text>
+              <Text color="red.300" fontSize="sm">• Workspace files</Text>
+              <Text color="red.300" fontSize="sm">• Theia container</Text>
+              <Text color="red.300" fontSize="sm">• All bookings and sessions</Text>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button mr={3} onClick={() => setIsUserDeleteModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button colorScheme="red" onClick={handleDeleteUser}>
+              Delete User
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Change Password Modal */}
+      <Modal isOpen={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)}>
+        <ModalOverlay />
+        <ModalContent bg="gray.800" border="1px solid" borderColor="gray.600">
+          <ModalHeader color="white">Change Admin Password</ModalHeader>
+          <ModalCloseButton color="gray.400" />
+          <ModalBody>
+            <VStack spacing={4}>
+              <FormControl isRequired>
+                <FormLabel color="gray.200">Current Password</FormLabel>
+                <Input
+                  type="password"
+                  value={passwordData.current_password}
+                  onChange={(e) => setPasswordData({...passwordData, current_password: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                  _placeholder={{ color: "gray.400" }}
+                />
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel color="gray.200">New Password</FormLabel>
+                <Input
+                  type="password"
+                  value={passwordData.new_password}
+                  onChange={(e) => setPasswordData({...passwordData, new_password: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                  _placeholder={{ color: "gray.400" }}
+                />
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel color="gray.200">Confirm New Password</FormLabel>
+                <Input
+                  type="password"
+                  value={passwordData.confirm_password}
+                  onChange={(e) => setPasswordData({...passwordData, confirm_password: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                  _placeholder={{ color: "gray.400" }}
+                />
+              </FormControl>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button mr={3} onClick={() => setIsPasswordModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button colorScheme="blue" onClick={handleChangePassword}>
+              Update Password
             </Button>
           </ModalFooter>
         </ModalContent>

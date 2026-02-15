@@ -19,11 +19,14 @@ import {
   useToast,
   Alert,
   AlertIcon,
+  Link,
+  Divider,
 } from "@chakra-ui/react";
-import { useState } from "react";
-import { loginUser, registerUser } from "../api";
+import { useState, useEffect, useCallback } from "react";
+import { loginUser, registerUser, googleLogin } from "../api";
+import { FcGoogle } from "react-icons/fc";
 
-const AuthPage = ({ onAuth, onBack }) => {
+const AuthPage = ({ onAuth, onBack, onForgotPassword }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [loginData, setLoginData] = useState({ email: "", password: "" });
   const [registerData, setRegisterData] = useState({
@@ -33,6 +36,67 @@ const AuthPage = ({ onAuth, onBack }) => {
     confirmPassword: ""
   });
   const toast = useToast();
+
+  // Memoize Google response handler to prevent unnecessary re-renders
+  const handleGoogleResponse = useCallback(async (response) => {
+    try {
+      setIsLoading(true);
+      const result = await googleLogin(response.credential);
+      
+      // Store token in localStorage
+      localStorage.setItem('authToken', result.access_token);
+      
+      onAuth(result.user, result.access_token);
+      toast({
+        title: "Google login successful",
+        description: "Welcome to Robot Programming Console!",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Google login failed:', error);
+      toast({
+        title: "Google login failed",
+        description: error.response?.data?.detail || "Could not sign in with Google",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [onAuth, toast]);
+
+  // Initialize Google Sign-In
+  useEffect(() => {
+    // Check if Google Sign-In script is loaded
+    if (window.google && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+      try {
+        window.google.accounts.id.initialize({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          callback: handleGoogleResponse,
+          auto_select: false,
+        });
+      } catch (error) {
+        console.error('Google Sign-In initialization failed:', error);
+      }
+    }
+  }, [handleGoogleResponse]);
+
+  const handleGoogleSignIn = () => {
+    if (window.google && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+      window.google.accounts.id.prompt();
+    } else {
+      toast({
+        title: "Google Sign-In not available",
+        description: "Google Sign-In is not configured",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -206,6 +270,36 @@ const AuthPage = ({ onAuth, onBack }) => {
                       >
                         Sign In
                       </Button>
+
+                      <HStack w="full">
+                        <Divider borderColor="gray.600" />
+                        <Text color="gray.400" fontSize="sm" px={2}>OR</Text>
+                        <Divider borderColor="gray.600" />
+                      </HStack>
+
+                      <Button
+                        w="full"
+                        leftIcon={<FcGoogle />}
+                        onClick={handleGoogleSignIn}
+                        variant="outline"
+                        borderColor="gray.600"
+                        color="white"
+                        _hover={{ bg: "gray.700" }}
+                        isDisabled={isLoading}
+                      >
+                        Continue with Google
+                      </Button>
+
+                      {onForgotPassword && (
+                        <Link
+                          color="blue.400"
+                          fontSize="sm"
+                          onClick={onForgotPassword}
+                          _hover={{ textDecoration: "underline" }}
+                        >
+                          Forgot Password?
+                        </Link>
+                      )}
                     </VStack>
                   </form>
                 </TabPanel>
@@ -283,6 +377,25 @@ const AuthPage = ({ onAuth, onBack }) => {
                         loadingText="Creating account..."
                       >
                         Create Account
+                      </Button>
+
+                      <HStack w="full">
+                        <Divider borderColor="gray.600" />
+                        <Text color="gray.400" fontSize="sm" px={2}>OR</Text>
+                        <Divider borderColor="gray.600" />
+                      </HStack>
+
+                      <Button
+                        w="full"
+                        leftIcon={<FcGoogle />}
+                        onClick={handleGoogleSignIn}
+                        variant="outline"
+                        borderColor="gray.600"
+                        color="white"
+                        _hover={{ bg: "gray.700" }}
+                        isDisabled={isLoading}
+                      >
+                        Continue with Google
                       </Button>
                     </VStack>
                   </form>
