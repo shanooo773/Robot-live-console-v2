@@ -751,16 +751,61 @@ async def login(request: Request, user_data: UserLogin):
 async def google_login(request: Request, google_data: GoogleLogin):
     """Login or register user with Google OAuth"""
     auth_service = service_manager.get_auth_service()
-    return auth_service.login_with_google(google_data.id_token)
+    return auth_service.login_with_google(google_data.id_token
 
-@app.get("/auth/me", response_model=UserResponse)
+@app.get("/auth/me")
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     """Get current user information"""
-    auth_service = service_manager.get_auth_service()
-    user = auth_service.get_user_by_token(current_user)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return UserResponse(**user)
+    user_id = current_user.get("sub") or current_user.get("id")
+    
+    # Fetch full user data from database
+    try:
+        query = """
+            SELECT id, name, email, role, is_active, created_at, last_login, 
+                   login_count, google_id, email_confirmed_at
+            FROM users 
+            WHERE id = %s
+        """
+        result = await database.fetch_one(query, (user_id,))
+        
+        if not result:
+            # Fallback to token data if database fetch fails
+            return {
+                "id": user_id,
+                "email": current_user.get("email"),
+                "name": current_user.get("name"),
+                "role": current_user.get("role", "user"),
+                "is_active": True,
+                "created_at": None,
+                "google_id": None
+            }
+        
+        # Return full user data from database
+        return {
+            "id": result["id"],
+            "email": result["email"],
+            "name": result["name"],
+            "role": result["role"],
+            "is_active": bool(result["is_active"]),
+            "created_at": str(result["created_at"]) if result.get("created_at") else None,
+            "last_login": str(result["last_login"]) if result.get("last_login") else None,
+            "login_count": result.get("login_count", 0),
+            "google_id": result.get("google_id"),
+            "email_confirmed_at": str(result["email_confirmed_at"]) if result.get("email_confirmed_at") else None
+        }
+    except Exception as e:
+        logger.error(f"Error fetching user data: {e}")
+        # Return token data as fallback
+        return {
+            "id": user_id,
+            "email": current_user.get("email"),
+            "name": None,
+            "role": current_user.get("role", "user"),
+            "is_active": True,
+            "created_at": None,
+            "google_id": None
+        }
+
 
 @app.post("/auth/forgot-password")
 @limiter.limit("3/hour")

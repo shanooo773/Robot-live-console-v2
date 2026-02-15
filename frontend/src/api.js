@@ -231,6 +231,8 @@ export const getAvailableRobots = async () => {
   return response.data;
 };
 
+
+
 // Health check API
 export const getSystemHealth = async () => {
   const response = await API.get("/health");
