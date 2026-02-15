@@ -372,9 +372,14 @@ int main() {
             # Get server host from environment or use localhost
             server_host = os.getenv('SERVER_HOST', '172.232.105.47')
             
+            # Use same-origin URL pattern for Theia to avoid CORS issues
+            # Format: https://anybot.brainswarmrobotics.com/theia/<port>/
+            # The nginx reverse proxy will handle routing to localhost:<port>
+            base_url = os.getenv('BASE_URL', f'https://{server_host}')
+            
             return {
                 "status": "running" if is_running else "stopped",
-                "url": f"https://{server_host}:{port}" if is_running and port else None,
+                "url": f"{base_url}/theia/{port}/" if is_running and port else None,
                 "port": port if is_running else None,
                 "container_name": container_name
             }

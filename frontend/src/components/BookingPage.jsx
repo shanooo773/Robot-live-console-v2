@@ -43,7 +43,8 @@ const generateAvailableTimeSlots = async (authToken, selectedDate, selectedRobot
   
   try {
     const response = await getAvailableSlots(selectedDate, selectedRobot, authToken);
-    return response.available_slots.map((slot, index) => ({
+    const slots = response.available_slots || [];
+    return Array.isArray(slots) ? slots.map((slot, index) => ({
       id: `slot_${selectedDate}_${slot.start_time}_${selectedRobot}`,
       date: slot.date,
       startTime: slot.start_time,
@@ -52,7 +53,7 @@ const generateAvailableTimeSlots = async (authToken, selectedDate, selectedRobot
       available: true,
       bookedBy: null,
       duration: slot.duration_hours
-    }));
+    })) : [];
   } catch (error) {
     console.error('Error fetching available slots:', error);
     throw error; // Throw error instead of returning empty array for better error handling
@@ -116,7 +117,10 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     const upcoming = [];
     const past = [];
     
-    userBookings.forEach(booking => {
+    // Ensure userBookings is an array
+    const bookings = Array.isArray(userBookings) ? userBookings : [];
+    
+    bookings.forEach(booking => {
       const bookingDateTime = new Date(`${booking.date}T${booking.start_time}`);
       const bookingEndTime = new Date(`${booking.date}T${booking.end_time}`);
       
@@ -432,6 +436,12 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     return options;
   };
 
+  // Ensure arrays before mapping - prevents "X.map is not a function" errors
+  const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
+  const safeUpcoming = Array.isArray(classifiedBookings?.upcoming) ? classifiedBookings.upcoming : [];
+  const safePast = Array.isArray(classifiedBookings?.past) ? classifiedBookings.past : [];
+  const safeAvailableRobotsKeys = (availableRobots && typeof availableRobots === "object") ? Object.keys(availableRobots) : [];
+
   return (
     <Box 
       w="full" 
@@ -538,9 +548,9 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
         </Card>
 
         {/* Active Announcements */}
-        {announcements.length > 0 && (
+        {safeAnnouncements.length > 0 && (
           <VStack spacing={4} w="full">
-            {announcements.map((announcement) => (
+            {safeAnnouncements.map((announcement) => (
               <Card 
                 key={announcement.id} 
                 w="full" 
@@ -622,7 +632,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                   color="white"
                   placeholder="Select a robot"
                 >
-                  {Object.keys(availableRobots).map(robotType => (
+                  {safeAvailableRobotsKeys.map(robotType => (
                     <option key={robotType} value={robotType}>
                       {availableRobots[robotType].emoji} {availableRobots[robotType].name}
                     </option>
@@ -730,7 +740,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                     </Card>
                   ) : (
                     <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4} w="full">
-                      {classifiedBookings.upcoming.map((booking) => (
+                      {safeUpcoming.map((booking) => (
                         <Card
                           key={booking.id}
                           bg={booking.timeStatus === 'in-progress' ? 'orange.900' : 'green.900'}
@@ -819,7 +829,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                     </Card>
                   ) : (
                     <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4} w="full">
-                      {classifiedBookings.past.map((booking) => (
+                      {safePast.map((booking) => (
                         <Card
                           key={booking.id}
                           bg="gray.800"
