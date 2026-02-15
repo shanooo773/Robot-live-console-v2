@@ -5,17 +5,29 @@ import AuthPage from "./components/AuthPage";
 import BookingPage from "./components/BookingPage";
 import NeonRobotConsole from "./components/NeonRobotConsole";
 import AdminDashboard from "./components/AdminDashboard";
+import ForgotPasswordPage from "./components/ForgotPasswordPage";
+import ResetPasswordPage from "./components/ResetPasswordPage";
 import { getCurrentUser } from "./api";
 
 function App() {
-  const [currentPage, setCurrentPage] = useState("landing"); // landing, auth, booking, editor, admin
+  const [currentPage, setCurrentPage] = useState("landing"); // landing, auth, booking, editor, admin, forgotPassword, resetPassword
   const [user, setUser] = useState(null);
   const [authToken, setAuthToken] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [resetToken, setResetToken] = useState(null);
 
   useEffect(() => {
+    // Check for reset token in URL (for password reset flow)
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (token) {
+      setResetToken(token);
+      setCurrentPage("resetPassword");
+      return;
+    }
+
     // Check for existing token on app load
-    const token = localStorage.getItem('authToken');
+    const authTokenStored = localStorage.getItem('authToken');
     const isDemoUser = localStorage.getItem('isDemoUser');
     const isDemoAdmin = localStorage.getItem('isDemoAdmin');
     const isDemoMode = localStorage.getItem('isDemoMode');
@@ -48,11 +60,11 @@ function App() {
     }
     
     // Handle regular token-based sessions
-    if (token) {
-      getCurrentUser(token)
+    if (authTokenStored) {
+      getCurrentUser(authTokenStored)
         .then(userData => {
           setUser(userData);
-          setAuthToken(token);
+          setAuthToken(authTokenStored);
           setCurrentPage("booking");
         })
         .catch(error => {
@@ -105,7 +117,25 @@ function App() {
         <LandingPage onGetStarted={() => setCurrentPage("auth")} />
       )}
       {currentPage === "auth" && (
-        <AuthPage onAuth={handleAuth} onBack={() => setCurrentPage("landing")} />
+        <AuthPage 
+          onAuth={handleAuth} 
+          onBack={() => setCurrentPage("landing")}
+          onForgotPassword={() => setCurrentPage("forgotPassword")}
+        />
+      )}
+      {currentPage === "forgotPassword" && (
+        <ForgotPasswordPage 
+          onBack={() => setCurrentPage("auth")}
+        />
+      )}
+      {currentPage === "resetPassword" && (
+        <ResetPasswordPage 
+          resetToken={resetToken}
+          onSuccess={() => {
+            setResetToken(null);
+            setCurrentPage("auth");
+          }}
+        />
       )}
       {currentPage === "booking" && (
         <BookingPage 

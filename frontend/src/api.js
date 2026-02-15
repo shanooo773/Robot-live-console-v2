@@ -21,6 +21,45 @@ const API = axios.create({
   baseURL: getApiUrl(),
 });
 
+// Request interceptor - add auth token
+API.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor - handle errors
+API.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid
+      console.error('Authentication failed, redirecting to login');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('isDemoUser');
+      localStorage.removeItem('isDemoAdmin');
+      localStorage.removeItem('isDemoMode');
+      // Only redirect if not already on auth/landing page
+      if (window.location.pathname !== '/' && !window.location.pathname.includes('auth')) {
+        window.location.href = '/';
+      }
+    }
+    
+    if (error.response?.status === 500) {
+      console.error('Server error:', error.response.data);
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
 // Log the API URL for debugging
 console.log("API Base URL:", getApiUrl());
 
@@ -32,6 +71,24 @@ export const registerUser = async (userData) => {
 
 export const loginUser = async (credentials) => {
   const response = await API.post("/auth/login", credentials);
+  return response.data;
+};
+
+export const googleLogin = async (token) => {
+  const response = await API.post("/auth/google", { token });
+  return response.data;
+};
+
+export const forgotPassword = async (email) => {
+  const response = await API.post("/auth/forgot-password", { email });
+  return response.data;
+};
+
+export const resetPassword = async (token, newPassword) => {
+  const response = await API.post("/auth/reset-password", { 
+    token, 
+    new_password: newPassword 
+  });
   return response.data;
 };
 
@@ -54,18 +111,24 @@ export const getUserBookings = async (token) => {
   const response = await API.get("/bookings", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return response.data;
+  // Handle both array response and object wrapper with bookings property
+  return Array.isArray(response.data) ? response.data : (response.data.bookings || response.data);
 };
 
 export const getMyActiveBookings = async (token) => {
   const response = await API.get("/my-bookings", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return response.data;
+  // Handle both array response and object wrapper with bookings property
+  return Array.isArray(response.data) ? response.data : (response.data.bookings || response.data);
 };
 
 export const getBookingSchedule = async (startDate, endDate) => {
   const response = await API.get(`/bookings/schedule?start_date=${startDate}&end_date=${endDate}`);
+  // Ensure bookings is always an array
+  if (response.data.bookings) {
+    return { ...response.data, bookings: Array.isArray(response.data.bookings) ? response.data.bookings : [] };
+  }
   return response.data;
 };
 
@@ -81,6 +144,32 @@ export const getAllUsers = async (token) => {
   const response = await API.get("/admin/users", {
     headers: { Authorization: `Bearer ${token}` }
   });
+  // Handle both array response and object wrapper with users property
+  return Array.isArray(response.data) ? response.data : (response.data.users || response.data);
+};
+
+// Admin user management
+export const deleteUser = async (userId, token) => {
+  const response = await API.delete(`/admin/users/${userId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const updateUserRole = async (userId, role, token) => {
+  const response = await API.patch(`/admin/users/${userId}/role`, 
+    { role },
+    {
+      headers: { Authorization: `Bearer ${token}` }
+    }
+  );
+  return response.data;
+};
+
+export const changeAdminPassword = async (passwordData, token) => {
+  const response = await API.post('/admin/change-password', passwordData, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
   return response.data;
 };
 
@@ -88,7 +177,8 @@ export const getAllBookings = async (token) => {
   const response = await API.get("/bookings/all", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return response.data;
+  // Handle both array response and object wrapper with bookings property
+  return Array.isArray(response.data) ? response.data : (response.data.bookings || response.data);
 };
 
 export const getAdminStats = async (token) => {
