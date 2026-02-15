@@ -71,16 +71,17 @@ console.log("API Base URL:", getApiUrl());
  */
 export const ensureArray = (data) => {
   if (Array.isArray(data)) return data;
+  // Check for known object wrapper patterns
   if (data?.bookings) return Array.isArray(data.bookings) ? data.bookings : [];
   if (data?.users)    return Array.isArray(data.users) ? data.users : [];
   if (data?.robots)   return Array.isArray(data.robots) ? data.robots : [];
   if (data?.data)     return Array.isArray(data.data) ? data.data : [];
-  if (data && typeof data === "object") {
-    for (const k of Object.keys(data)) {
-      if (Array.isArray(data[k])) return data[k];
-    }
-  }
-  return [];
+  // Fallback: return empty array for null/undefined/non-object data
+  if (!data || typeof data !== "object") return [];
+  // Last resort: find first array property (order-dependent, use with caution)
+  // This handles unexpected response formats but is fragile
+  const firstArrayKey = Object.keys(data).find(k => Array.isArray(data[k]));
+  return firstArrayKey ? data[firstArrayKey] : [];
 };
 
 // Authentication API
