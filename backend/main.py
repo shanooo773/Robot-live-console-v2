@@ -626,7 +626,10 @@ class UserResponse(BaseModel):
     name: str
     email: str
     role: str
-    created_at: str
+    created_at: Optional[str] = None
+    is_active: bool = False
+    last_login: Optional[str] = None
+    login_count: int = 0
 
 # Booking Models
 class BookingCreate(BaseModel):

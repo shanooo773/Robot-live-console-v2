@@ -108,6 +108,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [isUserDeleteModalOpen, setIsUserDeleteModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [messageFilter, setMessageFilter] = useState("all");
   const [passwordData, setPasswordData] = useState({
     current_password: '',
     new_password: '',
@@ -596,6 +597,14 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     }
   };
 
+  const filteredMessages = messages.filter((m) => {
+    if (messageFilter === "last24h") {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      return new Date(m.created_at) >= oneDayAgo;
+    }
+    return true;
+  });
+
   return (
     <Container maxW="7xl" py={8}>
       <VStack spacing={8}>
@@ -751,7 +760,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             </HStack>
           </CardHeader>
           <CardBody>
-            <TableContainer>
+            <TableContainer overflowY="auto" maxH="400px">
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>
@@ -855,7 +864,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             </Text>
           </CardHeader>
           <CardBody>
-            <TableContainer>
+            <TableContainer overflowY="auto" maxH="400px">
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>
@@ -951,10 +960,22 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
               <Badge colorScheme="cyan" fontSize="sm">
                 {hasError ? 0 : messages.filter(m => m.status === 'unread').length} unread
               </Badge>
+              <Select
+                size="sm"
+                value={messageFilter}
+                onChange={(e) => setMessageFilter(e.target.value)}
+                w="150px"
+                color="white"
+                bg="gray.700"
+                borderColor="gray.600"
+              >
+                <option value="all">All</option>
+                <option value="last24h">Last 24 Hours</option>
+              </Select>
             </HStack>
           </CardHeader>
           <CardBody>
-            <TableContainer>
+            <TableContainer overflowY="auto" maxH="400px">
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>
@@ -978,8 +999,8 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                         ❌ Failed to load messages data
                       </Td>
                     </Tr>
-                  ) : messages.length > 0 ? (
-                    messages.map((message) => (
+                  ) : filteredMessages.length > 0 ? (
+                    filteredMessages.map((message) => (
                       <Tr key={message.id}>
                         <Td color="white">{message.name}</Td>
                         <Td color="gray.300">{message.email}</Td>
@@ -1024,7 +1045,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                   ) : (
                     <Tr>
                       <Td colSpan={5} textAlign="center" color="gray.400" py={8}>
-                        No messages found
+                        {messageFilter === "last24h" ? "No messages in the last 24 hours" : "No messages found"}
                       </Td>
                     </Tr>
                   )}
@@ -1052,7 +1073,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             </HStack>
           </CardHeader>
           <CardBody>
-            <TableContainer>
+            <TableContainer overflowY="auto" maxH="400px">
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>
@@ -1146,7 +1167,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             </HStack>
           </CardHeader>
           <CardBody>
-            <TableContainer>
+            <TableContainer overflowY="auto" maxH="400px">
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>

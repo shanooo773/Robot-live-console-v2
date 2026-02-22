@@ -201,7 +201,19 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE bookings ADD COLUMN robot_id INTEGER")
         except pymysql.Error:
             pass  # Column already exists
-        
+
+        # Add last_login column for tracking user login timestamps
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN last_login DATETIME NULL")
+        except pymysql.Error:
+            pass  # Column already exists
+
+        # Add login_count column for tracking number of logins
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN login_count INT DEFAULT 0")
+        except pymysql.Error:
+            pass  # Column already exists
+
         # Create default admin user if none exists
         self._create_default_admin(cursor, conn)
         
@@ -846,7 +858,7 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT id, name, email, role, created_at
+            SELECT id, name, email, role, created_at, is_active, last_login, login_count
             FROM users ORDER BY created_at DESC
         """)
         
@@ -859,24 +871,55 @@ class DatabaseManager:
                 "name": user[1],
                 "email": user[2],
                 "role": user[3],
-                "created_at": user[4].isoformat() if user[4] else None
+                "created_at": user[4].isoformat() if user[4] else None,
+                "is_active": bool(user[5]) if user[5] is not None else False,
+                "last_login": user[6].isoformat() if user[6] else None,
+                "login_count": user[7] or 0
             }
             for user in users
         ]
     
-    def update_booking_status(self, booking_id: int, status: str) -> bool:
-        """Update booking status"""
+    def update_booking_status(self, booking_id: int, status: str) -> Optional[Dict[str, Any]]:
+        """Update booking status and return the updated booking"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+        placeholder = self._get_placeholder()
+
         cursor.execute(f"""
-            UPDATE bookings SET status = {self._get_placeholder()} WHERE id = {self._get_placeholder()}
+            UPDATE bookings SET status = {placeholder} WHERE id = {placeholder}
         """, (status, booking_id))
-        
-        updated = cursor.rowcount > 0
+
+        if cursor.rowcount == 0:
+            conn.close()
+            return None
+
+        cursor.execute(f"""
+            SELECT b.id, b.user_id, u.name, u.email, b.robot_type, b.robot_id, b.date,
+                   b.start_time, b.end_time, b.status, b.created_at
+            FROM bookings b
+            JOIN users u ON b.user_id = u.id
+            WHERE b.id = {placeholder}
+        """, (booking_id,))
+
+        booking = cursor.fetchone()
         conn.close()
-        
-        return updated
+
+        if not booking:
+            return None
+
+        return {
+            "id": booking[0],
+            "user_id": booking[1],
+            "user_name": booking[2],
+            "user_email": booking[3],
+            "robot_type": booking[4],
+            "robot_id": booking[5],
+            "date": booking[6],
+            "start_time": booking[7],
+            "end_time": booking[8],
+            "status": booking[9],
+            "created_at": booking[10].isoformat() if booking[10] else None
+        }
     
     def delete_booking(self, booking_id: int) -> bool:
         """Delete a booking"""
@@ -969,7 +1012,7 @@ class DatabaseManager:
                 "email": message[2],
                 "message": message[3],
                 "status": message[4],
-                "created_at": message[5]
+                "created_at": message[5].isoformat() if hasattr(message[5], 'isoformat') else str(message[5]) if message[5] else None
             }
             for message in messages
         ]
@@ -1052,8 +1095,8 @@ class DatabaseManager:
                 "is_active": bool(announcement[4]),
                 "created_by": announcement[5],
                 "created_by_name": announcement[6],
-                "created_at": announcement[7],
-                "updated_at": announcement[8]
+                "created_at": announcement[7].isoformat() if hasattr(announcement[7], 'isoformat') else str(announcement[7]) if announcement[7] else None,
+                "updated_at": announcement[8].isoformat() if hasattr(announcement[8], 'isoformat') else str(announcement[8]) if announcement[8] else None
             }
             for announcement in announcements
         ]
