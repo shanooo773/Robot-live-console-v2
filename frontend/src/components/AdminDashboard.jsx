@@ -50,7 +50,7 @@ import {
   Switch,
   IconButton,
 } from "@chakra-ui/react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { 
   getAllUsers, 
   getAllBookings, 
@@ -83,6 +83,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const [robots, setRobots] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [messageFilter, setMessageFilter] = useState("all");
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
@@ -121,6 +122,14 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     onClose: onMessageClose 
   } = useDisclosure();
   const cancelRef = useRef();
+
+  const filteredMessages = useMemo(() => {
+    if (messageFilter === "last24h") {
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      return messages.filter(m => m.created_at && new Date(m.created_at).getTime() >= cutoff);
+    }
+    return messages;
+  }, [messages, messageFilter]);
 
   useEffect(() => {
     loadDashboardData();
@@ -746,7 +755,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             </HStack>
           </CardHeader>
           <CardBody>
-            <TableContainer>
+            <TableContainer maxH="400px" overflowY="auto">
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>
@@ -943,13 +952,27 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
               <Text fontSize="lg" fontWeight="bold" color="white">
                 Contact Messages
               </Text>
-              <Badge colorScheme="cyan" fontSize="sm">
-                {hasError ? 0 : messages.filter(m => m.status === 'unread').length} unread
-              </Badge>
+              <HStack spacing={3}>
+                <Select
+                  size="sm"
+                  value={messageFilter}
+                  onChange={(e) => setMessageFilter(e.target.value)}
+                  bg="gray.700"
+                  color="white"
+                  borderColor="gray.500"
+                  w="160px"
+                >
+                  <option value="all">All</option>
+                  <option value="last24h">Last 24 Hours</option>
+                </Select>
+                <Badge colorScheme="cyan" fontSize="sm">
+                  {hasError ? 0 : messages.filter(m => m.status === 'unread').length} unread
+                </Badge>
+              </HStack>
             </HStack>
           </CardHeader>
           <CardBody>
-            <TableContainer>
+            <TableContainer maxH="400px" overflowY="auto">
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>
@@ -973,8 +996,8 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                         ❌ Failed to load messages data
                       </Td>
                     </Tr>
-                  ) : messages.length > 0 ? (
-                    messages.map((message) => (
+                  ) : filteredMessages.length > 0 ? (
+                    filteredMessages.map((message) => (
                       <Tr key={message.id}>
                         <Td color="white">{message.name}</Td>
                         <Td color="gray.300">{message.email}</Td>
@@ -1047,7 +1070,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             </HStack>
           </CardHeader>
           <CardBody>
-            <TableContainer>
+            <TableContainer maxH="400px" overflowY="auto">
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>
@@ -1141,7 +1164,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             </HStack>
           </CardHeader>
           <CardBody>
-            <TableContainer>
+            <TableContainer maxH="400px" overflowY="auto">
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>

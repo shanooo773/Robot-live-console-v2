@@ -201,7 +201,19 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE bookings ADD COLUMN robot_id INTEGER")
         except pymysql.Error:
             pass  # Column already exists
-        
+
+        # Add last_login column for tracking user login timestamps
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN last_login DATETIME NULL")
+        except pymysql.Error:
+            pass  # Column already exists
+
+        # Add login_count column for tracking total logins
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN login_count INTEGER DEFAULT 0")
+        except pymysql.Error:
+            pass  # Column already exists
+
         # Create default admin user if none exists
         self._create_default_admin(cursor, conn)
         
@@ -846,7 +858,7 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT id, name, email, role, created_at
+            SELECT id, name, email, role, is_active, created_at, last_login, login_count
             FROM users ORDER BY created_at DESC
         """)
         
@@ -859,7 +871,10 @@ class DatabaseManager:
                 "name": user[1],
                 "email": user[2],
                 "role": user[3],
-                "created_at": user[4].isoformat() if user[4] else None
+                "is_active": bool(user[4]) if user[4] is not None else False,
+                "created_at": user[5].isoformat() if user[5] else None,
+                "last_login": user[6].isoformat() if user[6] else None,
+                "login_count": user[7] or 0
             }
             for user in users
         ]
@@ -969,7 +984,7 @@ class DatabaseManager:
                 "email": message[2],
                 "message": message[3],
                 "status": message[4],
-                "created_at": message[5]
+                "created_at": message[5].isoformat() if message[5] else None
             }
             for message in messages
         ]
@@ -1036,7 +1051,7 @@ class DatabaseManager:
             SELECT a.id, a.title, a.content, a.priority, a.is_active, 
                    a.created_by, u.name, a.created_at, a.updated_at
             FROM announcements a
-            JOIN users u ON a.created_by = u.id
+            LEFT JOIN users u ON a.created_by = u.id
             ORDER BY a.created_at DESC
         """)
         
@@ -1051,9 +1066,9 @@ class DatabaseManager:
                 "priority": announcement[3],
                 "is_active": bool(announcement[4]),
                 "created_by": announcement[5],
-                "created_by_name": announcement[6],
-                "created_at": announcement[7],
-                "updated_at": announcement[8]
+                "created_by_name": announcement[6] or "[Deleted User]",
+                "created_at": announcement[7].isoformat() if announcement[7] else None,
+                "updated_at": announcement[8].isoformat() if announcement[8] else None
             }
             for announcement in announcements
         ]

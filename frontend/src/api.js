@@ -280,7 +280,7 @@ export const getAllMessages = async (token) => {
   const response = await API.get("/messages", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return response.data;
+  return ensureArray(response.data);
 };
 
 export const updateMessageStatus = async (messageId, status, token) => {
@@ -309,7 +309,7 @@ export const getAllAnnouncements = async (token) => {
   const response = await API.get("/announcements", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return response.data;
+  return ensureArray(response.data);
 };
 
 export const getActiveAnnouncements = async () => {
@@ -451,7 +451,7 @@ export const getAllRobots = async (token) => {
   const response = await API.get("/admin/robots", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return response.data;
+  return ensureArray(response.data);
 };
 
 export const createRobot = async (robotData, token) => {

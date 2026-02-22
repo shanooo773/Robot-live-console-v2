@@ -626,7 +626,10 @@ class UserResponse(BaseModel):
     name: str
     email: str
     role: str
-    created_at: str
+    is_active: bool = False
+    created_at: Optional[str] = None
+    last_login: Optional[str] = None
+    login_count: int = 0
 
 # Booking Models
 class BookingCreate(BaseModel):
@@ -684,9 +687,9 @@ class AnnouncementResponse(BaseModel):
     priority: str
     is_active: bool
     created_by: int
-    created_by_name: str
-    created_at: str
-    updated_at: str
+    created_by_name: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 # Robot Registry Models
 class RobotCreate(BaseModel):
