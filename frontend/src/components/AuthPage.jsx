@@ -38,36 +38,37 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword }) => {
   const toast = useToast();
 
   // Memoize Google response handler to prevent unnecessary re-renders
-  const handleGoogleResponse = useCallback(async (response) => {
-    try {
-      setIsLoading(true);
-      const result = await googleLogin(response.credential);
-      
-      // Store token in localStorage
-      localStorage.setItem('authToken', result.access_token);
-      
-      onAuth(result.user, result.access_token);
-      toast({
-        title: "Google login successful",
-        description: "Welcome to Robot Programming Console!",
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-    } catch (error) {
-      console.error('Google login failed:', error);
-      toast({
-        title: "Google login failed",
-        description: error.response?.data?.detail || "Could not sign in with Google",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [onAuth, toast]);
+  // Fix: store JWT under 'token' so API interceptor attaches it
+const handleGoogleResponse = useCallback(async (response) => {
+  try {
+    setIsLoading(true);
+    const result = await googleLogin(response.credential);
 
+    // Store token consistently
+    localStorage.setItem('token', result.access_token);
+    localStorage.setItem('user', JSON.stringify(result.user));
+
+    onAuth(result.user, result.access_token);
+    toast({
+      title: "Google login successful",
+      description: "Welcome to Robot Programming Console!",
+      status: "success",
+      duration: 3000,
+      isClosable: true,
+    });
+  } catch (error) {
+    console.error('Google login failed:', error);
+    toast({
+      title: "Google login failed",
+      description: error.response?.data?.detail || "Could not sign in with Google",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+  } finally {
+    setIsLoading(true);
+  }
+}, [onAuth, toast]);
   // Initialize Google Sign-In
   useEffect(() => {
     // Check if Google Sign-In script is loaded

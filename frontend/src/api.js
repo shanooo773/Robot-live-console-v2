@@ -94,11 +94,10 @@ export const loginUser = async (credentials) => {
   const response = await API.post("/auth/login", credentials);
   return response.data;
 };
-
-export const googleLogin = async (token) => {
-  const response = await API.post("/auth/google", { token });
+export const googleLogin = async (idToken) => {
+  const response = await API.post("/auth/google", { id_token: idToken });
   return response.data;
-};
+}
 
 export const forgotPassword = async (email) => {
   const response = await API.post("/auth/forgot-password", { email });
@@ -280,7 +279,7 @@ export const getAllMessages = async (token) => {
   const response = await API.get("/messages", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return response.data;
+   return ensureArray(response.data); 
 };
 
 export const updateMessageStatus = async (messageId, status, token) => {
@@ -309,26 +308,26 @@ export const getAllAnnouncements = async (token) => {
   const response = await API.get("/announcements", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return response.data;
+  return ensureArray(response.data);
 };
 
 export const getActiveAnnouncements = async () => {
   const response = await API.get("/announcements/active");
-  return response.data;
+  return ensureArray(response.data);
 };
 
 export const updateAnnouncement = async (announcementId, announcementData, token) => {
   const response = await API.put(`/announcements/${announcementId}`, announcementData, {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return response.data;
+  return ensureArray(response.data);
 };
 
 export const deleteAnnouncement = async (announcementId, token) => {
   const response = await API.delete(`/announcements/${announcementId}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return response.data;
+  return ensureArray(response.data);
 };
 
 // Robot Code Execution API (to be implemented in backend)
@@ -451,7 +450,8 @@ export const getAllRobots = async (token) => {
   const response = await API.get("/admin/robots", {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return response.data;
+
+return ensureArray(response.data); 
 };
 
 export const createRobot = async (robotData, token) => {

@@ -70,7 +70,8 @@ import {
   deleteRobot,
   deleteUser,
   updateUserRole,
-  changeAdminPassword
+  changeAdminPassword,
+  ensureArray
 } from "../api";
 import { ChevronDownIcon, DeleteIcon, EditIcon, AddIcon, ViewIcon } from "@chakra-ui/icons";
 
@@ -142,18 +143,22 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
         getAllAnnouncements(authToken),
         getAllRobots(authToken)
       ]);
-      
-      setStats(statsData);
-      setUsers(usersData);
-      setBookings(bookingsData);
-      setMessages(messagesData);
-      setAnnouncements(announcementsData);
-      setRobots(robotsData);
-      setHasError(false);
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-      setHasError(true);
-      
+    setStats(statsData || null);
+    setUsers(ensureArray(usersData));
+    setBookings(ensureArray(bookingsData));
+    setMessages(ensureArray(messagesData));
+    setAnnouncements(ensureArray(announcementsData));
+    setRobots(ensureArray(robotsData));
+  } catch (error) {
+    console.error("Failed to load dashboard data:", error);
+    setHasError(true);
+    // Ensure state holds arrays even on error
+    setStats(null);
+    setUsers([]);
+    setBookings([]);
+    setMessages([]);
+    setAnnouncements([]);
+    setRobots([]);  
       // Use setTimeout to ensure toast appears after state updates
       setTimeout(() => {
         toast({
