@@ -466,7 +466,7 @@ else:
         def get_auth_service(self):
             class FallbackAuthService:
                 def get_user_by_token(self, user_data):
-                    return {"id": user_data.get("sub", 1), "name": "Demo User", "email": "demo@user.com", "role": "admin", "created_at": "2024-01-15T10:30:00"}
+                    return {"id": user_data.get("sub"), "email": user_data.get("email"), "role": user_data.get("role", "user")}
             return FallbackAuthService()
         
         def get_service_status(self):
@@ -490,11 +490,10 @@ async def lifespan(app: FastAPI):
     # Validate production configuration
     if ENVIRONMENT == 'production':
         logger.info("🔐 Validating production configuration...")
+        # Hard-required: auth cannot function without these
         required_vars = [
             'JWT_SECRET_KEY',
-            'MAIL_USERNAME',
-            'MAIL_PASSWORD',
-            'SERVER_HOST'
+            'APP_PUBLIC_BASE_URL',
         ]
         missing_vars = [var for var in required_vars if not os.getenv(var)]
         
@@ -502,6 +501,13 @@ async def lifespan(app: FastAPI):
             error_msg = f"Production requires these environment variables: {', '.join(missing_vars)}"
             logger.error(f"❌ {error_msg}")
             raise ValueError(error_msg)
+        
+        # Warn (but don't block startup) if email delivery is not configured
+        if not os.getenv('RESEND_API_KEY'):
+            logger.warning(
+                "⚠️ RESEND_API_KEY not set — email delivery is disabled. "
+                "Set RESEND_API_KEY and MAIL_FROM to enable transactional email."
+            )
         
         # Validate JWT_SECRET_KEY is not a placeholder
         jwt_secret = os.getenv('JWT_SECRET_KEY', '')
@@ -512,9 +518,6 @@ async def lifespan(app: FastAPI):
             error_msg = "JWT_SECRET_KEY must be changed from default placeholder and be at least 32 characters"
             logger.error(f"❌ {error_msg}")
             raise ValueError(error_msg)
-        
-        # Validate SERVER_HOST uses HTTPS in production
-        server_host = os.getenv('SERVER_HOST', '')
         
         logger.info("✅ Production configuration validated")
     

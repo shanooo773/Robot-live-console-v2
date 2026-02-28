@@ -6,7 +6,9 @@ aiofiles==23.2.1
 # Authentication
 PyJWT==2.8.0
 itsdangerous==2.1.2
-# Email
+# Email (Resend API - primary)
+resend==2.4.0
+# Email (SMTP fallback - optional, legacy)
 fastapi-mail==1.4.1
 # Google OAuth
 google-auth==2.26.2
