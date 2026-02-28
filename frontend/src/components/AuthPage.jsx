@@ -23,7 +23,7 @@ import {
   Divider,
 } from "@chakra-ui/react";
 import { useState, useEffect, useCallback } from "react";
-import { loginUser, registerUser, googleLogin } from "../api";
+import { loginUser, registerUser, googleLogin, resendConfirmation } from "../api";
 import { FcGoogle } from "react-icons/fc";
 
 const AuthPage = ({ onAuth, onBack, onForgotPassword }) => {
@@ -35,6 +35,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword }) => {
     password: "",
     confirmPassword: ""
   });
+  const [registrationEmail, setRegistrationEmail] = useState(null);
   const toast = useToast();
 
   // Memoize Google response handler to prevent unnecessary re-renders
@@ -66,7 +67,7 @@ const handleGoogleResponse = useCallback(async (response) => {
       isClosable: true,
     });
   } finally {
-    setIsLoading(true);
+    setIsLoading(false);
   }
 }, [onAuth, toast]);
   // Initialize Google Sign-In
@@ -161,21 +162,19 @@ const handleGoogleResponse = useCallback(async (response) => {
           return;
         }
 
-        const response = await registerUser({
+        await registerUser({
           name: registerData.name,
           email: registerData.email,
           password: registerData.password
         });
-        
-        // Store token in localStorage
-        localStorage.setItem('authToken', response.access_token);
-        
-        onAuth(response.user, response.access_token);
+
+        // Show "check your email" state - no token issued until verified
+        setRegistrationEmail(registerData.email);
         toast({
-          title: "Registration successful",
-          description: "Welcome to Robot Programming Console!",
+          title: "Account created!",
+          description: "Please check your email to verify your account.",
           status: "success",
-          duration: 3000,
+          duration: 6000,
           isClosable: true,
         });
       } else {
@@ -200,6 +199,73 @@ const handleGoogleResponse = useCallback(async (response) => {
       setIsLoading(false);
     }
   };
+
+  const handleResendConfirmation = async () => {
+    if (!registrationEmail) return;
+    try {
+      await resendConfirmation(registrationEmail);
+      toast({
+        title: "Email resent",
+        description: "If your account needs confirmation, a new email has been sent.",
+        status: "info",
+        duration: 4000,
+        isClosable: true,
+      });
+    } catch {
+      toast({
+        title: "Could not resend",
+        description: "Please try again in a moment.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  // "Check your email" screen shown after successful registration
+  if (registrationEmail) {
+    return (
+      <Container maxW="md" py={20}>
+        <VStack spacing={8}>
+          <Text fontSize="4xl">📧</Text>
+          <Text fontSize="2xl" fontWeight="bold" color="white" textAlign="center">
+            Check Your Email
+          </Text>
+          <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
+            <CardBody>
+              <VStack spacing={4}>
+                <Alert status="success" bg="green.900" color="green.100" border="1px solid" borderColor="green.600">
+                  <AlertIcon color="green.300" />
+                  <Text fontSize="sm">
+                    We sent a confirmation link to <strong>{registrationEmail}</strong>.
+                    Click the link in the email to activate your account, then sign in.
+                  </Text>
+                </Alert>
+                <Text color="gray.400" fontSize="sm" textAlign="center">
+                  Didn&apos;t receive it? Check your spam folder or resend the email.
+                </Text>
+                <Button
+                  variant="outline"
+                  colorScheme="blue"
+                  w="full"
+                  onClick={handleResendConfirmation}
+                >
+                  Resend Confirmation Email
+                </Button>
+                <Button
+                  variant="ghost"
+                  color="gray.400"
+                  onClick={() => setRegistrationEmail(null)}
+                >
+                  Back to Sign In
+                </Button>
+              </VStack>
+            </CardBody>
+          </Card>
+        </VStack>
+      </Container>
+    );
+  }
 
   return (
     <Container maxW="md" py={20}>

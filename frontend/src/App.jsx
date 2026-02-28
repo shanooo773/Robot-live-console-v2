@@ -7,59 +7,46 @@ import NeonRobotConsole from "./components/NeonRobotConsole";
 import AdminDashboard from "./components/AdminDashboard";
 import ForgotPasswordPage from "./components/ForgotPasswordPage";
 import ResetPasswordPage from "./components/ResetPasswordPage";
+import VerifyEmailPage from "./components/VerifyEmailPage";
 import { getCurrentUser } from "./api";
 
 function App() {
-  const [currentPage, setCurrentPage] = useState("landing"); // landing, auth, booking, editor, admin, forgotPassword, resetPassword
+  const [currentPage, setCurrentPage] = useState("landing"); // landing, auth, booking, editor, admin, forgotPassword, resetPassword, verifyEmail
   const [user, setUser] = useState(null);
   const [authToken, setAuthToken] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [resetToken, setResetToken] = useState(null);
+  const [verifyToken, setVerifyToken] = useState(null);
 
   useEffect(() => {
-    // Check for reset token in URL (for password reset flow)
+    // Check for special tokens in URL
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
-    if (token) {
+    const path = window.location.pathname;
+
+    // Email verification link: /verify-email?token=...
+    if (path === '/verify-email' && token) {
+      setVerifyToken(token);
+      setCurrentPage("verifyEmail");
+      return;
+    }
+
+    // Password reset link: /reset-password?token=...
+    if (path === '/reset-password' && token) {
       setResetToken(token);
       setCurrentPage("resetPassword");
       return;
     }
 
-    // Check for existing token on app load
-    const authTokenStored = localStorage.getItem('authToken');
-    const isDemoUser = localStorage.getItem('isDemoUser');
-    const isDemoAdmin = localStorage.getItem('isDemoAdmin');
-    const isDemoMode = localStorage.getItem('isDemoMode');
-    
-    // Handle demo sessions
-    if (isDemoUser || isDemoAdmin || isDemoMode) {
-      const demoUser = isDemoUser ? {
-        username: "demo_user",
-        name: "Demo User", 
-        email: "demo.user@example.com",
-        role: "user",
-        isDemoUser: true,
-      } : isDemoAdmin ? {
-        username: "demo_admin",
-        name: "Demo Admin",
-        email: "demo.admin@example.com", 
-        role: "admin",
-        isDemoAdmin: true,
-      } : {
-        id: "demo",
-        name: "Demo User",
-        email: "demo@example.com",
-        role: "user",
-        isDemoMode: true
-      };
-      
-      setUser(demoUser);
-      setCurrentPage("booking");
+    // Legacy: token in query string on root path (old reset-password flow)
+    if (!path.startsWith('/verify-email') && token) {
+      setResetToken(token);
+      setCurrentPage("resetPassword");
       return;
     }
-    
-    // Handle regular token-based sessions
+
+    // Check for existing authenticated session
+    const authTokenStored = localStorage.getItem('authToken');
     if (authTokenStored) {
       getCurrentUser(authTokenStored)
         .then(userData => {
@@ -89,12 +76,7 @@ function App() {
     setUser(null);
     setAuthToken(null);
     setSelectedSlot(null);
-    // Clear all session storage including demo flags
     localStorage.removeItem('authToken');
-    localStorage.removeItem('isDemoUser');
-    localStorage.removeItem('isDemoAdmin');
-    localStorage.removeItem('isDummy');
-    localStorage.removeItem('isDemoMode');
     setCurrentPage("landing");
   };
 
@@ -133,6 +115,15 @@ function App() {
           resetToken={resetToken}
           onSuccess={() => {
             setResetToken(null);
+            setCurrentPage("auth");
+          }}
+        />
+      )}
+      {currentPage === "verifyEmail" && (
+        <VerifyEmailPage
+          token={verifyToken}
+          onSuccess={() => {
+            setVerifyToken(null);
             setCurrentPage("auth");
           }}
         />

@@ -43,9 +43,6 @@ API.interceptors.response.use(
       // Token expired or invalid
       console.error('Authentication failed, redirecting to login');
       localStorage.removeItem('authToken');
-      localStorage.removeItem('isDemoUser');
-      localStorage.removeItem('isDemoAdmin');
-      localStorage.removeItem('isDemoMode');
       // Only redirect if not already on auth/landing page
       if (window.location.pathname !== '/' && !window.location.pathname.includes('auth')) {
         window.location.href = '/';
@@ -109,6 +106,16 @@ export const resetPassword = async (token, newPassword) => {
     token, 
     new_password: newPassword 
   });
+  return response.data;
+};
+
+export const confirmEmail = async (token) => {
+  const response = await API.get(`/auth/confirm?token=${encodeURIComponent(token)}`);
+  return response.data;
+};
+
+export const resendConfirmation = async (email) => {
+  const response = await API.post("/auth/resend-confirmation", { email });
   return response.data;
 };
 

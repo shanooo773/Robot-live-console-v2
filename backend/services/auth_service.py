@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from auth import auth_manager
 from database import DatabaseManager
 from services.token_service import TokenService
-from services.mail_service import MailService
+from services.resend_email_service import ResendEmailService
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +34,13 @@ class AuthService:
         
         # Initialize token and mail services
         self.token_service = TokenService()
-        self.mail_service = MailService()
+        self.mail_service = ResendEmailService()
         
-        # Get server host for confirmation URLs
-        self.server_host = os.getenv("SERVER_HOST", "http://localhost:8000")
+        # Public base URL of the frontend application (used to build verification/reset links)
+        self.app_public_base_url = os.getenv(
+            "APP_PUBLIC_BASE_URL",
+            os.getenv("SERVER_HOST", "http://localhost:3000")
+        )
         
         logger.info("✅ Auth service initialized successfully")
     
@@ -65,8 +68,8 @@ class AuthService:
             # Generate confirmation token
             token = self.token_service.generate_confirmation_token(email)
             
-            # Build confirmation URL
-            confirmation_url = f"{self.server_host}/auth/confirm?token={token}"
+            # Build frontend verification URL (frontend handles the redirect)
+            confirmation_url = f"{self.app_public_base_url}/verify-email?token={token}"
             
             # Send email asynchronously
             await self.mail_service.send_confirmation_email(email, confirmation_url, name)
@@ -85,7 +88,7 @@ class AuthService:
             
             # Generate confirmation token
             token = self.token_service.generate_confirmation_token(user['email'])
-            confirmation_url = f"{self.server_host}/auth/confirm?token={token}"
+            confirmation_url = f"{self.app_public_base_url}/verify-email?token={token}"
             
             # Send confirmation email in background if BackgroundTasks provided
             if background_tasks:
@@ -366,8 +369,8 @@ class AuthService:
             expires = datetime.now() + timedelta(hours=1)
             self.db.store_password_reset_token(email, token, expires)
             
-            # Build reset URL
-            reset_url = f"{self.server_host}/auth/reset-password?token={token}"
+            # Build frontend reset URL (frontend handles the token and calls backend)
+            reset_url = f"{self.app_public_base_url}/reset-password?token={token}"
             
             # Send email in background
             if background_tasks:
@@ -478,7 +481,7 @@ class AuthService:
             
             # Generate new confirmation token
             token = self.token_service.generate_confirmation_token(email)
-            confirmation_url = f"{self.server_host}/auth/confirm?token={token}"
+            confirmation_url = f"{self.app_public_base_url}/verify-email?token={token}"
             
             # Send email in background
             if background_tasks:
