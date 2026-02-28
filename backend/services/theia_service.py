@@ -19,7 +19,8 @@ class TheiaContainerManager:
         self.base_port = base_port or int(os.getenv('THEIA_BASE_PORT', 4000))
         self.max_port = int(os.getenv('THEIA_MAX_PORT', 9000))
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
-        self.theia_image = os.getenv('THEIA_IMAGE', 'muneeb/theia-ros-humble:v2')  # Use working image that matches start-user-container.sh
+        self.theia_image = os.getenv('THEIA_IMAGE', 'elswork/theia')  # Preview mode image
+        self.theia_booking_image = os.getenv('THEIA_BOOKING_IMAGE', 'muneeb/theia-ros-humble:v2')  # Booking mode image
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
         
         # Container lifecycle configuration
@@ -404,8 +405,14 @@ int main() {
             logger.error(f"Error getting container status for user {user_id}: {e}")
             return {"status": "error", "error": str(e)}
     
-    def start_container(self, user_id: int) -> Dict:
-        """Start Theia container for user"""
+    def start_container(self, user_id: int, booking_mode: bool = False) -> Dict:
+        """Start Theia container for user.
+
+        Args:
+            user_id: The ID of the user.
+            booking_mode: When True, uses the booking image (muneeb/theia-ros-humble:v2).
+                          When False (default), uses the preview image (elswork/theia).
+        """
         try:
             # First check if Docker is available
             docker_check = subprocess.run(
@@ -428,6 +435,10 @@ int main() {
             port = self.get_user_port(user_id)
             project_dir = self.get_user_project_dir(user_id)
             
+            # Select image based on mode: booking uses muneeb/theia-ros-humble:v2, preview uses elswork/theia
+            image = self.theia_booking_image if booking_mode else self.theia_image
+            logger.info(f"Starting Theia container for user {user_id} in {'booking' if booking_mode else 'preview'} mode using image {image}")
+            
             # Stop existing container if running
             self.stop_container(user_id)
             
@@ -435,26 +446,26 @@ int main() {
             try:
                 # Check if image exists locally
                 image_check = subprocess.run(
-                    ["docker", "images", "-q", self.theia_image],
+                    ["docker", "images", "-q", image],
                     capture_output=True,
                     text=True,
                     timeout=10
                 )
                 
                 if not image_check.stdout.strip():
-                    logger.info(f"Pulling {self.theia_image} image...")
+                    logger.info(f"Pulling {image} image...")
                     pull_result = subprocess.run(
-                        ["docker", "pull", self.theia_image],
+                        ["docker", "pull", image],
                         capture_output=True,
                         text=True,
                         timeout=300
                     )
                     
                     if pull_result.returncode != 0:
-                        logger.error(f"Failed to pull {self.theia_image}: {pull_result.stderr}")
+                        logger.error(f"Failed to pull {image}: {pull_result.stderr}")
                         return {
                             "success": False, 
-                            "error": f"Failed to pull Theia image {self.theia_image}. Please check internet connection."
+                            "error": f"Failed to pull Theia image {image}. Please check internet connection."
                         }
                     
             except subprocess.TimeoutExpired:
@@ -489,7 +500,7 @@ int main() {
                 "--cap-add", "NET_ADMIN",
                 "--device", "/dev/net/tun",
                 "--sysctl", "net.ipv6.conf.all.disable_ipv6=0",
-                self.theia_image
+                image
             ]
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -587,7 +598,7 @@ int main() {
             logger.error(f"❌ Error deleting resources for user {user_id}: {e}")
             raise
     
-    def restart_container(self, user_id: int) -> Dict:
+    def restart_container(self, user_id: int, booking_mode: bool = False) -> Dict:
         """Restart user's Theia container with better error handling for crashed containers"""
         try:
             container_name = self.get_container_name(user_id)
@@ -613,7 +624,7 @@ int main() {
                     logger.error(f"Failed to force remove container for user {user_id}: {force_error}")
             
             # Start the container
-            return self.start_container(user_id)
+            return self.start_container(user_id, booking_mode=booking_mode)
         except Exception as e:
             logger.error(f"Error restarting container for user {user_id}: {e}")
             return {"success": False, "error": f"Restart failed: {str(e)}"}
