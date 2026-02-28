@@ -1563,7 +1563,9 @@ async def get_theia_status(current_user: dict = Depends(get_current_user)):
     # Stop booking container if no active booking and it's running
     if not has_active_booking and status.get("booking_status") == "running":
         logger.info(f"🛑 Stopping booking container for user {user_id} (no active booking)")
-        theia_manager.stop_booking_container(user_id)
+        stop_result = theia_manager.stop_booking_container(user_id)
+        if not stop_result.get("success"):
+            logger.error(f"❌ Failed to stop booking container for user {user_id}: {stop_result.get('error')}")
         status = theia_manager.get_container_status(user_id)
     
     # Add booking status information for UI to determine mode

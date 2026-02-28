@@ -100,7 +100,7 @@ class TheiaContainerManager:
                     # Verify the port is still available
                     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                         try:
-                            s.bind(('0.0.0.0', existing_port))  # Use 0.0.0.0 to bind all interfaces
+                            s.bind(('127.0.0.1', existing_port))
                             s.close()
                             # Port is available, update cache and return
                             self._port_mappings[user_id] = existing_port
@@ -121,7 +121,7 @@ class TheiaContainerManager:
             port = self._port_mappings[user_id]
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(('0.0.0.0', port))
+                    s.bind(('127.0.0.1', port))
                     s.close()
                     return port
                 except OSError:
@@ -148,7 +148,7 @@ class TheiaContainerManager:
             # Check if port is available
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(('0.0.0.0', port))
+                    s.bind(('127.0.0.1', port))
                     s.close()
                     # Store the mapping in both memory and database
                     self._port_mappings[user_id] = port
@@ -217,7 +217,7 @@ class TheiaContainerManager:
                 if existing_port:
                     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                         try:
-                            s.bind(('0.0.0.0', existing_port))
+                            s.bind(('127.0.0.1', existing_port))
                             s.close()
                             self._booking_port_mappings[user_id] = existing_port
                             logger.info(f"Reusing booking port {existing_port} for user {user_id} from database")
@@ -238,7 +238,7 @@ class TheiaContainerManager:
             port = self._booking_port_mappings[user_id]
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(('0.0.0.0', port))
+                    s.bind(('127.0.0.1', port))
                     s.close()
                     return port
                 except OSError:
@@ -260,7 +260,7 @@ class TheiaContainerManager:
                 continue
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(('0.0.0.0', port))
+                    s.bind(('127.0.0.1', port))
                     s.close()
                     self._booking_port_mappings[user_id] = port
                     if self.db_manager:
@@ -394,13 +394,14 @@ int main() {
                 return False
                 
             container_name = self.get_preview_container_name(user_id)
+            # Use docker inspect for exact name matching
             result = subprocess.run(
-                ["docker", "ps", "-q", "-f", f"name=^{container_name}$"],
+                ["docker", "inspect", "--format", "{{.State.Running}}", container_name],
                 capture_output=True,
                 text=True,
                 timeout=10
             )
-            return bool(result.stdout.strip())
+            return result.returncode == 0 and result.stdout.strip() == "true"
         except subprocess.TimeoutExpired:
             logger.warning(f"Docker command timed out when checking container for user {user_id}")
             return False
@@ -412,35 +413,40 @@ int main() {
             return False
     
     def _get_single_container_status(self, user_id: int, container_name: str, port_cache: dict) -> Dict:
-        """Helper: get status of a single named container"""
-        result = subprocess.run(
-            ["docker", "ps", "-a", "--filter", f"name=^{container_name}$", "--format", "{{.Ports}}"],
+        """Helper: get status of a single named container using exact name matching via docker inspect"""
+        # Use docker inspect for exact name matching (avoids substring issues with docker ps --filter name=)
+        inspect_result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Status}}\t{{.State.Running}}", container_name],
             capture_output=True,
             text=True,
             timeout=10
         )
         
-        if not result.stdout.strip():
+        if inspect_result.returncode != 0:
+            # Container does not exist
             return {"status": "not_created", "url": None, "port": None, "container_name": container_name}
         
-        is_running_result = subprocess.run(
-            ["docker", "ps", "-q", "-f", f"name=^{container_name}$"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        is_running = bool(is_running_result.stdout.strip())
+        parts = inspect_result.stdout.strip().split("\t")
+        container_state = parts[0] if parts else "unknown"
+        is_running = parts[1].lower() == "true" if len(parts) > 1 else False
         
         port = None
-        if is_running and result.stdout.strip():
-            port_mapping = result.stdout.strip()
-            if "->" in port_mapping:
+        if is_running:
+            # Get the port mapping from docker inspect
+            port_result = subprocess.run(
+                ["docker", "inspect", "--format",
+                 "{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}{{(index $conf 0).HostPort}}{{end}}{{end}}",
+                 container_name],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if port_result.returncode == 0 and port_result.stdout.strip():
                 try:
-                    host_part = port_mapping.split("->")[0]
-                    port = int(host_part.split(":")[-1])
+                    port = int(port_result.stdout.strip())
                     port_cache[user_id] = port
                 except (ValueError, IndexError):
-                    logger.warning(f"Could not parse port mapping: {port_mapping}")
+                    logger.warning(f"Could not parse port from docker inspect for {container_name}")
         
         if not port and user_id in port_cache:
             port = port_cache[user_id]
@@ -448,7 +454,7 @@ int main() {
         base_url = os.getenv('BASE_URL', f'https://{os.getenv("SERVER_HOST", "172.232.105.47")}')
         
         return {
-            "status": "running" if is_running else "stopped",
+            "status": "running" if is_running else ("stopped" if container_state in ("exited", "created") else container_state),
             "url": f"{base_url}/theia/{port}/" if is_running and port else None,
             "port": port if is_running else None,
             "container_name": container_name
