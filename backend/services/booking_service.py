@@ -147,6 +147,34 @@ class BookingService:
             logger.error(f"❌ BOOKING FAILED - User {user_id} booking attempt failed: {e}")
             raise BookingServiceException(f"Failed to create booking: {str(e)}")
     
+    def has_active_booking(self, user_id: int) -> bool:
+        """Check if user has any active booking session right now (regardless of robot type)"""
+        try:
+            now = datetime.now()
+            current_date = now.strftime("%Y-%m-%d")
+            current_time_obj = now.time()
+
+            bookings = self.get_user_bookings(user_id)
+
+            for booking in bookings:
+                if booking["date"] == current_date and booking["status"] == "active":
+                    try:
+                        start_time_obj = self._parse_time_string(booking["start_time"])
+                        end_time_obj = self._parse_time_string(booking["end_time"])
+                        if start_time_obj <= current_time_obj <= end_time_obj:
+                            logger.info(f"Active booking found for user {user_id}")
+                            return True
+                    except ValueError as e:
+                        logger.error(f"Error parsing booking times: {e}")
+                        continue
+
+            logger.debug(f"No active booking for user {user_id} at {current_time_obj}")
+            return False
+
+        except Exception as e:
+            logger.error(f"Error checking active booking: {e}")
+            return False
+
     def has_active_session(self, user_id: int, robot_type: str) -> bool:
         """Check if user has an active booking session for the robot type - FIXED VERSION"""
         try:

@@ -19,7 +19,11 @@ class TheiaContainerManager:
         self.base_port = base_port or int(os.getenv('THEIA_BASE_PORT', 4000))
         self.max_port = int(os.getenv('THEIA_MAX_PORT', 9000))
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
-        self.theia_image = os.getenv('THEIA_IMAGE', 'muneeb/theia-ros-humble:v2')  # Use working image that matches start-user-container.sh
+        # Dual-image support: preview (default) and booking-mode images
+        self.preview_image = os.getenv('THEIA_PREVIEW_IMAGE', os.getenv('THEIA_IMAGE', 'elswork/theia'))
+        self.booking_image = os.getenv('THEIA_BOOKING_IMAGE', 'muneeb/theia-ros-humble:v1')
+        # Keep self.theia_image for backward compatibility
+        self.theia_image = self.preview_image
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
         
         # Container lifecycle configuration
@@ -404,9 +408,34 @@ int main() {
             logger.error(f"Error getting container status for user {user_id}: {e}")
             return {"status": "error", "error": str(e)}
     
-    def start_container(self, user_id: int) -> Dict:
-        """Start Theia container for user"""
+    def get_running_container_image(self, user_id: int) -> Optional[str]:
+        """Return the Docker image used by the currently running container, or None if not running."""
         try:
+            container_name = self.get_container_name(user_id)
+            result = subprocess.run(
+                ["docker", "inspect", "--format", "{{.Config.Image}}", container_name],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        except Exception as e:
+            logger.debug(f"Could not inspect container image for user {user_id}: {e}")
+        return None
+
+    def start_container(self, user_id: int, image: str = None) -> Dict:
+        """Start Theia container for user.
+
+        Args:
+            user_id: The user to start the container for.
+            image: Docker image to use.  Defaults to ``self.preview_image`` (preview mode).
+                   Pass ``self.booking_image`` for booking mode.
+        """
+        try:
+            # Resolve target image (default to preview image)
+            target_image = image if image else self.preview_image
+
             # First check if Docker is available
             docker_check = subprocess.run(
                 ["docker", "--version"],
@@ -428,33 +457,41 @@ int main() {
             port = self.get_user_port(user_id)
             project_dir = self.get_user_project_dir(user_id)
             
-            # Stop existing container if running
+            # If a container already exists with a different image (mode switch),
+            # log the transition before stopping it.
+            running_image = self.get_running_container_image(user_id)
+            if running_image and running_image != target_image:
+                logger.info(
+                    f"Image switch for user {user_id}: {running_image} → {target_image}. "
+                    "Stopping existing container."
+                )
+            # Always stop any existing container before starting the new one
             self.stop_container(user_id)
             
             # Pull the prebuilt Theia image if not available locally
             try:
                 # Check if image exists locally
                 image_check = subprocess.run(
-                    ["docker", "images", "-q", self.theia_image],
+                    ["docker", "images", "-q", target_image],
                     capture_output=True,
                     text=True,
                     timeout=10
                 )
                 
                 if not image_check.stdout.strip():
-                    logger.info(f"Pulling {self.theia_image} image...")
+                    logger.info(f"Pulling {target_image} image...")
                     pull_result = subprocess.run(
-                        ["docker", "pull", self.theia_image],
+                        ["docker", "pull", target_image],
                         capture_output=True,
                         text=True,
                         timeout=300
                     )
                     
                     if pull_result.returncode != 0:
-                        logger.error(f"Failed to pull {self.theia_image}: {pull_result.stderr}")
+                        logger.error(f"Failed to pull {target_image}: {pull_result.stderr}")
                         return {
                             "success": False, 
-                            "error": f"Failed to pull Theia image {self.theia_image}. Please check internet connection."
+                            "error": f"Failed to pull Theia image {target_image}. Please check internet connection."
                         }
                     
             except subprocess.TimeoutExpired:
@@ -489,7 +526,7 @@ int main() {
                 "--cap-add", "NET_ADMIN",
                 "--device", "/dev/net/tun",
                 "--sysctl", "net.ipv6.conf.all.disable_ipv6=0",
-                self.theia_image
+                target_image
             ]
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -503,7 +540,8 @@ int main() {
                     "status": "running",
                     "url": f"https://{server_host}:{port}",
                     "port": port,
-                    "container_name": container_name
+                    "container_name": container_name,
+                    "image": target_image
                 }
             else:
                 logger.error(f"Failed to start container for user {user_id}: {result.stderr}")

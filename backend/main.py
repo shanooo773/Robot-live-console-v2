@@ -1478,11 +1478,24 @@ async def get_theia_status(current_user: dict = Depends(get_current_user)):
     
     status = theia_manager.get_container_status(user_id)
     
+    # Determine whether the user has an active booking to choose the correct image
+    booking_service = service_manager.get_booking_service()
+    has_active_booking = False
+    if is_demo_user(current_user):
+        has_active_booking = True  # Demo users always get booking-mode access
+    else:
+        try:
+            has_active_booking = booking_service.has_active_booking(user_id)
+        except Exception as e:
+            logger.warning(f"Could not check booking status for user {user_id}: {e}")
+    
+    target_image = theia_manager.booking_image if has_active_booking else theia_manager.preview_image
+    
     # Auto-start Theia container for all users if not running (IDE access is always available)
     if status.get("status") in ["not_created", "stopped", "error"]:
         user_type = "demo" if is_demo_user(current_user) else "regular"
-        logger.info(f"🎯 Auto-starting Theia container for {user_type} user {user_id}")
-        start_result = theia_manager.start_container(user_id)
+        logger.info(f"🎯 Auto-starting Theia container for {user_type} user {user_id} with image {target_image}")
+        start_result = theia_manager.start_container(user_id, image=target_image)
         if start_result.get("success"):
             logger.info(f"✅ User {user_id} Theia container auto-started successfully")
             # Return the new status after starting
@@ -1492,38 +1505,22 @@ async def get_theia_status(current_user: dict = Depends(get_current_user)):
             # Return status with auto-start attempt info
             status["auto_start_attempted"] = True
             status["auto_start_error"] = start_result.get("error")
-    
-    # Add booking status information for UI to determine mode
-    booking_service = service_manager.get_booking_service()
-    if not is_demo_user(current_user):
-        try:
-            bookings = booking_service.get_user_bookings(user_id)
-            # Check for active booking session
-            now = datetime.now()
-            current_date = now.strftime("%Y-%m-%d")
-            current_time_obj = now.time()
-            
-            has_active_booking = False
-            for booking in bookings:
-                if (booking["date"] == current_date and booking["status"] == "active" and booking.get("robot_id")):
-                    try:
-                        start_time_obj = datetime.strptime(booking["start_time"], "%H:%M").time()
-                        end_time_obj = datetime.strptime(booking["end_time"], "%H:%M").time()
-                        if start_time_obj <= current_time_obj <= end_time_obj:
-                            has_active_booking = True
-                            break
-                    except ValueError:
-                        continue
-            
-            status["has_active_booking"] = has_active_booking
-            status["user_mode"] = "booking" if has_active_booking else "preview"
-        except Exception as e:
-            logger.warning(f"Could not check booking status for user {user_id}: {e}")
-            status["has_active_booking"] = False
-            status["user_mode"] = "preview"
     else:
-        status["has_active_booking"] = True  # Demo users have full access
-        status["user_mode"] = "booking"
+        # Container is already running — check if the image needs switching
+        running_image = theia_manager.get_running_container_image(user_id)
+        if running_image and running_image != target_image:
+            logger.info(
+                f"🔄 Image switch required for user {user_id}: {running_image} → {target_image}"
+            )
+            start_result = theia_manager.start_container(user_id, image=target_image)
+            if start_result.get("success"):
+                status = theia_manager.get_container_status(user_id)
+            else:
+                logger.error(f"❌ Failed to switch Theia image for user {user_id}: {start_result.get('error')}")
+    
+    # Annotate response with mode information for the UI
+    status["has_active_booking"] = has_active_booking
+    status["user_mode"] = "booking" if has_active_booking else "preview"
     
     return status
 
@@ -1553,19 +1550,17 @@ async def get_demo_theia_status():
 
 @app.post("/theia/start")
 async def start_theia_container(current_user: dict = Depends(get_current_user)):
-    """Start user's Theia container - Available for all authenticated users"""
+    """Start user's Theia container in preview mode (default, available for all authenticated users)"""
     user_id = int(current_user["sub"])
     
     # Log access for both demo and regular users
     if is_demo_user(current_user):
-        logger.info(f"🎯 Demo user {user_id} starting Theia container")
+        logger.info(f"🎯 Demo user {user_id} starting Theia container (preview mode)")
     else:
-        logger.info(f"✅ Regular user {user_id} starting Theia container (Preview Mode available)")
+        logger.info(f"✅ Regular user {user_id} starting Theia container (preview mode)")
     
-    # IDE access is now available for all authenticated users
-    # Robot functionality (WebRTC, code execution) still requires active booking
-    
-    result = theia_manager.start_container(user_id)
+    # Start preview-mode container (elswork/theia by default)
+    result = theia_manager.start_container(user_id, image=theia_manager.preview_image)
     
     if result.get("success"):
         return {
@@ -1593,6 +1588,54 @@ async def stop_theia_container(current_user: dict = Depends(get_current_user)):
             status_code=500, 
             detail=f"Failed to stop Theia container: {result.get('error', 'Unknown error')}"
         )
+
+@app.post("/theia/start-booking")
+async def start_theia_booking_container(current_user: dict = Depends(get_current_user)):
+    """Start user's Theia container in booking mode (requires an active booking).
+
+    Only users with a currently active booking window are allowed to use the
+    booking-mode image (``THEIA_BOOKING_IMAGE``).  Attempting to call this
+    endpoint without an active booking returns HTTP 403.
+    """
+    user_id = int(current_user["sub"])
+
+    # Demo users always have booking-mode access
+    if not is_demo_user(current_user):
+        booking_service = service_manager.get_booking_service()
+        try:
+            if not booking_service.has_active_booking(user_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Booking-mode IDE requires an active booking session. "
+                           "Please make a booking and try again during your scheduled time."
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error checking active booking for user {user_id}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to verify booking status. Please try again."
+            )
+
+    logger.info(f"🚀 User {user_id} starting Theia container in booking mode (image: {theia_manager.booking_image})")
+    result = theia_manager.start_container(user_id, image=theia_manager.booking_image)
+
+    if result.get("success"):
+        return {
+            "message": "Theia booking container started successfully",
+            "status": result.get("status"),
+            "url": result.get("url"),
+            "port": result.get("port"),
+            "image": result.get("image"),
+            "mode": "booking"
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start Theia booking container: {result.get('error', 'Unknown error')}"
+        )
+
 
 @app.post("/theia/restart")
 async def restart_theia_container(current_user: dict = Depends(get_current_user)):
