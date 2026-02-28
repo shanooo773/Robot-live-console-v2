@@ -11,7 +11,6 @@ import {
   Spinner,
   useToast
 } from "@chakra-ui/react";
-const theiaIframeUrl = `${window.location.origin}/theia/`;
 const TheiaIDE = ({ user, authToken, onError }) => {
   const [theiaStatus, setTheiaStatus] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -228,6 +227,20 @@ const TheiaIDE = ({ user, authToken, onError }) => {
     }
   };
 
+  // Determine which IDE URL to show:
+  // - In booking mode with active booking: use booking container URL (ROS image)
+  // - Otherwise: use preview container URL (lightweight image)
+  const hasActiveBooking = theiaStatus?.has_active_booking;
+  const userMode = theiaStatus?.user_mode || "preview";
+  const activeUrl = (hasActiveBooking && theiaStatus?.booking_url)
+    ? theiaStatus.booking_url
+    : (theiaStatus?.preview_url || theiaStatus?.url);
+  const isRunning = activeUrl && (
+    (hasActiveBooking && theiaStatus?.booking_status === "running") ||
+    (!hasActiveBooking && theiaStatus?.preview_status === "running") ||
+    theiaStatus?.status === "running"
+  );
+
   if (isLoading) {
     return (
       <Box w="100%" h="100%" display="flex" alignItems="center" justifyContent="center">
@@ -252,6 +265,21 @@ const TheiaIDE = ({ user, authToken, onError }) => {
         </Alert>
       )}
 
+      {/* Mode Badge */}
+      {theiaStatus && (
+        <HStack mb={2} spacing={2}>
+          <Badge colorScheme={hasActiveBooking ? "green" : "blue"} fontSize="xs">
+            {hasActiveBooking ? "🔬 Booking IDE (ROS)" : "📝 Preview IDE"}
+          </Badge>
+          {hasActiveBooking && theiaStatus?.preview_url && (
+            <Badge colorScheme="gray" fontSize="xs" cursor="pointer"
+              onClick={() => window.open(theiaStatus.preview_url, '_blank')}>
+              Open Preview IDE ↗
+            </Badge>
+          )}
+        </HStack>
+      )}
+
       {/* Theia IDE Iframe */}
       <Box
         w="100%"
@@ -263,16 +291,16 @@ const TheiaIDE = ({ user, authToken, onError }) => {
         overflow="hidden"
         position="relative"
       >
-        {theiaStatus?.status === "running" && theiaStatus?.url ? (
+        {isRunning && activeUrl ? (
           <iframe
-            src={theiaStatus.url}
+            src={activeUrl}
             width="100%"
             height="100%"
             style={{ 
               border: "none",
               background: "#1e1e1e"
             }}
-            title="Eclipse Theia IDE"
+            title={hasActiveBooking ? "Eclipse Theia IDE (Booking - ROS)" : "Eclipse Theia IDE (Preview)"}
             onError={() => {
               setError("Failed to load Theia IDE. Please try restarting.");
               if (onError) {

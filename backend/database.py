@@ -59,6 +59,7 @@ class DatabaseManager:
                 password_hash {text_type} NOT NULL,
                 role VARCHAR(50) DEFAULT 'user',
                 theia_port INTEGER DEFAULT NULL,
+                theia_booking_port INTEGER DEFAULT NULL,
                 created_at TIMESTAMP {timestamp_default}
             )
         """)
@@ -153,6 +154,12 @@ class DatabaseManager:
         # Add theia_port column to users table for persistent port storage
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN theia_port INTEGER DEFAULT NULL")
+        except pymysql.Error:
+            pass
+        
+        # Add theia_booking_port column to users table for booking container port storage
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN theia_booking_port INTEGER DEFAULT NULL")
         except pymysql.Error:
             pass
         
@@ -374,6 +381,51 @@ class DatabaseManager:
         
         cursor.execute(f"""
             UPDATE users SET theia_port = NULL WHERE id = {placeholder}
+        """, (user_id,))
+        
+        updated = cursor.rowcount > 0
+        conn.close()
+        
+        return updated
+    
+    def get_user_theia_booking_port(self, user_id: int) -> Optional[int]:
+        """Get user's assigned booking Theia port from database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            SELECT theia_booking_port FROM users WHERE id = {placeholder}
+        """, (user_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        return result[0] if result and result[0] else None
+    
+    def set_user_theia_booking_port(self, user_id: int, port: int) -> bool:
+        """Set user's assigned booking Theia port in database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            UPDATE users SET theia_booking_port = {placeholder} WHERE id = {placeholder}
+        """, (port, user_id))
+        
+        updated = cursor.rowcount > 0
+        conn.close()
+        
+        return updated
+    
+    def clear_user_theia_booking_port(self, user_id: int) -> bool:
+        """Clear user's assigned booking Theia port in database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        
+        cursor.execute(f"""
+            UPDATE users SET theia_booking_port = NULL WHERE id = {placeholder}
         """, (user_id,))
         
         updated = cursor.rowcount > 0
@@ -670,18 +722,26 @@ class DatabaseManager:
             conn.close()
     
     def get_all_assigned_ports(self) -> List[int]:
-        """Get all currently assigned Theia ports"""
+        """Get all currently assigned Theia ports (preview and booking)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
             SELECT theia_port FROM users WHERE theia_port IS NOT NULL
         """)
+        preview_ports = [result[0] for result in cursor.fetchall() if result[0]]
         
-        results = cursor.fetchall()
+        try:
+            cursor.execute("""
+                SELECT theia_booking_port FROM users WHERE theia_booking_port IS NOT NULL
+            """)
+            booking_ports = [result[0] for result in cursor.fetchall() if result[0]]
+        except Exception:
+            booking_ports = []
+        
         conn.close()
         
-        return [result[0] for result in results if result[0]]
+        return preview_ports + booking_ports
     
     def _find_available_robot(self, robot_type: str, date: str, start_time: str, end_time: str, cursor) -> Optional[Dict[str, Any]]:
         """Find an available robot of the specified type for the given time slot"""
