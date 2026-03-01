@@ -495,8 +495,30 @@ export const getStreamMetadata = async (streamId, token) => {
   return response.data;
 };
 
-export const getStreamSignalingInfo = async (streamId, token) => {
-  const response = await API.get(`/streams/${streamId}/signaling-info`, {
+// Admin IDE / Theia container management API
+export const scheduleContainerCleanup = async (token) => {
+  const response = await API.post("/theia/schedule-cleanup", {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const adminListContainers = async (token) => {
+  const response = await API.get("/theia/containers", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return ensureArray(response.data?.containers ?? response.data);
+};
+
+export const adminStopUserContainer = async (userId, token) => {
+  const response = await API.post(`/theia/admin/stop/${userId}`, {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const adminGetSurveillanceUrls = async (userId, token) => {
+  const response = await API.get(`/theia/admin/surveillance/${userId}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;

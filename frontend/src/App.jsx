@@ -8,7 +8,7 @@ import AdminDashboard from "./components/AdminDashboard";
 import ForgotPasswordPage from "./components/ForgotPasswordPage";
 import ResetPasswordPage from "./components/ResetPasswordPage";
 import VerifyEmailPage from "./components/VerifyEmailPage";
-import { getCurrentUser } from "./api";
+import { getCurrentUser, scheduleContainerCleanup } from "./api";
 
 function App() {
   const [currentPage, setCurrentPage] = useState("landing"); // landing, auth, booking, editor, admin, forgotPassword, resetPassword, verifyEmail
@@ -72,7 +72,16 @@ function App() {
     setCurrentPage("editor");
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Schedule container cleanup before clearing auth token
+    const token = authToken || localStorage.getItem('authToken');
+    if (token) {
+      try {
+        await scheduleContainerCleanup(token);
+      } catch (_) {
+        // Non-blocking: ignore errors during cleanup scheduling
+      }
+    }
     setUser(null);
     setAuthToken(null);
     setSelectedSlot(null);
