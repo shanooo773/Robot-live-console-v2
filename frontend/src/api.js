@@ -495,6 +495,13 @@ export const getStreamMetadata = async (streamId, token) => {
   return response.data;
 };
 
+export const getStreamSignalingInfo = async (streamId, token) => {
+  const response = await API.get(`/streams/${streamId}/signaling-info`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
 // Admin IDE / Theia container management API
 export const scheduleContainerCleanup = async (token) => {
   const response = await API.post("/theia/schedule-cleanup", {}, {
