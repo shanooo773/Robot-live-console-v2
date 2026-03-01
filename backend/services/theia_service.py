@@ -43,7 +43,12 @@ class TheiaContainerManager:
         else:
             self.projects_dir = Path(__file__).parent.parent.parent / project_path.lstrip('./')
             
-        self.container_prefix = "theia-"  # Changed to match problem statement format
+        self.container_prefix = "theia-"
+        self.preview_container_prefix = "theia-preview-"
+        self.booking_container_prefix = "theia-booking-"
+        
+        # Booking port mapping storage (userid → port) - separate from preview ports
+        self._booking_port_mappings = {}
         
         # Ensure directories exist
         try:
@@ -95,7 +100,7 @@ class TheiaContainerManager:
                     # Verify the port is still available
                     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                         try:
-                            s.bind(('0.0.0.0', existing_port))  # Use 0.0.0.0 to bind all interfaces
+                            s.bind(('127.0.0.1', existing_port))
                             s.close()
                             # Port is available, update cache and return
                             self._port_mappings[user_id] = existing_port
@@ -116,7 +121,7 @@ class TheiaContainerManager:
             port = self._port_mappings[user_id]
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(('0.0.0.0', port))
+                    s.bind(('127.0.0.1', port))
                     s.close()
                     return port
                 except OSError:
@@ -143,7 +148,7 @@ class TheiaContainerManager:
             # Check if port is available
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
-                    s.bind(('0.0.0.0', port))
+                    s.bind(('127.0.0.1', port))
                     s.close()
                     # Store the mapping in both memory and database
                     self._port_mappings[user_id] = port
@@ -188,22 +193,117 @@ class TheiaContainerManager:
             return False
     
     def release_user_port(self, user_id: int) -> None:
-        """Release port mapping when container is stopped"""
+        """Release preview port mapping when container is stopped"""
         if user_id in self._port_mappings:
             port = self._port_mappings.pop(user_id)
-            logger.info(f"Released port {port} for user {user_id}")
+            logger.info(f"Released preview port {port} for user {user_id}")
             
             # Also clear from database
             if self.db_manager:
                 try:
                     self.db_manager.clear_user_theia_port(user_id)
-                    logger.info(f"Cleared port assignment for user {user_id} from database")
+                    logger.info(f"Cleared preview port assignment for user {user_id} from database")
                 except Exception as e:
-                    logger.error(f"Failed to clear port assignment from database: {e}")
+                    logger.error(f"Failed to clear preview port assignment from database: {e}")
+    
+    def get_user_booking_port(self, user_id: int) -> int:
+        """Get dynamic port for user's booking Theia container with database persistence"""
+        import socket
+        
+        # First check database for existing booking port assignment
+        if self.db_manager:
+            try:
+                existing_port = self.db_manager.get_user_theia_booking_port(user_id)
+                if existing_port:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        try:
+                            s.bind(('127.0.0.1', existing_port))
+                            s.close()
+                            self._booking_port_mappings[user_id] = existing_port
+                            logger.info(f"Reusing booking port {existing_port} for user {user_id} from database")
+                            return existing_port
+                        except OSError:
+                            logger.warning(f"Booking port {existing_port} for user {user_id} is no longer available, finding new port")
+                            self.db_manager.clear_user_theia_booking_port(user_id)
+                            if user_id in self._booking_port_mappings:
+                                del self._booking_port_mappings[user_id]
+            except AttributeError:
+                # Database manager doesn't support booking ports yet
+                logger.warning("Database manager doesn't support booking ports, using memory only")
+            except Exception as e:
+                logger.error(f"Error checking database booking port for user {user_id}: {e}")
+        
+        # Check memory cache
+        if user_id in self._booking_port_mappings:
+            port = self._booking_port_mappings[user_id]
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(('127.0.0.1', port))
+                    s.close()
+                    return port
+                except OSError:
+                    del self._booking_port_mappings[user_id]
+        
+        # Get all assigned ports to avoid conflicts (preview + booking)
+        assigned_ports = set()
+        if self.db_manager:
+            try:
+                assigned_ports = set(self.db_manager.get_all_assigned_ports())
+            except Exception as e:
+                logger.error(f"Error getting assigned ports from database: {e}")
+        assigned_ports.update(self._port_mappings.values())
+        assigned_ports.update(self._booking_port_mappings.values())
+        
+        # Find an available port in the 4000-9000 range
+        for port in range(self.base_port, self.max_port + 1):
+            if port in assigned_ports:
+                continue
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(('127.0.0.1', port))
+                    s.close()
+                    self._booking_port_mappings[user_id] = port
+                    if self.db_manager:
+                        try:
+                            self.db_manager.set_user_theia_booking_port(user_id, port)
+                            logger.info(f"Assigned booking port {port} to user {user_id} and saved to database")
+                        except AttributeError:
+                            logger.info(f"Assigned booking port {port} to user {user_id} (memory only, no DB support)")
+                        except Exception as e:
+                            logger.error(f"Failed to save booking port assignment to database: {e}")
+                    else:
+                        logger.info(f"Assigned booking port {port} to user {user_id} (no database available)")
+                    return port
+                except OSError:
+                    continue
+        
+        raise Exception(f"No available ports in range {self.base_port}-{self.max_port} for booking container")
+    
+    def release_user_booking_port(self, user_id: int) -> None:
+        """Release booking port mapping when booking container is stopped"""
+        if user_id in self._booking_port_mappings:
+            port = self._booking_port_mappings.pop(user_id)
+            logger.info(f"Released booking port {port} for user {user_id}")
+            if self.db_manager:
+                try:
+                    self.db_manager.clear_user_theia_booking_port(user_id)
+                    logger.info(f"Cleared booking port assignment for user {user_id} from database")
+                except AttributeError:
+                    pass
+                except Exception as e:
+                    logger.error(f"Failed to clear booking port assignment from database: {e}")
     
     def get_container_name(self, user_id: int) -> str:
-        """Get container name for user"""
-        return f"{self.container_prefix}{user_id}"
+        """Get preview container name for user (backward compatibility)"""
+        return f"{self.preview_container_prefix}{user_id}"
+    
+    def get_preview_container_name(self, user_id: int) -> str:
+        """Get preview container name for user"""
+        return f"{self.preview_container_prefix}{user_id}"
+    
+    def get_booking_container_name(self, user_id: int) -> str:
+        """Get booking container name for user"""
+        return f"{self.booking_container_prefix}{user_id}"
     
     def get_user_project_dir(self, user_id: int) -> Path:
         """Get project directory path for user"""
@@ -280,7 +380,7 @@ int main() {
             return False
     
     def is_container_running(self, user_id: int) -> bool:
-        """Check if user's Theia container is running"""
+        """Check if user's preview Theia container is running"""
         try:
             # First check if Docker is available
             docker_check = subprocess.run(
@@ -293,14 +393,15 @@ int main() {
                 logger.warning("Docker is not available or not running")
                 return False
                 
-            container_name = self.get_container_name(user_id)
+            container_name = self.get_preview_container_name(user_id)
+            # Use docker inspect for exact name matching
             result = subprocess.run(
-                ["docker", "ps", "-q", "-f", f"name={container_name}"],
+                ["docker", "inspect", "--format", "{{.State.Running}}", container_name],
                 capture_output=True,
                 text=True,
                 timeout=10
             )
-            return bool(result.stdout.strip())
+            return result.returncode == 0 and result.stdout.strip() == "true"
         except subprocess.TimeoutExpired:
             logger.warning(f"Docker command timed out when checking container for user {user_id}")
             return False
@@ -311,10 +412,57 @@ int main() {
             logger.error(f"Error checking container status for user {user_id}: {e}")
             return False
     
+    def _get_single_container_status(self, user_id: int, container_name: str, port_cache: dict) -> Dict:
+        """Helper: get status of a single named container using exact name matching via docker inspect"""
+        # Use docker inspect for exact name matching (avoids substring issues with docker ps --filter name=)
+        inspect_result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Status}}\t{{.State.Running}}", container_name],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if inspect_result.returncode != 0:
+            # Container does not exist
+            return {"status": "not_created", "url": None, "port": None, "container_name": container_name}
+        
+        parts = inspect_result.stdout.strip().split("\t")
+        container_state = parts[0] if parts else "unknown"
+        is_running = parts[1].lower() == "true" if len(parts) > 1 else False
+        
+        port = None
+        if is_running:
+            # Get the port mapping from docker inspect
+            port_result = subprocess.run(
+                ["docker", "inspect", "--format",
+                 "{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}{{(index $conf 0).HostPort}}{{end}}{{end}}",
+                 container_name],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if port_result.returncode == 0 and port_result.stdout.strip():
+                try:
+                    port = int(port_result.stdout.strip())
+                    port_cache[user_id] = port
+                except (ValueError, IndexError):
+                    logger.warning(f"Could not parse port from docker inspect for {container_name}")
+        
+        if not port and user_id in port_cache:
+            port = port_cache[user_id]
+        
+        base_url = os.getenv('BASE_URL', f'https://{os.getenv("SERVER_HOST", "172.232.105.47")}')
+        
+        return {
+            "status": "running" if is_running else ("stopped" if container_state in ("exited", "created") else container_state),
+            "url": f"{base_url}/theia/{port}/" if is_running and port else None,
+            "port": port if is_running else None,
+            "container_name": container_name
+        }
+    
     def get_container_status(self, user_id: int) -> Dict:
-        """Get detailed status of user's container"""
+        """Get status of user's preview container (backward compatibility) and also include booking container info"""
         try:
-            # First check if Docker is available
             docker_check = subprocess.run(
                 ["docker", "--version"],
                 capture_output=True,
@@ -323,266 +471,275 @@ int main() {
             )
             if docker_check.returncode != 0:
                 return {
-                    "status": "docker_unavailable", 
+                    "status": "docker_unavailable",
                     "error": "Docker service is not available",
-                    "url": None, 
+                    "url": None,
                     "port": None
                 }
-                
-            container_name = self.get_container_name(user_id)
             
-            # Check if container exists and get its port
-            result = subprocess.run(
-                ["docker", "ps", "-a", "--filter", f"name={container_name}", "--format", "{{.Ports}}"],
-                capture_output=True,
-                text=True,
-                timeout=10
+            preview_status = self._get_single_container_status(
+                user_id, self.get_preview_container_name(user_id), self._port_mappings
+            )
+            booking_status = self._get_single_container_status(
+                user_id, self.get_booking_container_name(user_id), self._booking_port_mappings
             )
             
-            if not result.stdout.strip():
-                return {"status": "not_created", "url": None, "port": None}
-            
-            # Check if container is running
-            is_running_result = subprocess.run(
-                ["docker", "ps", "-q", "-f", f"name={container_name}"],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            is_running = bool(is_running_result.stdout.strip())
-            
-            # Extract port from docker ps output (format: 0.0.0.0:4000->3000/tcp)
-            port = None
-            if is_running and result.stdout.strip():
-                port_mapping = result.stdout.strip()
-                if "->" in port_mapping:
-                    try:
-                        # Extract host port from mapping like "0.0.0.0:4000->3000/tcp"
-                        host_part = port_mapping.split("->")[0]
-                        port = int(host_part.split(":")[-1])
-                        # Update our port mapping cache
-                        self._port_mappings[user_id] = port
-                    except (ValueError, IndexError):
-                        logger.warning(f"Could not parse port mapping: {port_mapping}")
-            
-            # If we couldn't get port from docker ps, try the cached mapping
-            if not port and user_id in self._port_mappings:
-                port = self._port_mappings[user_id]
-            
-            # Get server host from environment or use localhost
-            server_host = os.getenv('SERVER_HOST', '172.232.105.47')
-            
-            # Use same-origin URL pattern for Theia to avoid CORS issues
-            # Format: https://anybot.brainswarmrobotics.com/theia/<port>/
-            # The nginx reverse proxy will handle routing to localhost:<port>
-            base_url = os.getenv('BASE_URL', f'https://{server_host}')
-            
-            return {
-                "status": "running" if is_running else "stopped",
-                "url": f"{base_url}/theia/{port}/" if is_running and port else None,
-                "port": port if is_running else None,
-                "container_name": container_name
-            }
+            # Primary status is the preview container (backward compat)
+            result = dict(preview_status)
+            result["preview_status"] = preview_status["status"]
+            result["preview_url"] = preview_status["url"]
+            result["preview_port"] = preview_status["port"]
+            result["booking_status"] = booking_status["status"]
+            result["booking_url"] = booking_status["url"]
+            result["booking_port"] = booking_status["port"]
+            return result
             
         except subprocess.TimeoutExpired:
             logger.warning(f"Docker command timed out when getting status for user {user_id}")
             return {
-                "status": "docker_timeout", 
+                "status": "docker_timeout",
                 "error": "Docker service timeout - may be under heavy load",
-                "url": None, 
+                "url": None,
                 "port": None
             }
         except FileNotFoundError:
             logger.warning("Docker command not found - Docker may not be installed")
             return {
-                "status": "docker_not_found", 
+                "status": "docker_not_found",
                 "error": "Docker is not installed or not in PATH",
-                "url": None, 
+                "url": None,
                 "port": None
             }
         except Exception as e:
             logger.error(f"Error getting container status for user {user_id}: {e}")
             return {"status": "error", "error": str(e)}
     
-    def start_container(self, user_id: int, booking_mode: bool = False) -> Dict:
-        """Start Theia container for user.
-
-        Args:
-            user_id: The ID of the user.
-            booking_mode: When True, uses the booking image (muneeb/theia-ros-humble:v2).
-                          When False (default), uses the preview image (elswork/theia).
-        """
+    def _pull_image_if_needed(self, image: str) -> Optional[str]:
+        """Pull a Docker image if not present locally. Returns error message or None on success."""
         try:
-            # First check if Docker is available
-            docker_check = subprocess.run(
-                ["docker", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5
+            image_check = subprocess.run(
+                ["docker", "images", "-q", image],
+                capture_output=True, text=True, timeout=10
             )
+            if not image_check.stdout.strip():
+                logger.info(f"Pulling {image} image...")
+                pull_result = subprocess.run(
+                    ["docker", "pull", image],
+                    capture_output=True, text=True, timeout=300
+                )
+                if pull_result.returncode != 0:
+                    logger.error(f"Failed to pull {image}: {pull_result.stderr}")
+                    return f"Failed to pull Theia image {image}. Please check internet connection."
+        except subprocess.TimeoutExpired:
+            return "Docker pull operation timed out. Please try again."
+        return None
+    
+    def _run_theia_container(self, container_name: str, port: int, project_dir, image: str) -> Dict:
+        """Internal: run a single Theia container. Returns start result dict."""
+        # Ensure network exists
+        try:
+            subprocess.run(
+                ["docker", "network", "create", self.docker_network],
+                capture_output=True, timeout=10
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("Docker network creation timed out")
+        
+        # Remove any stopped container with the same name first
+        subprocess.run(
+            ["docker", "rm", "-f", container_name],
+            capture_output=True, text=True, timeout=15
+        )
+        
+        cmd = [
+            "docker", "run", "-d",
+            "--name", container_name,
+            "-p", f"{port}:3000",
+            "-v", f"{project_dir.absolute()}:/home/project",
+            "-v", "/var/lib/husarnet:/var/lib/husarnet",
+            "--cap-add", "NET_ADMIN",
+            "--device", "/dev/net/tun",
+            "--sysctl", "net.ipv6.conf.all.disable_ipv6=0",
+            image
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            base_url = os.getenv('BASE_URL', f'https://{os.getenv("SERVER_HOST", "172.232.105.47")}')
+            return {
+                "success": True,
+                "status": "running",
+                "url": f"{base_url}/theia/{port}/",
+                "port": port,
+                "container_name": container_name
+            }
+        else:
+            logger.error(f"Failed to start container {container_name}: {result.stderr}")
+            return {"success": False, "error": f"Failed to start Theia container: {result.stderr}"}
+    
+    def start_preview_container(self, user_id: int) -> Dict:
+        """Start the always-on preview IDE container for user (uses preview image, theia-preview-<userid>)"""
+        try:
+            docker_check = subprocess.run(["docker", "--version"], capture_output=True, text=True, timeout=5)
             if docker_check.returncode != 0:
-                return {
-                    "success": False, 
-                    "error": "Docker service is not available. Please ensure Docker is installed and running."
-                }
+                return {"success": False, "error": "Docker service is not available. Please ensure Docker is installed and running."}
             
-            # Ensure project directory exists
             if not self.ensure_user_project_dir(user_id):
                 return {"success": False, "error": "Failed to create project directory"}
             
-            container_name = self.get_container_name(user_id)
+            container_name = self.get_preview_container_name(user_id)
             port = self.get_user_port(user_id)
             project_dir = self.get_user_project_dir(user_id)
             
-            # Select image based on mode: booking uses muneeb/theia-ros-humble:v2, preview uses elswork/theia
-            image = self.theia_booking_image if booking_mode else self.theia_image
-            logger.info(f"Starting Theia container for user {user_id} in {'booking' if booking_mode else 'preview'} mode using image {image}")
+            error = self._pull_image_if_needed(self.theia_image)
+            if error:
+                return {"success": False, "error": error}
             
-            # Stop existing container if running
-            self.stop_container(user_id)
+            logger.info(f"Starting preview container {container_name} for user {user_id} using image {self.theia_image}")
+            return self._run_theia_container(container_name, port, project_dir, self.theia_image)
             
-            # Pull the prebuilt Theia image if not available locally
-            try:
-                # Check if image exists locally
-                image_check = subprocess.run(
-                    ["docker", "images", "-q", image],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                
-                if not image_check.stdout.strip():
-                    logger.info(f"Pulling {image} image...")
-                    pull_result = subprocess.run(
-                        ["docker", "pull", image],
-                        capture_output=True,
-                        text=True,
-                        timeout=300
-                    )
-                    
-                    if pull_result.returncode != 0:
-                        logger.error(f"Failed to pull {image}: {pull_result.stderr}")
-                        return {
-                            "success": False, 
-                            "error": f"Failed to pull Theia image {image}. Please check internet connection."
-                        }
-                    
-            except subprocess.TimeoutExpired:
-                logger.warning("Docker pull timed out, will try to use existing image")
-                return {
-                    "success": False,
-                    "error": "Docker pull operation timed out. Please try again."
-                }
-            
-            # Create network if it doesn't exist
-            try:
-                subprocess.run(
-                    ["docker", "network", "create", self.docker_network],
-                    capture_output=True,
-                    timeout=10
-                )
-            except subprocess.TimeoutExpired:
-                logger.warning("Docker network creation timed out")
-            
-            # Get server host from environment for container configuration
-            server_host = os.getenv('SERVER_HOST', '172.232.105.47')
-            
-            # Start container using the exact command format from requirements
-            # docker run -d --name theia-${USERID} -p ${ASSIGNED_PORT}:3000 -v /data/users/${USERID}:/home/project theiaide/theia:latest
-            # Add environment variables to configure Theia with external hostname
-            cmd = [
-                "docker", "run", "-d",
-                "--name", container_name,
-                "-p", f"{port}:3000",
-                "-v", f"{project_dir.absolute()}:/home/project",
-                "-v", "/var/lib/husarnet:/var/lib/husarnet",
-                "--cap-add", "NET_ADMIN",
-                "--device", "/dev/net/tun",
-                "--sysctl", "net.ipv6.conf.all.disable_ipv6=0",
-                image
-            ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            
-            if result.returncode == 0:
-                # Get server host from environment or use localhost  
-                server_host = os.getenv('SERVER_HOST', '172.232.105.47')
-                
-                return {
-                    "success": True,
-                    "status": "running",
-                    "url": f"https://{server_host}:{port}",
-                    "port": port,
-                    "container_name": container_name
-                }
-            else:
-                logger.error(f"Failed to start container for user {user_id}: {result.stderr}")
-                return {"success": False, "error": f"Failed to start Theia container: {result.stderr}"}
-                
         except subprocess.TimeoutExpired:
-            logger.error(f"Docker command timed out when starting container for user {user_id}")
             return {"success": False, "error": "Docker operation timed out. Service may be under heavy load."}
         except FileNotFoundError:
-            logger.error("Docker command not found when starting container")
             return {"success": False, "error": "Docker is not installed or not in PATH"}
         except Exception as e:
-            logger.error(f"Error starting container for user {user_id}: {e}")
+            logger.error(f"Error starting preview container for user {user_id}: {e}")
             return {"success": False, "error": f"Unexpected error: {str(e)}"}
     
-    def stop_container(self, user_id: int) -> Dict:
-        """Stop user's Theia container"""
+    def start_booking_container(self, user_id: int) -> Dict:
+        """Start the booking IDE container for user (uses booking image, theia-booking-<userid>).
+        Shares the same workspace directory as the preview container."""
         try:
-            container_name = self.get_container_name(user_id)
+            docker_check = subprocess.run(["docker", "--version"], capture_output=True, text=True, timeout=5)
+            if docker_check.returncode != 0:
+                return {"success": False, "error": "Docker service is not available. Please ensure Docker is installed and running."}
+            
+            if not self.ensure_user_project_dir(user_id):
+                return {"success": False, "error": "Failed to create project directory"}
+            
+            container_name = self.get_booking_container_name(user_id)
+            port = self.get_user_booking_port(user_id)
+            project_dir = self.get_user_project_dir(user_id)  # Same workspace as preview
+            
+            error = self._pull_image_if_needed(self.theia_booking_image)
+            if error:
+                return {"success": False, "error": error}
+            
+            logger.info(f"Starting booking container {container_name} for user {user_id} using image {self.theia_booking_image}")
+            return self._run_theia_container(container_name, port, project_dir, self.theia_booking_image)
+            
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": "Docker operation timed out. Service may be under heavy load."}
+        except FileNotFoundError:
+            return {"success": False, "error": "Docker is not installed or not in PATH"}
+        except Exception as e:
+            logger.error(f"Error starting booking container for user {user_id}: {e}")
+            return {"success": False, "error": f"Unexpected error: {str(e)}"}
+    
+    def start_container(self, user_id: int, booking_mode: bool = False) -> Dict:
+        """Start Theia container(s) for user.
+        
+        In the dual-container workflow:
+        - Always starts/ensures the preview container (always-on, elswork/theia image).
+        - When booking_mode=True, also starts the booking container (muneeb/theia-ros-humble:v2 image).
+        Both containers share the same user workspace directory.
+
+        Args:
+            user_id: The ID of the user.
+            booking_mode: When True, additionally starts the booking container.
+        """
+        # Always ensure the preview container is running
+        preview_result = self.start_preview_container(user_id)
+        
+        if not booking_mode:
+            return preview_result
+        
+        # Also start the booking container
+        booking_result = self.start_booking_container(user_id)
+        
+        if booking_result.get("success"):
+            return booking_result  # Return booking container info as primary when in booking mode
+        else:
+            # Booking container failed but preview may be ok; report the booking error
+            logger.error(f"Booking container failed for user {user_id}: {booking_result.get('error')}")
+            return booking_result
+    
+    def stop_container(self, user_id: int) -> Dict:
+        """Stop user's preview Theia container"""
+        try:
+            container_name = self.get_preview_container_name(user_id)
             
             # Stop container
-            result = subprocess.run(
+            subprocess.run(
                 ["docker", "stop", container_name],
-                capture_output=True,
-                text=True,
-                timeout=30
+                capture_output=True, text=True, timeout=30
             )
             
             # Remove container to free VPS resources
             subprocess.run(
                 ["docker", "rm", container_name],
-                capture_output=True,
-                text=True,
-                timeout=30
+                capture_output=True, text=True, timeout=30
             )
             
             # Release port mapping
             self.release_user_port(user_id)
             
-            logger.info(f"Container {container_name} stopped and removed for user {user_id}")
+            logger.info(f"Preview container {container_name} stopped and removed for user {user_id}")
             return {"success": True, "status": "stopped"}
             
         except Exception as e:
-            logger.error(f"Error stopping container for user {user_id}: {e}")
+            logger.error(f"Error stopping preview container for user {user_id}: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def stop_booking_container(self, user_id: int) -> Dict:
+        """Stop user's booking Theia container"""
+        try:
+            container_name = self.get_booking_container_name(user_id)
+            
+            # Stop container
+            subprocess.run(
+                ["docker", "stop", container_name],
+                capture_output=True, text=True, timeout=30
+            )
+            
+            # Remove container to free VPS resources
+            subprocess.run(
+                ["docker", "rm", container_name],
+                capture_output=True, text=True, timeout=30
+            )
+            
+            # Release booking port mapping
+            self.release_user_booking_port(user_id)
+            
+            logger.info(f"Booking container {container_name} stopped and removed for user {user_id}")
+            return {"success": True, "status": "stopped"}
+            
+        except Exception as e:
+            logger.error(f"Error stopping booking container for user {user_id}: {e}")
             return {"success": False, "error": str(e)}
     
     def delete_user_container_and_files(self, user_id: int):
-        """Delete user's container and project files"""
+        """Delete user's containers (preview and booking) and project files"""
         import shutil
         
         try:
-            # Stop and remove container if running
-            container_name = self.get_container_name(user_id)
+            # Force remove both containers
+            for container_name in [
+                self.get_preview_container_name(user_id),
+                self.get_booking_container_name(user_id)
+            ]:
+                try:
+                    subprocess.run(
+                        ["docker", "rm", "-f", container_name],
+                        capture_output=True, text=True, timeout=30
+                    )
+                    logger.info(f"✅ Removed container {container_name} for user {user_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to remove container {container_name} (may not exist): {e}")
             
-            try:
-                # Force remove container
-                subprocess.run(
-                    ["docker", "rm", "-f", container_name],
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-                logger.info(f"✅ Removed container {container_name} for user {user_id}")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to remove container (may not exist): {e}")
-            
-            # Release port
+            # Release ports
             self.release_user_port(user_id)
+            self.release_user_booking_port(user_id)
             
             # Delete project directory
             user_project_dir = self.projects_dir / str(user_id)
@@ -599,38 +756,44 @@ int main() {
             raise
     
     def restart_container(self, user_id: int, booking_mode: bool = False) -> Dict:
-        """Restart user's Theia container with better error handling for crashed containers"""
+        """Restart user's Theia container(s) with better error handling for crashed containers"""
         try:
-            container_name = self.get_container_name(user_id)
-            
-            # First, try to stop the container gracefully
+            # Restart preview container
+            preview_container_name = self.get_preview_container_name(user_id)
             stop_result = self.stop_container(user_id)
-            
-            # If stop failed, force remove the container to handle crashed state
             if not stop_result.get("success"):
-                logger.warning(f"Graceful stop failed for user {user_id}, forcing container removal")
+                logger.warning(f"Graceful preview stop failed for user {user_id}, forcing removal")
                 try:
-                    # Force remove the container (handles crashed/stuck containers)
                     subprocess.run(
-                        ["docker", "rm", "-f", container_name],
-                        capture_output=True,
-                        text=True,
-                        timeout=30
+                        ["docker", "rm", "-f", preview_container_name],
+                        capture_output=True, text=True, timeout=30
                     )
-                    # Release port mapping after force removal
                     self.release_user_port(user_id)
-                    logger.info(f"Force removed crashed container {container_name} for user {user_id}")
+                    logger.info(f"Force removed crashed preview container {preview_container_name} for user {user_id}")
                 except Exception as force_error:
-                    logger.error(f"Failed to force remove container for user {user_id}: {force_error}")
+                    logger.error(f"Failed to force remove preview container for user {user_id}: {force_error}")
             
-            # Start the container
+            if booking_mode:
+                # Also restart the booking container
+                booking_container_name = self.get_booking_container_name(user_id)
+                stop_booking = self.stop_booking_container(user_id)
+                if not stop_booking.get("success"):
+                    try:
+                        subprocess.run(
+                            ["docker", "rm", "-f", booking_container_name],
+                            capture_output=True, text=True, timeout=30
+                        )
+                        self.release_user_booking_port(user_id)
+                    except Exception as force_error:
+                        logger.error(f"Failed to force remove booking container for user {user_id}: {force_error}")
+            
             return self.start_container(user_id, booking_mode=booking_mode)
         except Exception as e:
             logger.error(f"Error restarting container for user {user_id}: {e}")
             return {"success": False, "error": f"Restart failed: {str(e)}"}
     
     def list_user_containers(self) -> List[Dict]:
-        """List all user containers"""
+        """List all user containers (both preview and booking)"""
         try:
             result = subprocess.run(
                 ["docker", "ps", "-a", "--filter", f"name={self.container_prefix}", "--format", "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"],
@@ -650,12 +813,25 @@ int main() {
                         status = parts[1]
                         ports = parts[2] if len(parts) > 2 else ""
                         
-                        # Extract user ID from container name
-                        if name.startswith(self.container_prefix):
+                        # Extract container type and user ID from container name
+                        container_type = None
+                        user_id = None
+                        if name.startswith(self.preview_container_prefix):
+                            container_type = "preview"
+                            user_id = name[len(self.preview_container_prefix):]
+                        elif name.startswith(self.booking_container_prefix):
+                            container_type = "booking"
+                            user_id = name[len(self.booking_container_prefix):]
+                        elif name.startswith(self.container_prefix):
+                            # Legacy container naming
+                            container_type = "legacy"
                             user_id = name[len(self.container_prefix):]
+                        
+                        if user_id is not None:
                             containers.append({
                                 "user_id": user_id,
                                 "container_name": name,
+                                "container_type": container_type,
                                 "status": status,
                                 "ports": ports
                             })
@@ -678,7 +854,11 @@ int main() {
                 if "Exited" in container["status"]:
                     try:
                         user_id = int(container["user_id"])
-                        result = self.stop_container(user_id)  # This will remove the container
+                        container_type = container.get("container_type", "preview")
+                        if container_type == "booking":
+                            result = self.stop_booking_container(user_id)
+                        else:
+                            result = self.stop_container(user_id)
                         if result.get("success"):
                             cleaned_count += 1
                         stale_containers.append({
@@ -712,7 +892,11 @@ int main() {
                 if "Up" in container["status"]:  # Only stop running containers
                     try:
                         user_id = int(container["user_id"])
-                        result = self.stop_container(user_id)
+                        container_type = container.get("container_type", "preview")
+                        if container_type == "booking":
+                            result = self.stop_booking_container(user_id)
+                        else:
+                            result = self.stop_container(user_id)
                         if result.get("success"):
                             stopped_count += 1
                         results.append({
@@ -750,13 +934,21 @@ int main() {
                 # Wait for grace period
                 time.sleep(self.logout_grace_period_minutes * 60)
                 
-                # Check if user is still inactive and container exists
-                container_name = self.get_container_name(user_id)
-                status = self.get_container_status(user_id)
-                
-                if status.get("status") == "running":
-                    logger.info(f"Cleaning up container for user {user_id} after logout grace period")
+                # Check preview container and stop if running
+                preview_status = self._get_single_container_status(
+                    user_id, self.get_preview_container_name(user_id), self._port_mappings
+                )
+                if preview_status.get("status") == "running":
+                    logger.info(f"Cleaning up preview container for user {user_id} after logout grace period")
                     self.stop_container(user_id)
+                
+                # Also stop booking container if running
+                booking_status = self._get_single_container_status(
+                    user_id, self.get_booking_container_name(user_id), self._booking_port_mappings
+                )
+                if booking_status.get("status") == "running":
+                    logger.info(f"Cleaning up booking container for user {user_id} after logout grace period")
+                    self.stop_booking_container(user_id)
             
             # Start cleanup thread
             cleanup_thread = threading.Thread(target=delayed_cleanup)
@@ -789,8 +981,12 @@ int main() {
                         
                         # If no activity recorded or idle for too long
                         if current_time - last_activity > timeout_seconds:
-                            logger.info(f"Container for user {user_id} idle for {(current_time - last_activity)/3600:.1f} hours - cleaning up")
-                            result = self.stop_container(user_id)
+                            container_type = container.get("container_type", "preview")
+                            logger.info(f"{container_type.title()} container for user {user_id} idle for {(current_time - last_activity)/3600:.1f} hours - cleaning up")
+                            if container_type == "booking":
+                                result = self.stop_booking_container(user_id)
+                            else:
+                                result = self.stop_container(user_id)
                             if result.get("success"):
                                 cleaned_count += 1
                             results.append({

@@ -195,7 +195,8 @@ except Exception as e:
                 "email": email,
                 "password_hash": password_hash,
                 "role": role,
-                "theia_port": None,  # Will be assigned during onboarding
+                "theia_port": None,  # Will be assigned during onboarding (preview container)
+                "theia_booking_port": None,  # Will be assigned when booking container starts
                 "created_at": datetime.now().isoformat()
             }
             
@@ -437,13 +438,42 @@ except Exception as e:
                     return True
             return False
         
+        def get_user_theia_booking_port(self, user_id: int) -> Optional[int]:
+            """Get user's assigned booking Theia port from in-memory storage"""
+            for user in self._users.values():
+                if user["id"] == user_id:
+                    return user.get("theia_booking_port")
+            return None
+        
+        def set_user_theia_booking_port(self, user_id: int, port: int) -> bool:
+            """Set user's assigned booking Theia port in in-memory storage"""
+            for user in self._users.values():
+                if user["id"] == user_id:
+                    user["theia_booking_port"] = port
+                    logger.info(f"MockDB: Set theia_booking_port {port} for user {user_id}")
+                    return True
+            logger.warning(f"MockDB: User {user_id} not found for theia_booking_port assignment")
+            return False
+        
+        def clear_user_theia_booking_port(self, user_id: int) -> bool:
+            """Clear user's assigned booking Theia port in in-memory storage"""
+            for user in self._users.values():
+                if user["id"] == user_id:
+                    user["theia_booking_port"] = None
+                    logger.info(f"MockDB: Cleared theia_booking_port for user {user_id}")
+                    return True
+            return False
+        
         def get_all_assigned_ports(self) -> List[int]:
-            """Get all currently assigned Theia ports from in-memory storage"""
+            """Get all currently assigned Theia ports (preview and booking) from in-memory storage"""
             ports = []
             for user in self._users.values():
                 port = user.get("theia_port")
                 if port:
                     ports.append(port)
+                booking_port = user.get("theia_booking_port")
+                if booking_port:
+                    ports.append(booking_port)
             return ports
     db = MockDatabaseManager()
 
@@ -1493,95 +1523,175 @@ def _has_active_booking(user_id: int, is_demo: bool) -> bool:
 
 @app.get("/theia/status")  
 async def get_theia_status(current_user: dict = Depends(get_current_user)):
-    """Get status of user's Theia container - Auto-start for all authenticated users"""
+    """Get status of user's Theia containers - dual-container workflow.
+    Preview container is always auto-started. Booking container is started when user has an active booking."""
     user_id = int(current_user["sub"])
     
     # Update user activity for cleanup tracking
     theia_manager.update_user_activity(user_id)
     
-    # Determine booking mode first so the correct image is used when auto-starting
+    # Determine booking mode
     has_active_booking = _has_active_booking(user_id, is_demo_user(current_user))
     
     status = theia_manager.get_container_status(user_id)
     
-    # Auto-start Theia container for all users if not running (IDE access is always available)
-    if status.get("status") in ["not_created", "stopped", "error"]:
+    # Auto-start preview container for all users if not running (always-on)
+    if status.get("preview_status") in ["not_created", "stopped", "error", None]:
         user_type = "demo" if is_demo_user(current_user) else "regular"
-        logger.info(f"🎯 Auto-starting Theia container for {user_type} user {user_id}")
-        start_result = theia_manager.start_container(user_id, booking_mode=has_active_booking)
-        if start_result.get("success"):
-            logger.info(f"✅ User {user_id} Theia container auto-started successfully")
-            # Return the new status after starting
-            status = theia_manager.get_container_status(user_id)
+        logger.info(f"🎯 Auto-starting preview container for {user_type} user {user_id}")
+        preview_result = theia_manager.start_preview_container(user_id)
+        if preview_result.get("success"):
+            logger.info(f"✅ User {user_id} preview container auto-started successfully")
         else:
-            logger.error(f"❌ Failed to auto-start Theia for user {user_id}: {start_result.get('error')}")
-            # Return status with auto-start attempt info
+            logger.error(f"❌ Failed to auto-start preview container for user {user_id}: {preview_result.get('error')}")
             status["auto_start_attempted"] = True
-            status["auto_start_error"] = start_result.get("error")
+            status["auto_start_error"] = preview_result.get("error")
+        # Refresh status after starting
+        status = theia_manager.get_container_status(user_id)
+    
+    # Auto-start booking container if user has an active booking and it's not running
+    if has_active_booking and status.get("booking_status") in ["not_created", "stopped", "error", None]:
+        logger.info(f"🎯 Auto-starting booking container for user {user_id} (active booking)")
+        booking_result = theia_manager.start_booking_container(user_id)
+        if booking_result.get("success"):
+            logger.info(f"✅ User {user_id} booking container auto-started successfully")
+        else:
+            logger.error(f"❌ Failed to auto-start booking container for user {user_id}: {booking_result.get('error')}")
+        # Refresh status after starting
+        status = theia_manager.get_container_status(user_id)
+    
+    # Stop booking container if no active booking and it's running
+    if not has_active_booking and status.get("booking_status") == "running":
+        logger.info(f"🛑 Stopping booking container for user {user_id} (no active booking)")
+        stop_result = theia_manager.stop_booking_container(user_id)
+        if not stop_result.get("success"):
+            logger.error(f"❌ Failed to stop booking container for user {user_id}: {stop_result.get('error')}")
+        status = theia_manager.get_container_status(user_id)
     
     # Add booking status information for UI to determine mode
     status["has_active_booking"] = has_active_booking
     status["user_mode"] = "booking" if has_active_booking else "preview"
+    # Primary url/status reflects the relevant container for current mode
+    if has_active_booking and status.get("booking_url"):
+        status["url"] = status["booking_url"]
+        status["status"] = status.get("booking_status", status.get("status"))
+    else:
+        status["url"] = status.get("preview_url") or status.get("url")
+        status["status"] = status.get("preview_status", status.get("status"))
     
     return status
 
 @app.get("/theia/demo/status")
 async def get_demo_theia_status():
-    """Get status of demo user Theia container (bypasses auth for demo purposes)"""
+    """Get status of demo user Theia containers (bypasses auth for demo purposes)"""
     user_id = -1  # Demo user ID
     logger.info(f"🎯 Demo endpoint accessed - checking Theia status for user {user_id}")
     
     status = theia_manager.get_container_status(user_id)
     
-    # Auto-start Theia container for demo user if not running
-    if status.get("status") in ["not_created", "stopped", "error"]:
-        logger.info(f"🎯 Auto-starting Theia container for demo user {user_id}")
-        start_result = theia_manager.start_container(user_id, booking_mode=True)
-        if start_result.get("success"):
-            logger.info(f"✅ Demo user {user_id} Theia container auto-started successfully")
-            # Return the new status after starting
+    # Auto-start preview container for demo user if not running
+    if status.get("preview_status") in ["not_created", "stopped", "error", None]:
+        logger.info(f"🎯 Auto-starting preview container for demo user {user_id}")
+        preview_result = theia_manager.start_preview_container(user_id)
+        if preview_result.get("success"):
+            logger.info(f"✅ Demo user {user_id} preview container auto-started successfully")
             status = theia_manager.get_container_status(user_id)
         else:
-            logger.error(f"❌ Failed to auto-start Theia for demo user {user_id}: {start_result.get('error')}")
-            # Return status with auto-start attempt info
+            logger.error(f"❌ Failed to auto-start preview container for demo user {user_id}: {preview_result.get('error')}")
             status["auto_start_attempted"] = True
-            status["auto_start_error"] = start_result.get("error")
+            status["auto_start_error"] = preview_result.get("error")
+    
+    # Also start booking container for demo users
+    if status.get("booking_status") in ["not_created", "stopped", "error", None]:
+        logger.info(f"🎯 Auto-starting booking container for demo user {user_id}")
+        booking_result = theia_manager.start_booking_container(user_id)
+        if booking_result.get("success"):
+            status = theia_manager.get_container_status(user_id)
+    
+    status["has_active_booking"] = True
+    status["user_mode"] = "booking"
+    status["url"] = status.get("booking_url") or status.get("preview_url") or status.get("url")
     
     return status
 
 @app.post("/theia/start")
 async def start_theia_container(current_user: dict = Depends(get_current_user)):
-    """Start user's Theia container - Available for all authenticated users"""
+    """Start user's preview Theia container - Available for all authenticated users.
+    If user has an active booking, also starts the booking container."""
     user_id = int(current_user["sub"])
     
-    # Determine booking mode: demo users and users with an active booking use the booking image
-    booking_mode = _has_active_booking(user_id, is_demo_user(current_user))
+    has_active_booking = _has_active_booking(user_id, is_demo_user(current_user))
     if is_demo_user(current_user):
-        logger.info(f"🎯 Demo user {user_id} starting Theia container (booking mode)")
+        logger.info(f"🎯 Demo user {user_id} starting Theia containers (preview + booking)")
     else:
-        logger.info(f"✅ Regular user {user_id} starting Theia container ({'booking' if booking_mode else 'preview'} mode)")
+        logger.info(f"✅ Regular user {user_id} starting Theia containers (preview{' + booking' if has_active_booking else ''})")
     
-    # IDE access is now available for all authenticated users
-    # Robot functionality (WebRTC, code execution) still requires active booking
+    # Always start the preview container
+    preview_result = theia_manager.start_preview_container(user_id)
     
-    result = theia_manager.start_container(user_id, booking_mode=booking_mode)
+    # Also start booking container if user has an active booking
+    booking_result = None
+    if has_active_booking or is_demo_user(current_user):
+        booking_result = theia_manager.start_booking_container(user_id)
     
+    if preview_result.get("success"):
+        status = theia_manager.get_container_status(user_id)
+        return {
+            "message": "Theia containers started successfully",
+            "preview_url": status.get("preview_url"),
+            "booking_url": status.get("booking_url"),
+            "url": status.get("booking_url") if has_active_booking else status.get("preview_url"),
+            "status": "running"
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start preview Theia container: {preview_result.get('error', 'Unknown error')}"
+        )
+
+@app.post("/theia/booking/start")
+async def start_booking_theia_container(current_user: dict = Depends(get_current_user)):
+    """Explicitly start the booking IDE container for user. Requires an active booking."""
+    user_id = int(current_user["sub"])
+    
+    has_active_booking = _has_active_booking(user_id, is_demo_user(current_user))
+    if not has_active_booking and not is_demo_user(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="No active booking found. Book a session to use the booking IDE."
+        )
+    
+    result = theia_manager.start_booking_container(user_id)
     if result.get("success"):
         return {
-            "message": "Theia container started successfully",
+            "message": "Booking Theia container started successfully",
             "status": result.get("status"),
             "url": result.get("url"),
             "port": result.get("port")
         }
     else:
         raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to start Theia container: {result.get('error', 'Unknown error')}"
+            status_code=500,
+            detail=f"Failed to start booking Theia container: {result.get('error', 'Unknown error')}"
+        )
+
+@app.post("/theia/booking/stop")
+async def stop_booking_theia_container(current_user: dict = Depends(get_current_user)):
+    """Stop user's booking Theia container (preview container remains running)"""
+    user_id = int(current_user["sub"])
+    result = theia_manager.stop_booking_container(user_id)
+    
+    if result.get("success"):
+        return {"message": "Booking Theia container stopped successfully"}
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to stop booking Theia container: {result.get('error', 'Unknown error')}"
         )
 
 @app.post("/theia/stop")
 async def stop_theia_container(current_user: dict = Depends(get_current_user)):
-    """Stop user's Theia container"""
+    """Stop user's preview Theia container"""
     user_id = int(current_user["sub"])
     result = theia_manager.stop_container(user_id)
     
@@ -1595,7 +1705,7 @@ async def stop_theia_container(current_user: dict = Depends(get_current_user)):
 
 @app.post("/theia/restart")
 async def restart_theia_container(current_user: dict = Depends(get_current_user)):
-    """Restart user's Theia container"""
+    """Restart user's Theia containers"""
     user_id = int(current_user["sub"])
     
     # Determine booking mode so the restarted container uses the correct image
@@ -1604,11 +1714,13 @@ async def restart_theia_container(current_user: dict = Depends(get_current_user)
     result = theia_manager.restart_container(user_id, booking_mode=booking_mode)
     
     if result.get("success"):
+        status = theia_manager.get_container_status(user_id)
         return {
             "message": "Theia container restarted successfully",
-            "status": result.get("status"),
-            "url": result.get("url"),
-            "port": result.get("port")
+            "preview_url": status.get("preview_url"),
+            "booking_url": status.get("booking_url"),
+            "url": status.get("booking_url") if booking_mode else status.get("preview_url"),
+            "status": "running"
         }
     else:
         raise HTTPException(
@@ -1655,15 +1767,16 @@ async def list_theia_containers(current_user: dict = Depends(require_admin)):
 # Additional Theia Admin Endpoints
 @app.post("/theia/admin/stop/{user_id}")
 async def admin_stop_theia_container(user_id: int, current_user: dict = Depends(require_admin)):
-    """Stop any user's Theia container (admin only)"""
-    result = theia_manager.stop_container(user_id)
+    """Stop any user's Theia containers (preview and booking) (admin only)"""
+    preview_result = theia_manager.stop_container(user_id)
+    theia_manager.stop_booking_container(user_id)
     
-    if result.get("success"):
-        return {"message": f"Theia container for user {user_id} stopped successfully"}
+    if preview_result.get("success"):
+        return {"message": f"Theia containers for user {user_id} stopped successfully"}
     else:
         raise HTTPException(
             status_code=500, 
-            detail=f"Failed to stop Theia container for user {user_id}: {result.get('error', 'Unknown error')}"
+            detail=f"Failed to stop Theia containers for user {user_id}: {preview_result.get('error', 'Unknown error')}"
         )
 
 @app.post("/theia/admin/restart/{user_id}")
