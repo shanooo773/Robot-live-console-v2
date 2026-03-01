@@ -1,4 +1,5 @@
 import os
+import socket
 import subprocess
 import json
 import logging
@@ -412,6 +413,14 @@ int main() {
             logger.error(f"Error checking container status for user {user_id}: {e}")
             return False
     
+    def is_theia_ready(self, port: int) -> bool:
+        """Check if the Theia HTTP server at the given host port is accepting TCP connections."""
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1):
+                return True
+        except OSError:
+            return False
+
     def _get_single_container_status(self, user_id: int, container_name: str, port_cache: dict) -> Dict:
         """Helper: get status of a single named container using exact name matching via docker inspect"""
         # Use docker inspect for exact name matching (avoids substring issues with docker ps --filter name=)
@@ -424,7 +433,7 @@ int main() {
         
         if inspect_result.returncode != 0:
             # Container does not exist
-            return {"status": "not_created", "url": None, "port": None, "container_name": container_name}
+            return {"status": "not_created", "url": None, "port": None, "container_name": container_name, "ready": False}
         
         parts = inspect_result.stdout.strip().split("\t")
         container_state = parts[0] if parts else "unknown"
@@ -453,11 +462,13 @@ int main() {
         
         base_url = os.getenv('BASE_URL', f'https://{os.getenv("SERVER_HOST", "172.232.105.47")}')
         
+        ready = is_running and port is not None and self.is_theia_ready(port)
         return {
             "status": "running" if is_running else ("stopped" if container_state in ("exited", "created") else container_state),
             "url": f"{base_url}/theia/{port}/" if is_running and port else None,
             "port": port if is_running else None,
-            "container_name": container_name
+            "container_name": container_name,
+            "ready": ready
         }
     
     def get_container_status(self, user_id: int) -> Dict:
@@ -489,9 +500,11 @@ int main() {
             result["preview_status"] = preview_status["status"]
             result["preview_url"] = preview_status["url"]
             result["preview_port"] = preview_status["port"]
+            result["preview_ready"] = preview_status.get("ready", False)
             result["booking_status"] = booking_status["status"]
             result["booking_url"] = booking_status["url"]
             result["booking_port"] = booking_status["port"]
+            result["booking_ready"] = booking_status.get("ready", False)
             return result
             
         except subprocess.TimeoutExpired:
