@@ -512,6 +512,57 @@ else:
     service_manager = FallbackServiceManager(db)
     theia_manager = None
 
+async def _booking_autostop_loop():
+    """Periodic background task: stop booking containers when their booking time ends."""
+    def _parse_booking_active(booking, current_date, current_time_obj):
+        """Return True if booking is currently within its active time window."""
+        try:
+            return (
+                booking.get("date") == current_date
+                and booking.get("status") == "active"
+                and booking.get("robot_id")
+                and datetime.strptime(booking["start_time"], "%H:%M").time() <= current_time_obj
+                and current_time_obj <= datetime.strptime(booking["end_time"], "%H:%M").time()
+            )
+        except (ValueError, KeyError):
+            return False
+
+    while True:
+        try:
+            await asyncio.sleep(60)  # check every minute
+            if not theia_manager:
+                continue
+            booking_service = service_manager.get_booking_service()
+            now = datetime.now()
+            current_date = now.strftime("%Y-%m-%d")
+            current_time_obj = now.time()
+            containers = theia_manager.list_user_containers()
+            for container in containers:
+                if container.get("container_type") != "booking":
+                    continue
+                if "Up" not in container.get("status", ""):
+                    continue
+                try:
+                    user_id = int(container["user_id"])
+                except (ValueError, TypeError):
+                    continue
+                try:
+                    bookings = booking_service.get_user_bookings(user_id)
+                    has_active = any(
+                        _parse_booking_active(b, current_date, current_time_obj)
+                        for b in bookings
+                    )
+                    if not has_active:
+                        logger.info(f"⏱ Auto-stopping expired booking container for user {user_id}")
+                        theia_manager.stop_booking_container(user_id)
+                except Exception as e:
+                    logger.warning(f"Booking auto-stop check failed for user {user_id}: {e}")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Booking auto-stop loop error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle application lifespan events"""
@@ -569,8 +620,17 @@ async def lifespan(app: FastAPI):
     if not status['core_services_available']:
         logger.error("❌ Critical: Core services not available!")
     
+    # Start booking auto-stop background task
+    autostop_task = asyncio.create_task(_booking_autostop_loop())
+    logger.info("⏱ Booking auto-stop background task started")
+    
     yield
     
+    autostop_task.cancel()
+    try:
+        await autostop_task
+    except asyncio.CancelledError:
+        logger.info("⏱ Booking auto-stop background task stopped")
     logger.info("🛑 Admin Backend API shutting down...")
 
 # Create FastAPI app with lifespan
@@ -1851,6 +1911,20 @@ async def admin_stop_all_containers(current_user: dict = Depends(require_admin))
             status_code=500, 
             detail=f"Failed to stop all containers: {result.get('error', 'Unknown error')}"
         )
+
+@app.get("/theia/admin/surveillance/{user_id}")
+async def admin_surveillance_ide(user_id: int, current_user: dict = Depends(require_admin)):
+    """Get URLs for admin to open and view any user's Theia IDE containers (admin surveillance)"""
+    if not theia_manager:
+        raise HTTPException(status_code=503, detail="Theia manager not available")
+    status = theia_manager.get_container_status(user_id)
+    return {
+        "user_id": user_id,
+        "preview_url": status.get("preview_url"),
+        "preview_status": status.get("preview_status"),
+        "booking_url": status.get("booking_url"),
+        "booking_status": status.get("booking_status"),
+    }
 
 # WebSocket endpoint for future robot communication
 @app.websocket("/ws/robot/{user_id}")

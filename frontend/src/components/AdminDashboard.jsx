@@ -71,7 +71,10 @@ import {
   deleteUser,
   updateUserRole,
   changeAdminPassword,
-  ensureArray
+  ensureArray,
+  adminListContainers,
+  adminStopUserContainer,
+  adminGetSurveillanceUrls,
 } from "../api";
 import { ChevronDownIcon, DeleteIcon, EditIcon, AddIcon, ViewIcon } from "@chakra-ui/icons";
 
@@ -82,6 +85,8 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const [messages, setMessages] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [robots, setRobots] = useState([]);
+  const [ideContainers, setIdeContainers] = useState([]);
+  const [isContainersLoading, setIsContainersLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -557,8 +562,68 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     }
   };
 
-  const openRobotModal = (robot = null) => {
-    if (robot) {
+  // IDE Container surveillance handlers
+  const loadIdeContainers = async () => {
+    setIsContainersLoading(true);
+    try {
+      const containers = await adminListContainers(authToken);
+      setIdeContainers(containers);
+    } catch (error) {
+      console.error("Failed to load IDE containers:", error);
+    } finally {
+      setIsContainersLoading(false);
+    }
+  };
+
+  const handleStopUserContainer = async (userId) => {
+    try {
+      await adminStopUserContainer(userId, authToken);
+      toast({
+        title: "Container stopped",
+        description: `Containers for user ${userId} have been stopped`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      await loadIdeContainers();
+    } catch (error) {
+      toast({
+        title: "Stop failed",
+        description: error.response?.data?.detail || "Failed to stop container",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const handleOpenUserIDE = async (userId) => {
+    try {
+      const data = await adminGetSurveillanceUrls(userId, authToken);
+      const url = data.booking_status === "running" ? data.booking_url : data.preview_url;
+      if (url) {
+        window.open(url, "_blank");
+      } else {
+        toast({
+          title: "IDE not running",
+          description: `No running IDE container found for user ${userId}`,
+          status: "warning",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "View failed",
+        description: "Could not retrieve container URL",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const openRobotModal = (robot = null) => {    if (robot) {
       setSelectedRobot(robot);
       setRobotForm({
         name: robot.name,
@@ -1238,6 +1303,95 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                 </Tbody>
               </Table>
             </TableContainer>
+          </CardBody>
+        </Card>
+
+        {/* IDE Container Surveillance */}
+        <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
+          <CardHeader>
+            <HStack justify="space-between">
+              <Text fontSize="lg" fontWeight="bold" color="white">
+                🖥️ IDE Container Surveillance
+              </Text>
+              <Button
+                size="sm"
+                colorScheme="teal"
+                onClick={loadIdeContainers}
+                isLoading={isContainersLoading}
+              >
+                Refresh Containers
+              </Button>
+            </HStack>
+          </CardHeader>
+          <CardBody>
+            {ideContainers.length === 0 && !isContainersLoading ? (
+              <Text color="gray.400" textAlign="center" py={4}>
+                Click "Refresh Containers" to list all running IDE containers.
+              </Text>
+            ) : (
+              <TableContainer overflowY="auto" maxH="400px">
+                <Table variant="simple" size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th color="gray.300">User ID</Th>
+                      <Th color="gray.300">Container Name</Th>
+                      <Th color="gray.300">Type</Th>
+                      <Th color="gray.300">Status</Th>
+                      <Th color="gray.300">Ports</Th>
+                      <Th color="gray.300">Actions</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {isContainersLoading ? (
+                      <Tr>
+                        <Td colSpan={6} textAlign="center" color="gray.400" py={8}>
+                          Loading containers...
+                        </Td>
+                      </Tr>
+                    ) : ideContainers.map((container, idx) => (
+                      <Tr key={idx}>
+                        <Td color="white">{container.user_id}</Td>
+                        <Td color="gray.300" maxW="200px" overflow="hidden" textOverflow="ellipsis">
+                          {container.container_name}
+                        </Td>
+                        <Td>
+                          <Badge colorScheme={container.container_type === "booking" ? "green" : "blue"}>
+                            {container.container_type || "preview"}
+                          </Badge>
+                        </Td>
+                        <Td>
+                          <Badge colorScheme={container.status?.includes("Up") ? "green" : "gray"}>
+                            {container.status}
+                          </Badge>
+                        </Td>
+                        <Td color="gray.400" fontSize="xs">{container.ports || "—"}</Td>
+                        <Td>
+                          <HStack spacing={2}>
+                            <Button
+                              size="xs"
+                              colorScheme="teal"
+                              leftIcon={<ViewIcon />}
+                              onClick={() => handleOpenUserIDE(container.user_id)}
+                              isDisabled={!container.status?.includes("Up")}
+                            >
+                              View IDE
+                            </Button>
+                            <Button
+                              size="xs"
+                              colorScheme="red"
+                              onClick={() => handleStopUserContainer(container.user_id)}
+                              isDisabled={!container.status?.includes("Up")}
+                            >
+                              Stop
+                            </Button>
+                          </HStack>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </TableContainer>
+            )}
           </CardBody>
         </Card>
       </VStack>
