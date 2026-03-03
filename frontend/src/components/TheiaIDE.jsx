@@ -23,18 +23,27 @@ const TheiaIDE = ({ user, authToken, onError }) => {
     checkTheiaStatus();
   }, []);
 
-  // Auto-start for demo users - check every 5 seconds if container is starting
+  // Poll every 5 seconds for ALL users whenever the preview container is not yet ready.
+  // This handles the window between "docker run -d" returning and the Theia HTTP server
+  // actually accepting connections (which prevents the intermittent first-load failure).
+  // Also polls when a booking container is starting but not yet ready.
   useEffect(() => {
-    if (user?.isDemoUser || user?.isDemoAdmin || user?.isDemoMode) {
-      const interval = setInterval(() => {
-        if (theiaStatus?.auto_start_attempted && theiaStatus?.status !== "running") {
-          checkTheiaStatus();
-        }
-      }, 5000);
+    const previewNotReady = theiaStatus && (
+      theiaStatus.preview_status !== "running" ||
+      (theiaStatus.preview_status === "running" && !theiaStatus.preview_ready)
+    );
+    const bookingNotReady = theiaStatus?.has_active_booking && (
+      theiaStatus.booking_status !== "running" ||
+      (theiaStatus.booking_status === "running" && !theiaStatus.booking_ready)
+    );
+    if (!previewNotReady && !bookingNotReady) return;
 
-      return () => clearInterval(interval);
-    }
-  }, [theiaStatus, user]);
+    const interval = setInterval(() => {
+      checkTheiaStatus();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [theiaStatus]);
 
   const checkTheiaStatus = async () => {
     try {
@@ -235,11 +244,18 @@ const TheiaIDE = ({ user, authToken, onError }) => {
   const activeUrl = (hasActiveBooking && theiaStatus?.booking_url)
     ? theiaStatus.booking_url
     : (theiaStatus?.preview_url || theiaStatus?.url);
-  const isRunning = activeUrl && (
+  // Only show the iframe when the container is running AND the Theia HTTP server is ready.
+  // Gating on preview_ready / booking_ready prevents the intermittent first-load failure
+  // where the just-started container returns a redirect that strips the port from the URL.
+  const containerRunning = activeUrl && (
     (hasActiveBooking && theiaStatus?.booking_status === "running") ||
     (!hasActiveBooking && theiaStatus?.preview_status === "running") ||
     theiaStatus?.status === "running"
   );
+  const containerReady = hasActiveBooking
+    ? (theiaStatus?.booking_ready ?? false)
+    : (theiaStatus?.preview_ready ?? false);
+  const isRunning = containerRunning && containerReady;
 
   if (isLoading) {
     return (
