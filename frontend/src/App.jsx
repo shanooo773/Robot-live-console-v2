@@ -8,7 +8,7 @@ import AdminDashboard from "./components/AdminDashboard";
 import ForgotPasswordPage from "./components/ForgotPasswordPage";
 import ResetPasswordPage from "./components/ResetPasswordPage";
 import VerifyEmailPage from "./components/VerifyEmailPage";
-import { getCurrentUser, scheduleContainerCleanup } from "./api";
+import { getCurrentUser, stopBookingContainer, stopTheiaContainer } from "./api";
 
 function App() {
   const [currentPage, setCurrentPage] = useState("landing"); // landing, auth, booking, editor, admin, forgotPassword, resetPassword, verifyEmail
@@ -73,14 +73,12 @@ function App() {
   };
 
   const handleLogout = async () => {
-    // Schedule container cleanup before clearing auth token
+    // Stop containers BEFORE clearing auth token so the requests can authenticate
     const token = authToken || localStorage.getItem('authToken');
     if (token) {
-      try {
-        await scheduleContainerCleanup(token);
-      } catch (_) {
-        // Non-blocking: ignore errors during cleanup scheduling
-      }
+      // Stop booking container first, then preview container
+      try { await stopBookingContainer(token); } catch (_) {}
+      try { await stopTheiaContainer(token); } catch (_) {}
     }
     setUser(null);
     setAuthToken(null);

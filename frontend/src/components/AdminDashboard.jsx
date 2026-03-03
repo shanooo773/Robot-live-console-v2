@@ -75,6 +75,11 @@ import {
   adminListContainers,
   adminStopUserContainer,
   adminGetSurveillanceUrls,
+  getActiveBookingsNow,
+  startAdminWatch,
+  startAdminWatchSelf,
+  getAdminWatchStatus,
+  stopAdminWatch,
 } from "../api";
 import { ChevronDownIcon, DeleteIcon, EditIcon, AddIcon, ViewIcon } from "@chakra-ui/icons";
 
@@ -87,6 +92,11 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const [robots, setRobots] = useState([]);
   const [ideContainers, setIdeContainers] = useState([]);
   const [isContainersLoading, setIsContainersLoading] = useState(false);
+  // Admin surveillance state
+  const [activeBookingsNow, setActiveBookingsNow] = useState([]);
+  const [isActiveBookingsLoading, setIsActiveBookingsLoading] = useState(false);
+  const [watchStatus, setWatchStatus] = useState(null);
+  const [isWatchLoading, setIsWatchLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -620,6 +630,105 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
         duration: 3000,
         isClosable: true,
       });
+    }
+  };
+
+  // Admin surveillance handlers
+  const loadActiveBookingsNow = async () => {
+    setIsActiveBookingsLoading(true);
+    try {
+      const bookings = await getActiveBookingsNow(authToken);
+      setActiveBookingsNow(ensureArray(bookings));
+    } catch (error) {
+      console.error("Failed to load active bookings:", error);
+      setActiveBookingsNow([]);
+    } finally {
+      setIsActiveBookingsLoading(false);
+    }
+  };
+
+  const loadWatchStatus = async () => {
+    try {
+      const status = await getAdminWatchStatus(authToken);
+      setWatchStatus(status);
+    } catch (error) {
+      setWatchStatus(null);
+    }
+  };
+
+  const handleWatchBooking = async (bookingId) => {
+    setIsWatchLoading(true);
+    try {
+      const result = await startAdminWatch(bookingId, authToken);
+      setWatchStatus({ ...result, status: "running", ready: false });
+      toast({
+        title: "Watch container started",
+        description: `Watching workspace for booking #${bookingId}`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      await loadWatchStatus();
+    } catch (error) {
+      toast({
+        title: "Watch failed",
+        description: error.response?.data?.detail || "Failed to start watch container",
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsWatchLoading(false);
+    }
+  };
+
+  const handleWatchSelf = async () => {
+    setIsWatchLoading(true);
+    try {
+      const result = await startAdminWatchSelf(authToken);
+      setWatchStatus({ ...result, status: "running", ready: false });
+      toast({
+        title: "Admin IDE started",
+        description: "Watch container is starting with your own workspace",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      await loadWatchStatus();
+    } catch (error) {
+      toast({
+        title: "Start failed",
+        description: error.response?.data?.detail || "Failed to start admin IDE",
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsWatchLoading(false);
+    }
+  };
+
+  const handleStopWatch = async () => {
+    setIsWatchLoading(true);
+    try {
+      await stopAdminWatch(authToken);
+      setWatchStatus(null);
+      toast({
+        title: "Watch container stopped",
+        status: "info",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      toast({
+        title: "Stop failed",
+        description: error.response?.data?.detail || "Failed to stop watch container",
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsWatchLoading(false);
     }
   };
 
@@ -1392,6 +1501,128 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                 </Table>
               </TableContainer>
             )}
+          </CardBody>
+        </Card>
+
+        {/* Admin Surveillance — Watch Container */}
+        <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
+          <CardHeader>
+            <HStack justify="space-between">
+              <Text fontSize="lg" fontWeight="bold" color="white">
+                🔭 Admin Surveillance (Watch Container)
+              </Text>
+              <HStack spacing={2}>
+                <Button
+                  size="sm"
+                  colorScheme="cyan"
+                  onClick={loadActiveBookingsNow}
+                  isLoading={isActiveBookingsLoading}
+                >
+                  Refresh Active Bookings
+                </Button>
+                <Button
+                  size="sm"
+                  colorScheme="purple"
+                  onClick={handleWatchSelf}
+                  isLoading={isWatchLoading}
+                >
+                  Watch My Workspace
+                </Button>
+                {watchStatus && watchStatus.status === "running" && (
+                  <Button
+                    size="sm"
+                    colorScheme="red"
+                    variant="outline"
+                    onClick={handleStopWatch}
+                    isLoading={isWatchLoading}
+                  >
+                    Stop Watch
+                  </Button>
+                )}
+              </HStack>
+            </HStack>
+          </CardHeader>
+          <CardBody>
+            <VStack spacing={4} align="stretch">
+              {/* Current watch status */}
+              {watchStatus && watchStatus.status === "running" && watchStatus.url && (
+                <Box p={4} bg="purple.900" borderRadius="md" border="1px solid" borderColor="purple.600">
+                  <HStack justify="space-between" mb={2}>
+                    <Text color="white" fontWeight="bold">
+                      {watchStatus.mode === "surveillance"
+                        ? `👁 Watching: ${watchStatus.user_name || `User ${watchStatus.user_id}`} (Booking #${watchStatus.booking_id})`
+                        : "👤 Admin Workspace"}
+                    </Text>
+                    <Badge colorScheme="green">Running</Badge>
+                  </HStack>
+                  <Button
+                    size="sm"
+                    colorScheme="purple"
+                    onClick={() => window.open(watchStatus.url, "_blank")}
+                  >
+                    Open Watch IDE ↗
+                  </Button>
+                </Box>
+              )}
+
+              {/* Active bookings list */}
+              <Text color="gray.400" fontSize="sm">
+                Active bookings right now ({activeBookingsNow.length}):
+              </Text>
+              {activeBookingsNow.length === 0 && !isActiveBookingsLoading ? (
+                <Text color="gray.500" textAlign="center" py={2} fontSize="sm">
+                  No active bookings at this moment. Click "Refresh Active Bookings" to check.
+                </Text>
+              ) : (
+                <TableContainer>
+                  <Table variant="simple" size="sm">
+                    <Thead>
+                      <Tr>
+                        <Th color="gray.300">User</Th>
+                        <Th color="gray.300">Robot</Th>
+                        <Th color="gray.300">Time</Th>
+                        <Th color="gray.300">Actions</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {isActiveBookingsLoading ? (
+                        <Tr>
+                          <Td colSpan={4} textAlign="center" color="gray.400" py={4}>
+                            Loading…
+                          </Td>
+                        </Tr>
+                      ) : activeBookingsNow.map((booking) => (
+                        <Tr key={booking.id}>
+                          <Td color="white">
+                            <VStack align="start" spacing={0}>
+                              <Text fontWeight="semibold">{booking.user_name}</Text>
+                              <Text fontSize="xs" color="gray.400">{booking.user_email}</Text>
+                            </VStack>
+                          </Td>
+                          <Td>
+                            <Badge colorScheme="cyan">{booking.robot_type}</Badge>
+                          </Td>
+                          <Td color="gray.300" fontSize="xs">
+                            {booking.start_time} – {booking.end_time}
+                          </Td>
+                          <Td>
+                            <Button
+                              size="xs"
+                              colorScheme="purple"
+                              leftIcon={<ViewIcon />}
+                              isLoading={isWatchLoading}
+                              onClick={() => handleWatchBooking(booking.id)}
+                            >
+                              Watch
+                            </Button>
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                </TableContainer>
+              )}
+            </VStack>
           </CardBody>
         </Card>
       </VStack>
