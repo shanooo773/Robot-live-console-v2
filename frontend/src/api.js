@@ -510,6 +510,20 @@ export const scheduleContainerCleanup = async (token) => {
   return response.data;
 };
 
+export const stopBookingContainer = async (token) => {
+  const response = await API.post("/theia/booking/stop", {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const stopTheiaContainer = async (token) => {
+  const response = await API.post("/theia/stop", {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
 export const adminListContainers = async (token) => {
   const response = await API.get("/theia/containers", {
     headers: { Authorization: `Bearer ${token}` }
@@ -526,6 +540,42 @@ export const adminStopUserContainer = async (userId, token) => {
 
 export const adminGetSurveillanceUrls = async (userId, token) => {
   const response = await API.get(`/theia/admin/surveillance/${userId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+// Admin surveillance watch container API
+export const getActiveBookingsNow = async (token) => {
+  const response = await API.get("/admin/bookings/active-now", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return ensureArray(response.data?.bookings ?? response.data);
+};
+
+export const startAdminWatch = async (bookingId, token) => {
+  const response = await API.post("/admin/theia/watch/start", { booking_id: bookingId }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const startAdminWatchSelf = async (token) => {
+  const response = await API.post("/admin/theia/watch/start-self", {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const getAdminWatchStatus = async (token) => {
+  const response = await API.get("/admin/theia/watch/status", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const stopAdminWatch = async (token) => {
+  const response = await API.post("/admin/theia/watch/stop", {}, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;

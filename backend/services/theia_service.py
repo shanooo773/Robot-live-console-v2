@@ -51,6 +51,9 @@ class TheiaContainerManager:
         # Booking port mapping storage (userid → port) - separate from preview ports
         self._booking_port_mappings = {}
         
+        # Admin watch port mapping storage (admin_id → port)
+        self._admin_watch_port_mappings = {}
+        
         # Ensure directories exist
         try:
             self.projects_dir.mkdir(parents=True, exist_ok=True)
@@ -293,7 +296,146 @@ class TheiaContainerManager:
                     pass
                 except Exception as e:
                     logger.error(f"Failed to clear booking port assignment from database: {e}")
-    
+
+    def get_admin_watch_container_name(self, admin_id: int) -> str:
+        """Get admin watch container name"""
+        return f"theia-admin-watch-{admin_id}"
+
+    def get_admin_watch_port(self, admin_id: int) -> int:
+        """Get or allocate a port for the admin watch container with database persistence"""
+        if self.db_manager:
+            try:
+                existing_port = self.db_manager.get_user_theia_admin_watch_port(admin_id)
+                if existing_port:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        try:
+                            s.bind(('127.0.0.1', existing_port))
+                            s.close()
+                            self._admin_watch_port_mappings[admin_id] = existing_port
+                            logger.info(f"Reusing admin watch port {existing_port} for admin {admin_id} from database")
+                            return existing_port
+                        except OSError:
+                            logger.warning(f"Admin watch port {existing_port} for admin {admin_id} is no longer available")
+                            self.db_manager.clear_user_theia_admin_watch_port(admin_id)
+                            if admin_id in self._admin_watch_port_mappings:
+                                del self._admin_watch_port_mappings[admin_id]
+            except AttributeError:
+                pass
+            except Exception as e:
+                logger.error(f"Error checking database admin watch port for admin {admin_id}: {e}")
+
+        if admin_id in self._admin_watch_port_mappings:
+            port = self._admin_watch_port_mappings[admin_id]
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(('127.0.0.1', port))
+                    s.close()
+                    return port
+                except OSError:
+                    del self._admin_watch_port_mappings[admin_id]
+
+        assigned_ports = set()
+        if self.db_manager:
+            try:
+                assigned_ports = set(self.db_manager.get_all_assigned_ports())
+            except Exception as e:
+                logger.error(f"Error getting assigned ports for admin watch: {e}")
+        assigned_ports.update(self._port_mappings.values())
+        assigned_ports.update(self._booking_port_mappings.values())
+        assigned_ports.update(self._admin_watch_port_mappings.values())
+
+        for port in range(self.base_port, self.max_port + 1):
+            if port in assigned_ports:
+                continue
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(('127.0.0.1', port))
+                    s.close()
+                    self._admin_watch_port_mappings[admin_id] = port
+                    if self.db_manager:
+                        try:
+                            self.db_manager.set_user_theia_admin_watch_port(admin_id, port)
+                            logger.info(f"Assigned admin watch port {port} to admin {admin_id} and saved to database")
+                        except AttributeError:
+                            pass
+                        except Exception as e:
+                            logger.error(f"Failed to save admin watch port assignment to database: {e}")
+                    return port
+                except OSError:
+                    continue
+
+        raise Exception(f"No available ports in range {self.base_port}-{self.max_port} for admin watch container")
+
+    def release_admin_watch_port(self, admin_id: int) -> None:
+        """Release admin watch port mapping when admin watch container is stopped"""
+        if admin_id in self._admin_watch_port_mappings:
+            port = self._admin_watch_port_mappings.pop(admin_id)
+            logger.info(f"Released admin watch port {port} for admin {admin_id}")
+        if self.db_manager:
+            try:
+                self.db_manager.clear_user_theia_admin_watch_port(admin_id)
+            except AttributeError:
+                pass
+            except Exception as e:
+                logger.error(f"Failed to clear admin watch port from database: {e}")
+
+    def start_admin_watch_container(self, admin_id: int, target_project_dir: Path) -> Dict:
+        """Start/restart the admin watch container mounting the given workspace directory.
+        Uses the booking image (muneeb/theia-ros-humble:v2) so the admin sees the same IDE."""
+        try:
+            docker_check = subprocess.run(["docker", "--version"], capture_output=True, text=True, timeout=5)
+            if docker_check.returncode != 0:
+                return {"success": False, "error": "Docker service is not available."}
+
+            container_name = self.get_admin_watch_container_name(admin_id)
+            port = self.get_admin_watch_port(admin_id)
+
+            error = self._pull_image_if_needed(self.theia_booking_image)
+            if error:
+                return {"success": False, "error": error}
+
+            # Stop/remove any existing admin watch container before starting a new one
+            subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, text=True, timeout=15)
+
+            logger.info(f"Starting admin watch container {container_name} for admin {admin_id} mounting {target_project_dir}")
+            return self._run_theia_container(container_name, port, target_project_dir, self.theia_booking_image)
+
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": "Docker operation timed out."}
+        except FileNotFoundError:
+            return {"success": False, "error": "Docker is not installed or not in PATH"}
+        except Exception as e:
+            logger.error(f"Error starting admin watch container for admin {admin_id}: {e}")
+            return {"success": False, "error": f"Unexpected error: {str(e)}"}
+
+    def stop_admin_watch_container(self, admin_id: int) -> Dict:
+        """Stop and remove the admin watch container"""
+        try:
+            container_name = self.get_admin_watch_container_name(admin_id)
+            subprocess.run(["docker", "stop", container_name], capture_output=True, text=True, timeout=30)
+            subprocess.run(["docker", "rm", container_name], capture_output=True, text=True, timeout=30)
+            self.release_admin_watch_port(admin_id)
+            logger.info(f"Admin watch container {container_name} stopped for admin {admin_id}")
+            return {"success": True, "status": "stopped"}
+        except Exception as e:
+            logger.error(f"Error stopping admin watch container for admin {admin_id}: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_admin_watch_container_status(self, admin_id: int) -> Dict:
+        """Get status of the admin watch container"""
+        try:
+            docker_check = subprocess.run(["docker", "--version"], capture_output=True, text=True, timeout=5)
+            if docker_check.returncode != 0:
+                return {"status": "docker_unavailable", "url": None, "port": None, "ready": False}
+            status = self._get_single_container_status(
+                admin_id, self.get_admin_watch_container_name(admin_id), self._admin_watch_port_mappings
+            )
+            return status
+        except Exception as e:
+            logger.error(f"Error getting admin watch container status for admin {admin_id}: {e}")
+            return {"status": "error", "error": str(e), "url": None, "port": None, "ready": False}
+
+
     def get_container_name(self, user_id: int) -> str:
         """Get preview container name for user (backward compatibility)"""
         return f"{self.preview_container_prefix}{user_id}"

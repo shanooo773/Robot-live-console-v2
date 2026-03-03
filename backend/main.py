@@ -197,6 +197,7 @@ except Exception as e:
                 "role": role,
                 "theia_port": None,  # Will be assigned during onboarding (preview container)
                 "theia_booking_port": None,  # Will be assigned when booking container starts
+                "theia_admin_watch_port": None,  # Admin watch container port
                 "created_at": datetime.now().isoformat()
             }
             
@@ -465,7 +466,7 @@ except Exception as e:
             return False
         
         def get_all_assigned_ports(self) -> List[int]:
-            """Get all currently assigned Theia ports (preview and booking) from in-memory storage"""
+            """Get all currently assigned Theia ports (preview, booking, admin watch) from in-memory storage"""
             ports = []
             for user in self._users.values():
                 port = user.get("theia_port")
@@ -474,7 +475,45 @@ except Exception as e:
                 booking_port = user.get("theia_booking_port")
                 if booking_port:
                     ports.append(booking_port)
+                admin_watch_port = user.get("theia_admin_watch_port")
+                if admin_watch_port:
+                    ports.append(admin_watch_port)
             return ports
+
+        def get_user_theia_admin_watch_port(self, user_id: int) -> Optional[int]:
+            for user in self._users.values():
+                if user["id"] == user_id:
+                    return user.get("theia_admin_watch_port")
+            return None
+
+        def set_user_theia_admin_watch_port(self, user_id: int, port: int) -> bool:
+            for user in self._users.values():
+                if user["id"] == user_id:
+                    user["theia_admin_watch_port"] = port
+                    return True
+            return False
+
+        def clear_user_theia_admin_watch_port(self, user_id: int) -> bool:
+            for user in self._users.values():
+                if user["id"] == user_id:
+                    user["theia_admin_watch_port"] = None
+                    return True
+            return False
+
+        def get_active_bookings_now(self) -> List[Dict]:
+            """Get all bookings active at current time (mock)"""
+            now = datetime.now()
+            current_date = now.strftime("%Y-%m-%d")
+            current_time = now.strftime("%H:%M")
+            active = []
+            for booking in self._bookings:
+                if (booking.get("date") == current_date
+                        and booking.get("status") == "active"
+                        and booking.get("start_time", "00:00") <= current_time
+                        and booking.get("end_time", "23:59") >= current_time):
+                    active.append(booking)
+            return active
+
     db = MockDatabaseManager()
 
 # Initialize service manager with fallback
@@ -1925,6 +1964,101 @@ async def admin_surveillance_ide(user_id: int, current_user: dict = Depends(requ
         "booking_url": status.get("booking_url"),
         "booking_status": status.get("booking_status"),
     }
+
+# ─── Admin Surveillance (Watch Container) Endpoints ───────────────────────────
+
+@app.get("/admin/bookings/active-now")
+async def get_active_bookings_now(current_user: dict = Depends(require_admin)):
+    """Return all bookings that are active at the current moment (admin only)."""
+    try:
+        if DATABASE_AVAILABLE:
+            bookings = db.get_active_bookings_now()
+        else:
+            bookings = db.get_active_bookings_now()
+        return {"bookings": bookings}
+    except Exception as e:
+        logger.error(f"Error getting active bookings now: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get active bookings: {str(e)}")
+
+class AdminWatchStartRequest(BaseModel):
+    booking_id: int
+
+@app.post("/admin/theia/watch/start")
+async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = Depends(require_admin)):
+    """Start/restart the admin watch container mounting a booked user's workspace (admin only)."""
+    if not theia_manager:
+        raise HTTPException(status_code=503, detail="Theia manager not available")
+
+    admin_id = int(current_user["sub"])
+    booking_id = body.booking_id
+
+    # Resolve the booking to get the target user
+    try:
+        if DATABASE_AVAILABLE:
+            active_bookings = db.get_active_bookings_now()
+        else:
+            active_bookings = db.get_active_bookings_now()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch active bookings: {str(e)}")
+
+    target_booking = next((b for b in active_bookings if b["id"] == booking_id), None)
+    if target_booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found or not currently active")
+
+    target_user_id = target_booking["user_id"]
+    target_project_dir = theia_manager.get_user_project_dir(target_user_id)
+    theia_manager.ensure_user_project_dir(target_user_id)
+
+    result = theia_manager.start_admin_watch_container(admin_id, target_project_dir)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=f"Failed to start watch container: {result.get('error')}")
+
+    logger.info(f"Admin {admin_id} started surveillance watch on booking {booking_id} (user {target_user_id})")
+    return {
+        "url": result.get("url"),
+        "mode": "surveillance",
+        "booking_id": booking_id,
+        "user_id": target_user_id,
+        "user_name": target_booking.get("user_name"),
+    }
+
+@app.post("/admin/theia/watch/start-self")
+async def admin_watch_start_self(current_user: dict = Depends(require_admin)):
+    """Start/restart the admin watch container mounting the admin's own workspace (admin only)."""
+    if not theia_manager:
+        raise HTTPException(status_code=503, detail="Theia manager not available")
+
+    admin_id = int(current_user["sub"])
+    admin_project_dir = theia_manager.get_user_project_dir(admin_id)
+    theia_manager.ensure_user_project_dir(admin_id)
+
+    result = theia_manager.start_admin_watch_container(admin_id, admin_project_dir)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=f"Failed to start admin watch container: {result.get('error')}")
+
+    logger.info(f"Admin {admin_id} started self-mode watch container")
+    return {"url": result.get("url"), "mode": "admin"}
+
+@app.get("/admin/theia/watch/status")
+async def admin_watch_status(current_user: dict = Depends(require_admin)):
+    """Get status of the admin's watch container (admin only)."""
+    if not theia_manager:
+        raise HTTPException(status_code=503, detail="Theia manager not available")
+    admin_id = int(current_user["sub"])
+    status = theia_manager.get_admin_watch_container_status(admin_id)
+    return {"admin_id": admin_id, **status}
+
+@app.post("/admin/theia/watch/stop")
+async def admin_watch_stop(current_user: dict = Depends(require_admin)):
+    """Stop and remove the admin's watch container (admin only)."""
+    if not theia_manager:
+        raise HTTPException(status_code=503, detail="Theia manager not available")
+    admin_id = int(current_user["sub"])
+    result = theia_manager.stop_admin_watch_container(admin_id)
+    if result.get("success"):
+        return {"message": "Admin watch container stopped successfully"}
+    else:
+        raise HTTPException(status_code=500, detail=f"Failed to stop watch container: {result.get('error')}")
 
 # WebSocket endpoint for future robot communication
 @app.websocket("/ws/robot/{user_id}")

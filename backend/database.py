@@ -221,6 +221,12 @@ class DatabaseManager:
         except pymysql.Error:
             pass  # Column already exists
 
+        # Add theia_admin_watch_port column for admin surveillance watch container
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN theia_admin_watch_port INTEGER DEFAULT NULL")
+        except pymysql.Error:
+            pass  # Column already exists
+
         # Create default admin user if none exists
         self._create_default_admin(cursor, conn)
         
@@ -722,7 +728,7 @@ class DatabaseManager:
             conn.close()
     
     def get_all_assigned_ports(self) -> List[int]:
-        """Get all currently assigned Theia ports (preview and booking)"""
+        """Get all currently assigned Theia ports (preview, booking, and admin watch)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -739,9 +745,87 @@ class DatabaseManager:
         except Exception:
             booking_ports = []
         
+        try:
+            cursor.execute("""
+                SELECT theia_admin_watch_port FROM users WHERE theia_admin_watch_port IS NOT NULL
+            """)
+            admin_watch_ports = [result[0] for result in cursor.fetchall() if result[0]]
+        except Exception:
+            admin_watch_ports = []
+        
         conn.close()
         
-        return preview_ports + booking_ports
+        return preview_ports + booking_ports + admin_watch_ports
+
+    def get_user_theia_admin_watch_port(self, user_id: int) -> Optional[int]:
+        """Get admin's assigned watch container port from database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        cursor.execute(f"SELECT theia_admin_watch_port FROM users WHERE id = {placeholder}", (user_id,))
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result and result[0] else None
+
+    def set_user_theia_admin_watch_port(self, user_id: int, port: int) -> bool:
+        """Set admin's assigned watch container port in database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        cursor.execute(f"UPDATE users SET theia_admin_watch_port = {placeholder} WHERE id = {placeholder}", (port, user_id))
+        updated = cursor.rowcount > 0
+        conn.close()
+        return updated
+
+    def clear_user_theia_admin_watch_port(self, user_id: int) -> bool:
+        """Clear admin's assigned watch container port in database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        cursor.execute(f"UPDATE users SET theia_admin_watch_port = NULL WHERE id = {placeholder}", (user_id,))
+        updated = cursor.rowcount > 0
+        conn.close()
+        return updated
+
+    def get_active_bookings_now(self) -> List[Dict[str, Any]]:
+        """Get all bookings that are currently active (within their time window today)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = datetime.now()
+        current_date = now.strftime("%Y-%m-%d")
+        current_time = now.strftime("%H:%M")
+        placeholder = self._get_placeholder()
+        cursor.execute(f"""
+            SELECT b.id, b.user_id, u.name, u.email, b.robot_type, b.robot_id,
+                   b.date, b.start_time, b.end_time, b.status, r.name as robot_name
+            FROM bookings b
+            JOIN users u ON b.user_id = u.id
+            LEFT JOIN robots r ON b.robot_id = r.id
+            WHERE b.date = {placeholder}
+              AND b.status = 'active'
+              AND b.start_time <= {placeholder}
+              AND b.end_time >= {placeholder}
+            ORDER BY b.start_time
+        """, (current_date, current_time, current_time))
+        bookings = cursor.fetchall()
+        conn.close()
+        return [
+            {
+                "id": b[0],
+                "user_id": b[1],
+                "user_name": b[2],
+                "user_email": b[3],
+                "robot_type": b[4],
+                "robot_id": b[5],
+                "date": b[6],
+                "start_time": b[7],
+                "end_time": b[8],
+                "status": b[9],
+                "robot_name": b[10] or "Unknown"
+            }
+            for b in bookings
+        ]
+
     
     def _find_available_robot(self, robot_type: str, date: str, start_time: str, end_time: str, cursor) -> Optional[Dict[str, Any]]:
         """Find an available robot of the specified type for the given time slot"""
