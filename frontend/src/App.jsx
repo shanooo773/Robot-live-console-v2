@@ -9,6 +9,7 @@ import ForgotPasswordPage from "./components/ForgotPasswordPage";
 import ResetPasswordPage from "./components/ResetPasswordPage";
 import VerifyEmailPage from "./components/VerifyEmailPage";
 import { getCurrentUser, stopBookingContainer, stopTheiaContainer } from "./api";
+import { startTheiaWarmup, stopTheiaWarmup } from "./utils/theiaWarmup";
 
 function App() {
   const [currentPage, setCurrentPage] = useState("landing"); // landing, auth, booking, editor, admin, forgotPassword, resetPassword, verifyEmail
@@ -53,6 +54,7 @@ function App() {
           setUser(userData);
           setAuthToken(authTokenStored);
           setCurrentPage("booking");
+          startTheiaWarmup(authTokenStored);
         })
         .catch(error => {
           console.error('Token validation failed:', error);
@@ -65,6 +67,7 @@ function App() {
     setUser(userData);
     setAuthToken(token);
     setCurrentPage("booking");
+    startTheiaWarmup(token);
   };
 
   const handleBooking = (slot) => {
@@ -73,6 +76,8 @@ function App() {
   };
 
   const handleLogout = async () => {
+    // Stop warmup loop before clearing auth
+    stopTheiaWarmup();
     // Stop containers BEFORE clearing auth token so the requests can authenticate
     const token = authToken || localStorage.getItem('authToken');
     if (token) {
