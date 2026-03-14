@@ -32,7 +32,7 @@ export function startTheiaWarmup(token) {
   const controller = new AbortController();
   _abortController = controller;
 
-  _runWarmup(token, controller.signal).catch((err) => {
+  _runWarmup(token, controller).catch((err) => {
     if (err.name !== 'AbortError') {
       console.warn('[TheiaWarmup] Unexpected error during warmup:', err);
     }
@@ -53,7 +53,8 @@ export function stopTheiaWarmup() {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-async function _runWarmup(token, signal) {
+async function _runWarmup(token, controller) {
+  const signal = controller.signal;
   const deadline = Date.now() + MAX_DURATION_MS;
   let delayIndex = 0;
 

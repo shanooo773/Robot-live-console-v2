@@ -26,6 +26,7 @@ const LandingPage = ({ onGetStarted }) => {
   const floatingRobot = useSpring({
     from: { y: 0 },
     to: async (next) => {
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         await next({ y: -10 });
         await next({ y: 0 });
