@@ -195,11 +195,11 @@ const WebRTCVideoPlayer = ({ user, authToken, onError, robotType = "turtlebot", 
       console.log('Initializing RTSP bridge connection with signaling info:', signalingInfo);
 
       // Determine WebSocket URL with secure protocol preference
-      let wsUrl = signalingInfo.ws_url || process.env.REACT_APP_BRIDGE_WS_URL;
+      let wsUrl = signalingInfo.ws_url || import.meta.env.VITE_BRIDGE_WS_URL;
       if (!wsUrl) {
         // Fallback: use secure WebSocket if page is HTTPS, otherwise use WS
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const port = process.env.REACT_APP_BRIDGE_WS_PORT || '8081';
+        const port = import.meta.env.VITE_BRIDGE_WS_PORT || '8081';
         wsUrl = `${protocol}//${window.location.hostname}:${port}`;
       }
 
