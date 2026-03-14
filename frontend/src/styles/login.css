@@ -1,0 +1,463 @@
+/* ================= LOGIN / SIGNUP PAGE ================= */
+
+.login-wrapper{
+min-height:100vh;
+
+display:flex;
+align-items:center;
+justify-content:center;
+
+background:url("/s1.png");
+background-size:cover;
+background-position:center;
+
+position:relative;
+
+/* background animation */
+animation:bgZoom 20s ease-in-out infinite alternate;
+}
+
+
+/* BACKGROUND ZOOM ANIMATION */
+
+@keyframes bgZoom{
+
+from{
+background-size:105%;
+}
+
+to{
+background-size:115%;
+}
+
+}
+
+
+/* LIGHT OVERLAY */
+
+.login-wrapper::before{
+
+content:"";
+position:absolute;
+inset:0;
+
+background:linear-gradient(
+to right,
+rgba(90, 88, 88, 0.65),
+rgba(255,255,255,0.15)
+);
+
+backdrop-filter:blur(2px);
+z-index:1;
+
+}
+
+
+/* SOFT GLOW EFFECT */
+
+.login-wrapper::after{
+
+content:"";
+position:absolute;
+
+width:500px;
+height:500px;
+
+top:50%;
+left:50%;
+
+transform:translate(-50%,-50%);
+
+background:radial-gradient(
+circle,
+rgba(99,102,241,0.25),
+transparent 70%
+);
+
+filter:blur(120px);
+z-index:1;
+
+}
+
+
+/* ================= LOGIN CARD ================= */
+
+.login-card{
+
+width:100%;
+max-width:420px;
+
+background:rgba(255,255,255,0.9);
+backdrop-filter:blur(12px);
+
+padding:45px;
+
+position:relative;
+z-index:2;
+
+border-radius:20px;
+
+border:1px solid #e2e8f0;
+
+box-shadow:0 35px 90px rgba(0,0,0,0.15);
+
+animation:loginFade 0.8s ease;
+
+transition:0.3s ease;
+
+}
+
+
+/* CARD HOVER EFFECT */
+
+.login-card:hover{
+
+transform:translateY(-6px);
+box-shadow:0 45px 100px rgba(0,0,0,0.18);
+
+}
+
+
+/* CARD FADE ANIMATION */
+
+@keyframes loginFade{
+
+from{
+opacity:0;
+transform:translateY(40px);
+}
+
+to{
+opacity:1;
+transform:translateY(0);
+}
+
+}
+
+
+/* ================= LOGIN TITLE ================= */
+
+.login-card h2{
+
+font-size:24px;
+text-align:center;
+margin-bottom:8px;
+
+}
+
+
+.login-sub{
+
+color:#64748b;
+margin-bottom:30px;
+text-align:center;
+
+}
+
+
+/* ================= LOGIN LOGO ================= */
+
+.login-logo{
+
+display:flex;
+justify-content:center;
+align-items:center;
+
+font-weight:700;
+font-size:16px;
+
+margin-bottom:15px;
+
+color:#4f46e5;
+
+}
+
+
+/* ================= ROBOT ANIMATION ================= */
+
+@keyframes robotWave{
+
+0%{transform:rotate(0deg);}
+50%{transform:rotate(12deg);}
+100%{transform:rotate(0deg);}
+
+}
+
+.robot{
+
+display:inline-block;
+animation:robotWave 2s infinite;
+
+}
+
+
+/* ================= INPUT BOX ================= */
+
+.input-box{
+
+display:flex;
+align-items:center;
+
+gap:10px;
+
+border:1px solid #e2e8f0;
+
+padding:12px 14px;
+
+border-radius:10px;
+
+margin-bottom:15px;
+
+background:white;
+
+transition:0.25s;
+
+}
+
+
+.input-box:hover{
+
+border-color:#6366f1;
+
+}
+
+
+/* INPUT FIELD */
+
+.input-box input{
+
+border:none;
+outline:none;
+
+flex:1;
+
+font-size:14px;
+
+}
+
+
+/* PASSWORD EYE BUTTON */
+
+.eye-btn{
+
+border:none;
+background:none;
+
+cursor:pointer;
+
+}
+
+
+/* INPUT FOCUS */
+
+.input-box:focus-within{
+
+border-color:#4f46e5;
+box-shadow:0 0 0 3px rgba(79,70,229,0.15);
+
+}
+
+
+/* ================= FORGOT PASSWORD ================= */
+
+.forgot-pass{
+
+text-align:right;
+font-size:13px;
+
+margin-bottom:12px;
+
+}
+
+
+.forgot-pass a{
+
+color:#4f46e5;
+text-decoration:none;
+
+}
+
+
+.forgot-pass a:hover{
+
+text-decoration:underline;
+
+}
+
+
+/* ================= LOGIN BUTTON ================= */
+
+.login-btn{
+
+width:100%;
+
+margin-top:10px;
+
+padding:13px;
+
+border-radius:12px;
+
+border:none;
+
+background:linear-gradient(135deg,#4f46e5,#7c3aed);
+
+color:white;
+
+font-weight:600;
+
+cursor:pointer;
+
+transition:0.3s;
+
+}
+
+
+.login-btn:hover{
+
+transform:translateY(-3px);
+box-shadow:0 15px 40px rgba(99,102,241,0.35);
+
+}
+
+
+/* ================= DIVIDER ================= */
+
+.login-divider{
+
+display:flex;
+align-items:center;
+
+margin:25px 0;
+
+gap:15px;
+
+}
+
+
+.login-divider span{
+
+flex:1;
+
+height:1px;
+
+background:linear-gradient(
+to right,
+transparent,
+#e2e8f0,
+transparent
+);
+
+}
+
+
+.login-divider p{
+
+font-size:12px;
+
+letter-spacing:1px;
+
+font-weight:600;
+
+color:#94a3b8;
+
+margin:0;
+
+}
+
+
+/* ================= SOCIAL BUTTONS ================= */
+
+.social-buttons{
+
+display:flex;
+gap:12px;
+
+}
+
+
+.social-btn{
+
+flex:1;
+
+display:flex;
+align-items:center;
+justify-content:center;
+
+gap:8px;
+
+padding:10px 12px;
+
+border-radius:10px;
+
+border:1px solid #e2e8f0;
+
+background:white;
+
+font-size:13px;
+
+cursor:pointer;
+
+transition:0.3s;
+
+}
+
+
+.social-btn:hover{
+
+border-color:#4f46e5;
+
+}
+
+
+.social-icon{
+
+width:18px;
+height:18px;
+
+}
+
+
+/* ================= CREATE ACCOUNT ================= */
+
+.create-account{
+
+margin-top:20px;
+
+font-size:13px;
+
+text-align:center;
+
+}
+
+
+.create-account a{
+
+color:#4f46e5;
+
+font-weight:600;
+
+text-decoration:none;
+
+}
+
+
+.create-account a:hover{
+
+text-decoration:underline;
+
+}
+
+
+/* ================= SECURITY TEXT ================= */
+
+.secure-text{
+
+font-size:12px;
+
+color:#64748b;
+
+text-align:center;
+
+margin-top:12px;
+
+}
