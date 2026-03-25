@@ -36,19 +36,25 @@ import TimeSlotGrid from "./TimeSlotGrid";
 import { ChevronUpIcon } from "@chakra-ui/icons";
 
 // Generate realistic time slots based on business rules - NO DUMMY DATA
-const generateAvailableTimeSlots = async (authToken, selectedDate, selectedRobot) => {
-  if (!authToken || !selectedDate || !selectedRobot) {
+const generateAvailableTimeSlots = async (authToken, selectedDate, selectedRobotId, robotLookup) => {
+  if (!authToken || !selectedDate || !selectedRobotId) {
     return [];
   }
   
   try {
-    const response = await getAvailableSlots(selectedDate, selectedRobot, authToken);
+    const response = await getAvailableSlots(
+      selectedDate,
+      selectedRobotId,
+      authToken,
+      robotLookup?.[selectedRobotId]?.type
+    );
     const slots = response.available_slots || [];
     return Array.isArray(slots) ? slots.map((slot, index) => ({
-      id: `slot_${selectedDate}_${slot.start_time}_${selectedRobot}`,
+      id: `slot_${selectedDate}_${slot.start_time}_${selectedRobotId}`,
       date: slot.date,
       startTime: slot.start_time,
       endTime: slot.end_time,
+      robotId: slot.robot_id || selectedRobotId,
       robotType: slot.robot_type,
       available: true,
       bookedBy: null,
@@ -64,7 +70,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   const [timeSlots, setTimeSlots] = useState([]);
   const [bookedSlots, setBookedSlots] = useState([]);
   const [selectedDate, setSelectedDate] = useState("");
-  const [selectedRobot, setSelectedRobot] = useState("");
+  const [selectedRobotId, setSelectedRobotId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [userBookings, setUserBookings] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
@@ -180,24 +186,30 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     try {
       // Only load real robots from API - no fallback to dummy data
       const robotData = await getAvailableRobots();
-      const robotDetails = robotData.details || {};
+      const registry = Array.isArray(robotData.registry) ? robotData.registry : [];
       
-      // Convert to format expected by frontend, adding emojis based on type
+      // Convert to format keyed by robot_id with metadata
       const formattedRobots = {};
-      Object.keys(robotDetails).forEach(robotType => {
-        const robot = robotDetails[robotType];
+      registry.forEach(robot => {
+        const robotType = robot.type || "";
         let emoji = "🤖"; // default emoji
         if (robotType.includes("arm")) emoji = "🦾";
         else if (robotType.includes("hand")) emoji = "🤲";
         else if (robotType.includes("turtle")) emoji = "🤖";
-        
-        formattedRobots[robotType] = {
+
+        formattedRobots[String(robot.id)] = {
+          id: robot.id,
           name: robot.name || robotType,
-          emoji: emoji
+          type: robotType,
+          image: robot.container_image,
+          emoji
         };
       });
       
       setAvailableRobots(formattedRobots);
+      if (!selectedRobotId && registry.length === 1) {
+        setSelectedRobotId(String(registry[0].id));
+      }
     } catch (error) {
       console.error('Error loading robots:', error);
       // Show empty robots if API fails - no fallback to dummy data
@@ -215,14 +227,14 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   // Auto-fetch available slots when date or robot selection changes
   useEffect(() => {
     loadAvailableSlots();
-  }, [selectedDate, selectedRobot, authToken]);
+  }, [selectedDate, selectedRobotId, authToken]);
 
   const loadAvailableSlots = async () => {
     // Clear previous error
     setSlotError(null);
     
     // Only load slots if we have auth token and both date and robot selected
-    if (!authToken || !selectedDate || !selectedRobot) {
+    if (!authToken || !selectedDate || !selectedRobotId) {
       setTimeSlots([]);
       return;
     }
@@ -230,7 +242,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     setIsAutoFetching(true);
     try {
       // Load real available slots from API only
-      const slots = await generateAvailableTimeSlots(authToken, selectedDate, selectedRobot);
+      const slots = await generateAvailableTimeSlots(authToken, selectedDate, selectedRobotId, availableRobots);
       setTimeSlots(slots);
       
       if (slots.length === 0) {
@@ -337,6 +349,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     try {
       // Regular authenticated booking with enhanced validation
       const bookingData = {
+        robot_id: slot.robotId,
         robot_type: slot.robotType,
         date: slot.date,
         start_time: ensureTwentyFourHourFormat(slot.startTime),
@@ -624,17 +637,17 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
               <FormControl>
                 <FormLabel color="gray.300">Robot Environment</FormLabel>
                 <Select
-                  value={selectedRobot}
-                  onChange={(e) => setSelectedRobot(e.target.value)}
+                  value={selectedRobotId}
+                  onChange={(e) => setSelectedRobotId(e.target.value)}
                   bg="gray.700"
                   border="1px solid"
                   borderColor="gray.600"
                   color="white"
                   placeholder="Select a robot"
                 >
-                  {safeAvailableRobotsKeys.map(robotType => (
-                    <option key={robotType} value={robotType}>
-                      {availableRobots[robotType].emoji} {availableRobots[robotType].name}
+                  {safeAvailableRobotsKeys.map(robotKey => (
+                    <option key={robotKey} value={robotKey}>
+                      {availableRobots[robotKey].emoji} {availableRobots[robotKey].name} ({availableRobots[robotKey].type})
                     </option>
                   ))}
                 </Select>
@@ -662,7 +675,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
         {!slotError && (
           <TimeSlotGrid
             selectedDate={selectedDate}
-            selectedRobot={selectedRobot}
+            selectedRobot={selectedRobotId}
             availableSlots={timeSlots}
             bookedSlots={bookedSlots}
             onSlotSelect={handleBookSlot}
@@ -756,9 +769,9 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                                   {booking.timeStatus === 'in-progress' ? 'In Progress' : 'Scheduled'}
                                 </Badge>
                                 <HStack>
-                                  <Text fontSize="xl">{availableRobots[booking.robot_type]?.emoji || "🤖"}</Text>
+                                  <Text fontSize="xl">{availableRobots[String(booking.robot_id)]?.emoji || "🤖"}</Text>
                                   <Text fontSize="sm" color="green.100">
-                                    {availableRobots[booking.robot_type]?.name || booking.robot_type}
+                                    {availableRobots[String(booking.robot_id)]?.name || booking.robot_name || booking.robot_type}
                                   </Text>
                                 </HStack>
                               </HStack>
@@ -799,6 +812,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                                 onClick={() => onBooking({
                                   id: `booking_${booking.id}`,
                                   robotType: booking.robot_type,
+                                  robotId: booking.robot_id,
                                   date: booking.date,
                                   startTime: booking.start_time,
                                   endTime: booking.end_time,
@@ -842,9 +856,9 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                               <HStack justify="space-between" w="full">
                                 <Badge colorScheme="gray">Completed</Badge>
                                 <HStack>
-                                  <Text fontSize="xl">{availableRobots[booking.robot_type]?.emoji || "🤖"}</Text>
+                                  <Text fontSize="xl">{availableRobots[String(booking.robot_id)]?.emoji || "🤖"}</Text>
                                   <Text fontSize="sm" color="gray.400">
-                                    {availableRobots[booking.robot_type]?.name || booking.robot_type}
+                                    {availableRobots[String(booking.robot_id)]?.name || booking.robot_name || booking.robot_type}
                                   </Text>
                                 </HStack>
                               </HStack>

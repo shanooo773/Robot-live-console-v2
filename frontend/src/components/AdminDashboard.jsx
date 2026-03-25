@@ -116,7 +116,8 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     type: "",
     webrtc_url: "",
     rtsp_url: "",
-    upload_endpoint: ""
+    upload_endpoint: "",
+    container_image: ""
   });
   const [isEditingAnnouncement, setIsEditingAnnouncement] = useState(false);
   const [isEditingRobot, setIsEditingRobot] = useState(false);
@@ -489,7 +490,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       await createRobot(robotForm, authToken);
       await loadDashboardData();
       setIsRobotModalOpen(false);
-      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "" });
+      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "", container_image: "" });
       setIsEditingRobot(false);
       toast({
         title: "Robot created",
@@ -527,7 +528,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       await updateRobot(selectedRobot.id, robotForm, authToken);
       await loadDashboardData();
       setIsRobotModalOpen(false);
-      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "" });
+      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "", container_image: "" });
       setSelectedRobot(null);
       setIsEditingRobot(false);
       toast({
@@ -656,10 +657,10 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     }
   };
 
-  const handleWatchBooking = async (bookingId) => {
+  const handleWatchBooking = async (bookingId, robotId) => {
     setIsWatchLoading(true);
     try {
-      const result = await startAdminWatch(bookingId, authToken);
+      const result = await startAdminWatch(bookingId, authToken, robotId);
       setWatchStatus({ ...result, status: "running", ready: false });
       toast({
         title: "Watch container started",
@@ -739,12 +740,13 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
         type: robot.type,
         webrtc_url: robot.webrtc_url || "",
         rtsp_url: robot.rtsp_url || "",
-        upload_endpoint: robot.upload_endpoint || ""
+        upload_endpoint: robot.upload_endpoint || "",
+        container_image: robot.container_image || ""
       });
       setIsEditingRobot(true);
     } else {
       setSelectedRobot(null);
-      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "" });
+      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "", container_image: "" });
       setIsEditingRobot(false);
     }
     setIsRobotModalOpen(true);
@@ -1548,11 +1550,16 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
               {watchStatus && watchStatus.status === "running" && watchStatus.url && (
                 <Box p={4} bg="purple.900" borderRadius="md" border="1px solid" borderColor="purple.600">
                   <HStack justify="space-between" mb={2}>
-                    <Text color="white" fontWeight="bold">
-                      {watchStatus.mode === "surveillance"
-                        ? `👁 Watching: ${watchStatus.user_name || `User ${watchStatus.user_id}`} (Booking #${watchStatus.booking_id})`
-                        : "👤 Admin Workspace"}
-                    </Text>
+                    <HStack spacing={3}>
+                      {watchStatus.robot_image && (
+                        <Avatar size="sm" name={watchStatus.robot_name} src={watchStatus.robot_image} />
+                      )}
+                      <Text color="white" fontWeight="bold">
+                        {watchStatus.mode === "surveillance"
+                          ? `👁 Watching: ${watchStatus.user_name || `User ${watchStatus.user_id}`} (Booking #${watchStatus.booking_id}, Robot #${watchStatus.robot_id || 'N/A'})`
+                          : "👤 Admin Workspace"}
+                      </Text>
+                    </HStack>
                     <Badge colorScheme="green">Running</Badge>
                   </HStack>
                   <Button
@@ -1600,7 +1607,16 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                             </VStack>
                           </Td>
                           <Td>
-                            <Badge colorScheme="cyan">{booking.robot_type}</Badge>
+                            <HStack spacing={2}>
+                              <Avatar size="xs" name={booking.robot_name} src={booking.robot_image || undefined} />
+                              <VStack spacing={0} align="start">
+                                <Text color="white" fontSize="sm">{booking.robot_name || booking.robot_type}</Text>
+                                <Badge colorScheme="cyan">ID: {booking.robot_id}</Badge>
+                                {booking.robot_image && (
+                                  <Text color="gray.400" fontSize="xs">Image: {booking.robot_image}</Text>
+                                )}
+                              </VStack>
+                            </HStack>
                           </Td>
                           <Td color="gray.300" fontSize="xs">
                             {booking.start_time} – {booking.end_time}
@@ -1611,7 +1627,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                               colorScheme="purple"
                               leftIcon={<ViewIcon />}
                               isLoading={isWatchLoading}
-                              onClick={() => handleWatchBooking(booking.id)}
+                              onClick={() => handleWatchBooking(booking.id, booking.robot_id)}
                             >
                               Watch
                             </Button>
@@ -1848,6 +1864,20 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                   placeholder="http://robot-api:8080/upload"
                   value={robotForm.upload_endpoint}
                   onChange={(e) => setRobotForm({...robotForm, upload_endpoint: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                  _placeholder={{ color: "gray.400" }}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel color="gray.200">Container Image</FormLabel>
+                <Input
+                  placeholder="registry/robot-image:tag"
+                  value={robotForm.container_image}
+                  onChange={(e) => setRobotForm({...robotForm, container_image: e.target.value})}
                   bg="gray.700"
                   border="1px solid"
                   borderColor="gray.600"
