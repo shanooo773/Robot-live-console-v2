@@ -869,7 +869,16 @@ class DatabaseManager:
     def _is_robot_available(self, robot_id: int, date: str, start_time: str, end_time: str, cursor) -> bool:
         """Check if a specific robot is available for the given time slot"""
         placeholder = self._get_placeholder()
-        
+
+        # Enforce at most one active booking per robot regardless of time window
+        cursor.execute(f"""
+            SELECT id FROM bookings 
+            WHERE robot_id = {placeholder} AND status = 'active'
+        """, (robot_id,))
+        existing_active = cursor.fetchone()
+        if existing_active:
+            return False
+
         # Get existing bookings for this robot on the same date
         cursor.execute(f"""
             SELECT start_time, end_time FROM bookings 
@@ -909,6 +918,15 @@ class DatabaseManager:
             if not robot or robot.get("status") != "active":
                 raise HTTPException(status_code=404, detail=f"Robot {robot_id} not found or inactive")
             robot_type = robot_type or robot.get("type")
+
+            # Enforce only one active booking per robot_id at a time
+            cursor.execute(f"SELECT id FROM bookings WHERE robot_id = {placeholder} AND status = 'active'", (robot_id,))
+            active_existing = cursor.fetchone()
+            if active_existing:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Robot {robot_id} already has an active booking"
+                )
 
             # Enforce single active booking per robot/time window
             if not self._is_robot_available(robot_id, date, start_time, end_time, cursor):

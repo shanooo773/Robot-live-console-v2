@@ -1550,11 +1550,16 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
               {watchStatus && watchStatus.status === "running" && watchStatus.url && (
                 <Box p={4} bg="purple.900" borderRadius="md" border="1px solid" borderColor="purple.600">
                   <HStack justify="space-between" mb={2}>
-                    <Text color="white" fontWeight="bold">
-                      {watchStatus.mode === "surveillance"
-                        ? `👁 Watching: ${watchStatus.user_name || `User ${watchStatus.user_id}`} (Booking #${watchStatus.booking_id}, Robot #${watchStatus.robot_id || 'N/A'})`
-                        : "👤 Admin Workspace"}
-                    </Text>
+                    <HStack spacing={3}>
+                      {watchStatus.robot_image && (
+                        <Avatar size="sm" name={watchStatus.robot_name} src={watchStatus.robot_image} />
+                      )}
+                      <Text color="white" fontWeight="bold">
+                        {watchStatus.mode === "surveillance"
+                          ? `👁 Watching: ${watchStatus.user_name || `User ${watchStatus.user_id}`} (Booking #${watchStatus.booking_id}, Robot #${watchStatus.robot_id || 'N/A'})`
+                          : "👤 Admin Workspace"}
+                      </Text>
+                    </HStack>
                     <Badge colorScheme="green">Running</Badge>
                   </HStack>
                   <Button
@@ -1603,7 +1608,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                           </Td>
                           <Td>
                             <HStack spacing={2}>
-                              <Avatar size="xs" name={booking.robot_name} />
+                              <Avatar size="xs" name={booking.robot_name} src={booking.robot_image || undefined} />
                               <VStack spacing={0} align="start">
                                 <Text color="white" fontSize="sm">{booking.robot_name || booking.robot_type}</Text>
                                 <Badge colorScheme="cyan">ID: {booking.robot_id}</Badge>
