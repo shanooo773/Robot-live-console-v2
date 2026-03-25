@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Depends, WebSocket, BackgroundTasks,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing import Optional, List, Dict, Any
 import logging
 from pathlib import Path
@@ -777,10 +777,22 @@ class UserResponse(BaseModel):
 # Booking Models
 class BookingCreate(BaseModel):
     robot_id: int
-    robot_type: Optional[str] = None  # Deprecated: accepted only to return a helpful error
+    robot_type: Optional[str] = None  # Deprecated: ignored if robot_id is provided
     date: str
     start_time: str
     end_time: str
+
+    @model_validator(mode="after")
+    def warn_deprecated_robot_type(self):
+        if self.robot_type is not None:
+            # robot_type is provided; robot_id takes precedence. Log for awareness.
+            # We don't reject the request so old clients aren't broken, but robot_type is ignored.
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "BookingCreate: 'robot_type' field is deprecated and ignored. "
+                "Use 'robot_id' (required) to identify the specific robot instance."
+            )
+        return self
 
 class BookingResponse(BaseModel):
     id: int
@@ -2030,9 +2042,13 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
     target_project_dir = theia_manager.get_user_project_dir(target_user_id)
     theia_manager.ensure_user_project_dir(target_user_id)
 
-    # Use the robot's image_url as the container image if configured
+    # Use the robot's image_url as the container image if it looks like a Docker image reference
+    # (not an HTTP/HTTPS display URL) — falls back to default booking image otherwise
     robot_image_url = target_booking.get("robot_image_url")
-    result = theia_manager.start_admin_watch_container(admin_id, target_project_dir, container_image=robot_image_url)
+    docker_image = None
+    if robot_image_url and not robot_image_url.startswith("http://") and not robot_image_url.startswith("https://"):
+        docker_image = robot_image_url
+    result = theia_manager.start_admin_watch_container(admin_id, target_project_dir, container_image=docker_image)
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=f"Failed to start watch container: {result.get('error')}")
 

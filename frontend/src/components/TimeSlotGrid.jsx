@@ -45,6 +45,8 @@ const TimeSlotGrid = ({
     }
 
     // Check if slot is available
+    // Slots now carry robotId (string robot_id). The robotType fallback handles
+    // any edge-cases where old slot objects still carry robotType instead.
     const isAvailable = availableSlots.some(available => 
       available.startTime === slot.startTime && 
       available.endTime === slot.endTime &&
@@ -56,7 +58,8 @@ const TimeSlotGrid = ({
       return { status: 'available', reason: 'Available for booking' };
     }
 
-    // Check if slot is booked
+    // Check if slot is booked.
+    // booked.robot_id is a number from the API; selectedRobot is a string from the Select.
     const booking = bookedSlots.find(booked => 
       booked.start_time === slot.startTime && 
       booked.end_time === slot.endTime &&
