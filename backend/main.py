@@ -256,15 +256,23 @@ except Exception as e:
                 for user in self._users.values()
             ]
         
-        def create_booking(self, user_id: int, robot_type: str, date: str, start_time: str, end_time: str) -> Dict[str, Any]:
+        def create_booking(self, user_id: int, robot_id: int, date: str, start_time: str, end_time: str) -> Dict[str, Any]:
             """Create a booking in memory"""
+            # Find robot info from in-memory robots
+            robot = self.get_robot_by_id(robot_id)
+            if not robot or robot.get("status") != "active":
+                from fastapi import HTTPException
+                raise HTTPException(status_code=404, detail=f"Robot with id={robot_id} not found or is not active")
+            
             booking_id = self._booking_id_counter
             self._booking_id_counter += 1
             
             booking = {
                 "id": booking_id,
                 "user_id": user_id,
-                "robot_type": robot_type,
+                "robot_id": robot_id,
+                "robot_type": robot.get("type", "unknown"),
+                "robot_name": robot.get("name", "Unknown"),
                 "date": date,
                 "start_time": start_time,
                 "end_time": end_time,
@@ -273,7 +281,7 @@ except Exception as e:
             }
             
             self._bookings.append(booking)
-            logger.info(f"MockDB: Created booking {booking_id} for user {user_id}")
+            logger.info(f"MockDB: Created booking {booking_id} for user {user_id} on robot_id={robot_id}")
             return booking
         
         def get_all_bookings(self):
@@ -349,7 +357,7 @@ except Exception as e:
                     return robot
             return None
         
-        def create_robot(self, name: str, robot_type: str, webrtc_url: str = None, upload_endpoint: str = None, status: str = 'active'):
+        def create_robot(self, name: str, robot_type: str, webrtc_url: str = None, upload_endpoint: str = None, status: str = 'active', image_url: str = None, **kwargs):
             """Create a new robot in memory"""
             if not hasattr(self, '_robots'):
                 self._robots = []
@@ -366,6 +374,7 @@ except Exception as e:
                 "webrtc_url": webrtc_url,
                 "upload_endpoint": upload_endpoint,
                 "status": status,
+                "image_url": image_url,
                 "created_at": datetime.now().isoformat(),
                 "updated_at": None
             }
@@ -382,7 +391,7 @@ except Exception as e:
                     return robot
             return None
         
-        def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, webrtc_url: str = None, upload_endpoint: str = None, status: str = None):
+        def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, webrtc_url: str = None, upload_endpoint: str = None, status: str = None, image_url: str = None, **kwargs):
             """Update robot in memory"""
             robot = self.get_robot_by_id(robot_id)
             if not robot:
@@ -398,6 +407,8 @@ except Exception as e:
                 robot["upload_endpoint"] = upload_endpoint
             if status is not None:
                 robot["status"] = status
+            if image_url is not None:
+                robot["image_url"] = image_url
             
             robot["updated_at"] = datetime.now().isoformat()
             logger.info(f"MockDB: Updated robot {robot_id}")
@@ -765,7 +776,8 @@ class UserResponse(BaseModel):
 
 # Booking Models
 class BookingCreate(BaseModel):
-    robot_type: str
+    robot_id: int
+    robot_type: Optional[str] = None  # Deprecated: accepted only to return a helpful error
     date: str
     start_time: str
     end_time: str
@@ -774,6 +786,8 @@ class BookingResponse(BaseModel):
     id: int
     user_id: int
     robot_type: str
+    robot_id: Optional[int] = None
+    robot_name: Optional[str] = None
     date: str
     start_time: str
     end_time: str
@@ -831,6 +845,7 @@ class RobotCreate(BaseModel):
     rtsp_url: Optional[str] = None
     upload_endpoint: Optional[str] = None
     status: str = 'active'
+    image_url: Optional[str] = None
 
 class RobotUpdate(BaseModel):
     name: Optional[str] = None
@@ -839,6 +854,7 @@ class RobotUpdate(BaseModel):
     rtsp_url: Optional[str] = None
     upload_endpoint: Optional[str] = None
     status: Optional[str] = None
+    image_url: Optional[str] = None
 
 class RobotStatusUpdate(BaseModel):
     status: str
@@ -853,6 +869,7 @@ class RobotResponse(BaseModel):
     status: str
     created_at: str
     updated_at: Optional[str] = None
+    image_url: Optional[str] = None
 
 # API Endpoints
 
@@ -970,12 +987,12 @@ async def resend_confirmation(request: Request, req: ResendConfirmationRequest, 
 # Booking Endpoints
 @app.post("/bookings", response_model=BookingResponse)
 async def create_booking(booking_data: BookingCreate, current_user: dict = Depends(get_current_user)):
-    """Create a new booking"""
+    """Create a new booking using robot_id"""
     booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
     booking = booking_service.create_booking(
         user_id=user_id,
-        robot_type=booking_data.robot_type,
+        robot_id=booking_data.robot_id,
         date=booking_data.date,
         start_time=booking_data.start_time,
         end_time=booking_data.end_time
@@ -1056,8 +1073,8 @@ async def get_booking_schedule(start_date: str, end_date: str):
     return {"bookings": bookings}
 
 @app.get("/bookings/available-slots")
-async def get_available_slots(date: str, robot_type: str, current_user: dict = Depends(get_current_user)):
-    """Get available time slots for a specific date and robot type (authenticated users only)"""
+async def get_available_slots(date: str, robot_id: int, current_user: dict = Depends(get_current_user)):
+    """Get available time slots for a specific date and robot instance (by robot_id)"""
     booking_service = service_manager.get_booking_service()
     
     try:
@@ -1066,15 +1083,17 @@ async def get_available_slots(date: str, robot_type: str, current_user: dict = D
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
-    # Validate robot type
-    available_robots = booking_service.get_available_robots()
-    if robot_type not in available_robots:
-        raise HTTPException(status_code=400, detail=f"Invalid robot type. Available types: {list(available_robots.keys())}")
+    # Validate robot exists and is active
+    robot = db.get_robot_by_id(robot_id)
+    if not robot or robot.get("status") != "active":
+        raise HTTPException(status_code=404, detail=f"Robot with id={robot_id} not found or is not active")
     
-    slots = booking_service.get_available_time_slots(date, robot_type)
+    slots = booking_service.get_available_time_slots(date, robot_id)
     return {
         "date": date,
-        "robot_type": robot_type,
+        "robot_id": robot_id,
+        "robot_type": robot.get("type"),
+        "robot_name": robot.get("name"),
         "available_slots": slots,
         "working_hours": "09:00-18:00",
         "max_session_duration": "2 hours",
@@ -1270,7 +1289,8 @@ async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(req
         webrtc_url=robot_data.webrtc_url,
         rtsp_url=robot_data.rtsp_url,
         upload_endpoint=robot_data.upload_endpoint,
-        status=robot_data.status
+        status=robot_data.status,
+        image_url=robot_data.image_url
     )
     return RobotResponse(**robot)
 
@@ -1312,7 +1332,8 @@ async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dic
         webrtc_url=robot_data.webrtc_url,
         rtsp_url=robot_data.rtsp_url,
         upload_endpoint=robot_data.upload_endpoint,
-        status=robot_data.status
+        status=robot_data.status,
+        image_url=robot_data.image_url
     )
     
     if not success:
@@ -2009,7 +2030,9 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
     target_project_dir = theia_manager.get_user_project_dir(target_user_id)
     theia_manager.ensure_user_project_dir(target_user_id)
 
-    result = theia_manager.start_admin_watch_container(admin_id, target_project_dir)
+    # Use the robot's image_url as the container image if configured
+    robot_image_url = target_booking.get("robot_image_url")
+    result = theia_manager.start_admin_watch_container(admin_id, target_project_dir, container_image=robot_image_url)
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=f"Failed to start watch container: {result.get('error')}")
 
@@ -2020,6 +2043,9 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
         "booking_id": booking_id,
         "user_id": target_user_id,
         "user_name": target_booking.get("user_name"),
+        "robot_id": target_booking.get("robot_id"),
+        "robot_name": target_booking.get("robot_name"),
+        "robot_image_url": robot_image_url,
     }
 
 @app.post("/admin/theia/watch/start-self")

@@ -36,19 +36,20 @@ import TimeSlotGrid from "./TimeSlotGrid";
 import { ChevronUpIcon } from "@chakra-ui/icons";
 
 // Generate realistic time slots based on business rules - NO DUMMY DATA
-const generateAvailableTimeSlots = async (authToken, selectedDate, selectedRobot) => {
-  if (!authToken || !selectedDate || !selectedRobot) {
+const generateAvailableTimeSlots = async (authToken, selectedDate, selectedRobotId) => {
+  if (!authToken || !selectedDate || !selectedRobotId) {
     return [];
   }
   
   try {
-    const response = await getAvailableSlots(selectedDate, selectedRobot, authToken);
+    const response = await getAvailableSlots(selectedDate, selectedRobotId, authToken);
     const slots = response.available_slots || [];
-    return Array.isArray(slots) ? slots.map((slot, index) => ({
-      id: `slot_${selectedDate}_${slot.start_time}_${selectedRobot}`,
+    return Array.isArray(slots) ? slots.map((slot) => ({
+      id: `slot_${selectedDate}_${slot.start_time}_${selectedRobotId}`,
       date: slot.date,
       startTime: slot.start_time,
       endTime: slot.end_time,
+      robotId: String(slot.robot_id || selectedRobotId),
       robotType: slot.robot_type,
       available: true,
       bookedBy: null,
@@ -178,29 +179,31 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
 
   const loadRobots = async () => {
     try {
-      // Only load real robots from API - no fallback to dummy data
+      // Load robot instances from API registry - keyed by string robot_id
       const robotData = await getAvailableRobots();
-      const robotDetails = robotData.details || {};
+      const registry = robotData.registry || [];
       
-      // Convert to format expected by frontend, adding emojis based on type
+      // Convert to dict keyed by string robot_id for easy lookup
       const formattedRobots = {};
-      Object.keys(robotDetails).forEach(robotType => {
-        const robot = robotDetails[robotType];
-        let emoji = "🤖"; // default emoji
-        if (robotType.includes("arm")) emoji = "🦾";
-        else if (robotType.includes("hand")) emoji = "🤲";
-        else if (robotType.includes("turtle")) emoji = "🤖";
+      registry.forEach(robot => {
+        let emoji = "🤖";
+        const type = (robot.type || "").toLowerCase();
+        if (type.includes("arm")) emoji = "🦾";
+        else if (type.includes("hand")) emoji = "🤲";
+        else if (type.includes("turtle")) emoji = "🤖";
         
-        formattedRobots[robotType] = {
-          name: robot.name || robotType,
-          emoji: emoji
+        formattedRobots[String(robot.id)] = {
+          id: robot.id,
+          name: robot.name || robot.type,
+          type: robot.type,
+          emoji,
+          image_url: robot.image_url
         };
       });
       
       setAvailableRobots(formattedRobots);
     } catch (error) {
       console.error('Error loading robots:', error);
-      // Show empty robots if API fails - no fallback to dummy data
       setAvailableRobots({});
       toast({
         title: "Unable to load robots",
@@ -337,7 +340,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
     try {
       // Regular authenticated booking with enhanced validation
       const bookingData = {
-        robot_type: slot.robotType,
+        robot_id: parseInt(selectedRobot),
         date: slot.date,
         start_time: ensureTwentyFourHourFormat(slot.startTime),
         end_time: ensureTwentyFourHourFormat(slot.endTime)
@@ -440,7 +443,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
   const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
   const safeUpcoming = Array.isArray(classifiedBookings?.upcoming) ? classifiedBookings.upcoming : [];
   const safePast = Array.isArray(classifiedBookings?.past) ? classifiedBookings.past : [];
-  const safeAvailableRobotsKeys = (availableRobots && typeof availableRobots === "object") ? Object.keys(availableRobots) : [];
+  const safeAvailableRobotIds = (availableRobots && typeof availableRobots === "object") ? Object.keys(availableRobots) : [];
 
   return (
     <Box 
@@ -632,9 +635,9 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
                   color="white"
                   placeholder="Select a robot"
                 >
-                  {safeAvailableRobotsKeys.map(robotType => (
-                    <option key={robotType} value={robotType}>
-                      {availableRobots[robotType].emoji} {availableRobots[robotType].name}
+                  {safeAvailableRobotIds.map(robotId => (
+                    <option key={robotId} value={robotId}>
+                      {availableRobots[robotId].emoji} {availableRobots[robotId].name} ({availableRobots[robotId].type})
                     </option>
                   ))}
                 </Select>

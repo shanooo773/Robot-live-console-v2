@@ -110,12 +110,12 @@ class BookingService:
             logger.error(f"❌ Validation failed: {e}")
             return False
 
-    def create_booking(self, user_id: int, robot_type: str, date: str, 
+    def create_booking(self, user_id: int, robot_id: int, date: str, 
                       start_time: str, end_time: str) -> Dict[str, Any]:
         """Create a new booking with proper overlap detection and comprehensive audit logging"""
         try:
             # Log booking attempt for audit trail
-            logger.info(f"🔒 BOOKING ATTEMPT - User {user_id} requesting {robot_type} on {date} from {start_time} to {end_time}")
+            logger.info(f"🔒 BOOKING ATTEMPT - User {user_id} requesting robot_id={robot_id} on {date} from {start_time} to {end_time}")
             
             # Validate booking time first
             if not self.validate_booking_time(date, start_time, end_time):
@@ -127,17 +127,17 @@ class BookingService:
                 logger.error(f"❌ BOOKING REJECTED - Invalid user ID: {user_id}")
                 raise HTTPException(status_code=400, detail="Invalid user authentication")
             
-            # Create the booking (database layer will handle robot assignment and conflict detection)
+            # Create the booking (database layer will handle robot validation and conflict detection)
             booking = self.db.create_booking(
                 user_id=user_id,
-                robot_type=robot_type,
+                robot_id=robot_id,
                 date=date,
                 start_time=start_time,
                 end_time=end_time
             )
             
             # Log successful booking creation for audit trail
-            logger.info(f"✅ BOOKING CREATED - User {user_id} successfully booked {robot_type} (ID: {booking.get('id')}) on {date} from {start_time} to {end_time}")
+            logger.info(f"✅ BOOKING CREATED - User {user_id} successfully booked robot_id={robot_id} (ID: {booking.get('id')}) on {date} from {start_time} to {end_time}")
             
             return booking
             
@@ -264,8 +264,8 @@ class BookingService:
             logger.error(f"❌ STATUS UPDATE FAILED - Failed to update booking {booking_id} status: {e}")
             raise BookingServiceException(f"Failed to update booking status: {str(e)}")
     
-    def get_available_time_slots(self, date: str, robot_type: str) -> List[Dict[str, Any]]:
-        """Get available time slots for a specific date and robot type"""
+    def get_available_time_slots(self, date: str, robot_id: int) -> List[Dict[str, Any]]:
+        """Get available time slots for a specific date and robot instance (by robot_id)"""
         try:
             # Parse the requested date
             requested_date = datetime.strptime(date, "%Y-%m-%d").date()
@@ -275,11 +275,11 @@ class BookingService:
             if requested_date < today:
                 return []
             
-            # Get existing bookings for this date and robot type
+            # Get existing bookings for this date and specific robot_id
             existing_bookings = self.db.get_bookings_for_date_range(date, date)
             robot_bookings = [
                 b for b in existing_bookings 
-                if b["robot_type"] == robot_type and b["status"] == "active"
+                if b.get("robot_id") == robot_id and b["status"] == "active"
             ]
             
             # Generate potential slots within working hours (9:00-18:00)
@@ -312,11 +312,11 @@ class BookingService:
                         "date": date,
                         "start_time": start_time,
                         "end_time": end_time,
-                        "robot_type": robot_type,
+                        "robot_id": robot_id,
                         "duration_hours": slot_duration
                     })
             
-            logger.info(f"Found {len(available_slots)} available slots for {robot_type} on {date}")
+            logger.info(f"Found {len(available_slots)} available slots for robot_id={robot_id} on {date}")
             return available_slots
             
         except Exception as e:

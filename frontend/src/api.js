@@ -154,8 +154,8 @@ export const getBookingSchedule = async (startDate, endDate) => {
   return { ...data, available_slots: ensureArray(data.available_slots) };
 };
 
-export const getAvailableSlots = async (date, robotType, token) => {
-  const response = await API.get(`/bookings/available-slots?date=${date}&robot_type=${robotType}`, {
+export const getAvailableSlots = async (date, robotId, token) => {
+  const response = await API.get(`/bookings/available-slots?date=${date}&robot_id=${robotId}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;

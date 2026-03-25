@@ -227,6 +227,12 @@ class DatabaseManager:
         except pymysql.Error:
             pass  # Column already exists
 
+        # Add image_url column to robots table for per-robot container/display image
+        try:
+            cursor.execute("ALTER TABLE robots ADD COLUMN image_url VARCHAR(500)")
+        except pymysql.Error:
+            pass  # Column already exists
+
         # Create default admin user if none exists
         self._create_default_admin(cursor, conn)
         
@@ -797,7 +803,7 @@ class DatabaseManager:
         placeholder = self._get_placeholder()
         cursor.execute(f"""
             SELECT b.id, b.user_id, u.name, u.email, b.robot_type, b.robot_id,
-                   b.date, b.start_time, b.end_time, b.status, r.name as robot_name
+                   b.date, b.start_time, b.end_time, b.status, r.name as robot_name, r.image_url
             FROM bookings b
             JOIN users u ON b.user_id = u.id
             LEFT JOIN robots r ON b.robot_id = r.id
@@ -821,7 +827,8 @@ class DatabaseManager:
                 "start_time": b[7],
                 "end_time": b[8],
                 "status": b[9],
-                "robot_name": b[10] or "Unknown"
+                "robot_name": b[10] or "Unknown",
+                "robot_image_url": b[11]
             }
             for b in bookings
         ]
@@ -833,7 +840,7 @@ class DatabaseManager:
         
         # Get all active robots of the requested type
         cursor.execute(f"""
-            SELECT id, name, type, webrtc_url, upload_endpoint, status, created_at, updated_at
+            SELECT id, name, type, webrtc_url, upload_endpoint, status, created_at, updated_at, image_url
             FROM robots WHERE type = {placeholder} AND status = 'active'
             ORDER BY created_at ASC
         """, (robot_type,))
@@ -849,7 +856,8 @@ class DatabaseManager:
                 "upload_endpoint": robot_row[4],
                 "status": robot_row[5],
                 "created_at": robot_row[6].isoformat() if robot_row[6] else None,
-                "updated_at": robot_row[7].isoformat() if robot_row[7] else None
+                "updated_at": robot_row[7].isoformat() if robot_row[7] else None,
+                "image_url": robot_row[8]
             }
             
             # Check if this robot is available for the requested time slot
@@ -889,22 +897,32 @@ class DatabaseManager:
         
         return True
     
-    def create_booking(self, user_id: int, robot_type: str, date: str, start_time: str, end_time: str) -> Dict[str, Any]:
-        """Create a new booking with specific robot assignment"""
+    def create_booking(self, user_id: int, robot_id: int, date: str, start_time: str, end_time: str) -> Dict[str, Any]:
+        """Create a new booking for a specific robot by robot_id"""
         conn = self.get_connection()
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
         
         try:
-            # Find an available robot of the requested type
-            robot = self._find_available_robot(robot_type, date, start_time, end_time, cursor)
-            if not robot:
+            # Validate the robot exists and is active
+            cursor.execute(f"""
+                SELECT id, name, type, image_url FROM robots WHERE id = {placeholder} AND status = 'active'
+            """, (robot_id,))
+            robot_row = cursor.fetchone()
+            if not robot_row:
                 raise HTTPException(
-                    status_code=409, 
-                    detail=f"No available {robot_type} robots for the requested time slot"
+                    status_code=404,
+                    detail=f"Robot with id={robot_id} not found or is not active"
                 )
-            
-            robot_id = robot['id']
+            robot_name = robot_row[1]
+            robot_type = robot_row[2]
+
+            # Enforce one active booking per robot_id at a time (no overlapping slots)
+            if not self._is_robot_available(robot_id, date, start_time, end_time, cursor):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Robot '{robot_name}' (id={robot_id}) already has an active booking that conflicts with the requested time slot"
+                )
             
             cursor.execute(f"""
                 INSERT INTO bookings (user_id, robot_type, robot_id, date, start_time, end_time)
@@ -918,7 +936,7 @@ class DatabaseManager:
                 "user_id": user_id,
                 "robot_type": robot_type,
                 "robot_id": robot_id,
-                "robot_name": robot.get('name', 'Unknown'),
+                "robot_name": robot_name,
                 "date": date,
                 "start_time": start_time,
                 "end_time": end_time,
@@ -1307,7 +1325,7 @@ class DatabaseManager:
     
     # Robot Registry Methods
     
-    def create_robot(self, name: str, robot_type: str, webrtc_url: str = None, rtsp_url: str = None, upload_endpoint: str = None, status: str = 'active') -> Dict[str, Any]:
+    def create_robot(self, name: str, robot_type: str, webrtc_url: str = None, rtsp_url: str = None, upload_endpoint: str = None, status: str = 'active', image_url: str = None) -> Dict[str, Any]:
         """Create a new robot in the registry"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -1315,9 +1333,9 @@ class DatabaseManager:
         
         try:
             cursor.execute(f"""
-                INSERT INTO robots (name, type, webrtc_url, rtsp_url, upload_endpoint, status)
-                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
-            """, (name, robot_type, webrtc_url, rtsp_url, upload_endpoint, status))
+                INSERT INTO robots (name, type, webrtc_url, rtsp_url, upload_endpoint, status, image_url)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+            """, (name, robot_type, webrtc_url, rtsp_url, upload_endpoint, status, image_url))
             robot_id = cursor.lastrowid
             return {
                 "id": robot_id,
@@ -1327,6 +1345,7 @@ class DatabaseManager:
                 "rtsp_url": rtsp_url,
                 "upload_endpoint": upload_endpoint,
                 "status": status,
+                "image_url": image_url,
                 "created_at": datetime.now().isoformat()
             }
         finally:
@@ -1337,7 +1356,7 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, name, type, webrtc_url, rtsp_url, upload_endpoint, status, created_at, updated_at
+            SELECT id, name, type, webrtc_url, rtsp_url, upload_endpoint, status, created_at, updated_at, image_url
             FROM robots ORDER BY created_at DESC
         """)
         robots = cursor.fetchall()
@@ -1352,7 +1371,8 @@ class DatabaseManager:
                 "upload_endpoint": robot[5],
                 "status": robot[6],
                 "created_at": robot[7].isoformat() if robot[7] else None,
-                "updated_at": robot[8].isoformat() if robot[8] else None
+                "updated_at": robot[8].isoformat() if robot[8] else None,
+                "image_url": robot[9]
             }
             for robot in robots
         ]
@@ -1363,7 +1383,7 @@ class DatabaseManager:
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
         cursor.execute(f"""
-            SELECT id, name, type, webrtc_url, rtsp_url, upload_endpoint, status, created_at, updated_at
+            SELECT id, name, type, webrtc_url, rtsp_url, upload_endpoint, status, created_at, updated_at, image_url
             FROM robots WHERE id = {placeholder}
         """, (robot_id,))
         robot = cursor.fetchone()
@@ -1379,7 +1399,8 @@ class DatabaseManager:
             "upload_endpoint": robot[5],
             "status": robot[6],
             "created_at": robot[7].isoformat() if robot[7] else None,
-            "updated_at": robot[8].isoformat() if robot[8] else None
+            "updated_at": robot[8].isoformat() if robot[8] else None,
+            "image_url": robot[9]
         }
 
     def get_robot_by_type(self, robot_type: str) -> Optional[Dict[str, Any]]:
@@ -1388,7 +1409,7 @@ class DatabaseManager:
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
         cursor.execute(f"""
-            SELECT id, name, type, webrtc_url, rtsp_url, upload_endpoint, status, created_at, updated_at
+            SELECT id, name, type, webrtc_url, rtsp_url, upload_endpoint, status, created_at, updated_at, image_url
             FROM robots WHERE type = {placeholder} LIMIT 1
         """, (robot_type,))
         robot = cursor.fetchone()
@@ -1404,10 +1425,11 @@ class DatabaseManager:
             "upload_endpoint": robot[5],
             "status": robot[6],
             "created_at": robot[7].isoformat() if robot[7] else None,
-            "updated_at": robot[8].isoformat() if robot[8] else None
+            "updated_at": robot[8].isoformat() if robot[8] else None,
+            "image_url": robot[9]
         }
 
-    def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, webrtc_url: str = None, rtsp_url: str = None, upload_endpoint: str = None, status: str = None) -> bool:
+    def update_robot(self, robot_id: int, name: str = None, robot_type: str = None, webrtc_url: str = None, rtsp_url: str = None, upload_endpoint: str = None, status: str = None, image_url: str = None) -> bool:
         """Update a robot in the registry"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -1433,6 +1455,9 @@ class DatabaseManager:
         if status is not None:
             update_fields.append(f"status = {placeholder}")
             update_values.append(status)
+        if image_url is not None:
+            update_fields.append(f"image_url = {placeholder}")
+            update_values.append(image_url)
         if not update_fields:
             conn.close()
             return False
@@ -1449,7 +1474,7 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, name, type, webrtc_url, rtsp_url, upload_endpoint, status, created_at, updated_at
+            SELECT id, name, type, webrtc_url, rtsp_url, upload_endpoint, status, created_at, updated_at, image_url
             FROM robots WHERE status = 'active' ORDER BY created_at DESC
         """)
         robots = cursor.fetchall()
@@ -1464,7 +1489,8 @@ class DatabaseManager:
                 "upload_endpoint": robot[5],
                 "status": robot[6],
                 "created_at": robot[7].isoformat() if robot[7] else None,
-                "updated_at": robot[8].isoformat() if robot[8] else None
+                "updated_at": robot[8].isoformat() if robot[8] else None,
+                "image_url": robot[9]
             }
             for robot in robots
         ]
@@ -1475,7 +1501,7 @@ class DatabaseManager:
         cursor = conn.cursor()
         placeholder = self._get_placeholder()
         cursor.execute(f"""
-            SELECT id, name, type, webrtc_url, rtsp_url, upload_endpoint, status, created_at, updated_at
+            SELECT id, name, type, webrtc_url, rtsp_url, upload_endpoint, status, created_at, updated_at, image_url
             FROM robots WHERE type = {placeholder} AND status = 'active' LIMIT 1
         """, (robot_type,))
         robot = cursor.fetchone()
@@ -1491,7 +1517,8 @@ class DatabaseManager:
             "upload_endpoint": robot[5],
             "status": robot[6],
             "created_at": robot[7].isoformat() if robot[7] else None,
-            "updated_at": robot[8].isoformat() if robot[8] else None
+            "updated_at": robot[8].isoformat() if robot[8] else None,
+            "image_url": robot[9]
         }
 
     

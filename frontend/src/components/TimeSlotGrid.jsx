@@ -49,7 +49,7 @@ const TimeSlotGrid = ({
       available.startTime === slot.startTime && 
       available.endTime === slot.endTime &&
       available.date === selectedDate &&
-      available.robotType === selectedRobot
+      (available.robotId === selectedRobot || available.robotType === selectedRobot)
     );
 
     if (isAvailable) {
@@ -61,7 +61,7 @@ const TimeSlotGrid = ({
       booked.start_time === slot.startTime && 
       booked.end_time === slot.endTime &&
       booked.date === selectedDate &&
-      booked.robot_type === selectedRobot
+      (String(booked.robot_id) === selectedRobot || booked.robot_type === selectedRobot)
     );
 
     if (booking) {
@@ -212,7 +212,7 @@ const TimeSlotGrid = ({
                       available.startTime === slot.startTime && 
                       available.endTime === slot.endTime &&
                       available.date === selectedDate &&
-                      available.robotType === selectedRobot
+                      (available.robotId === selectedRobot || available.robotType === selectedRobot)
                     );
                     if (availableSlot) {
                       setHoveredSlot(slot.id);

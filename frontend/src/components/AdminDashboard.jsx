@@ -116,7 +116,8 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     type: "",
     webrtc_url: "",
     rtsp_url: "",
-    upload_endpoint: ""
+    upload_endpoint: "",
+    image_url: ""
   });
   const [isEditingAnnouncement, setIsEditingAnnouncement] = useState(false);
   const [isEditingRobot, setIsEditingRobot] = useState(false);
@@ -489,7 +490,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       await createRobot(robotForm, authToken);
       await loadDashboardData();
       setIsRobotModalOpen(false);
-      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "" });
+      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "", image_url: "" });
       setIsEditingRobot(false);
       toast({
         title: "Robot created",
@@ -527,7 +528,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       await updateRobot(selectedRobot.id, robotForm, authToken);
       await loadDashboardData();
       setIsRobotModalOpen(false);
-      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "" });
+      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "", image_url: "" });
       setSelectedRobot(null);
       setIsEditingRobot(false);
       toast({
@@ -739,12 +740,13 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
         type: robot.type,
         webrtc_url: robot.webrtc_url || "",
         rtsp_url: robot.rtsp_url || "",
-        upload_endpoint: robot.upload_endpoint || ""
+        upload_endpoint: robot.upload_endpoint || "",
+        image_url: robot.image_url || ""
       });
       setIsEditingRobot(true);
     } else {
       setSelectedRobot(null);
-      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "" });
+      setRobotForm({ name: "", type: "", webrtc_url: "", rtsp_url: "", upload_endpoint: "", image_url: "" });
       setIsEditingRobot(false);
     }
     setIsRobotModalOpen(true);
@@ -1347,6 +1349,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                   <Tr>
                     <Th color="gray.300">Name</Th>
                     <Th color="gray.300">Type</Th>
+                    <Th color="gray.300">Image</Th>
                     <Th color="gray.300">WebRTC URL</Th>
                     <Th color="gray.300">Upload Endpoint</Th>
                     <Th color="gray.300">Created</Th>
@@ -1356,24 +1359,47 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                 <Tbody>
                   {isLoading ? (
                     <Tr>
-                      <Td colSpan={6} textAlign="center" color="gray.400" py={8}>
+                      <Td colSpan={7} textAlign="center" color="gray.400" py={8}>
                         Loading robots...
                       </Td>
                     </Tr>
                   ) : hasError ? (
                     <Tr>
-                      <Td colSpan={6} textAlign="center" color="red.400" py={8}>
+                      <Td colSpan={7} textAlign="center" color="red.400" py={8}>
                         ❌ Failed to load robots data
                       </Td>
                     </Tr>
                   ) : robots.length > 0 ? (
                     robots.map((robot) => (
                       <Tr key={robot.id}>
-                        <Td color="white">{robot.name}</Td>
+                        <Td color="white">
+                          <VStack align="start" spacing={0}>
+                            <Text>{robot.name}</Text>
+                            <Text fontSize="xs" color="gray.500">ID: {robot.id}</Text>
+                          </VStack>
+                        </Td>
                         <Td>
                           <Badge colorScheme="purple">
                             {robot.type}
                           </Badge>
+                        </Td>
+                        <Td>
+                          {robot.image_url ? (
+                            <Box
+                              as="img"
+                              src={robot.image_url}
+                              alt={robot.name}
+                              h="40px"
+                              w="40px"
+                              objectFit="cover"
+                              borderRadius="md"
+                              border="1px solid"
+                              borderColor="gray.600"
+                              onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                          ) : (
+                            <Text color="gray.500" fontSize="xs">—</Text>
+                          )}
                         </Td>
                         <Td color="gray.300" maxW="200px" overflow="hidden" textOverflow="ellipsis">
                           {robot.webrtc_url || 'Not configured'}
@@ -1404,7 +1430,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                     ))
                   ) : (
                     <Tr>
-                      <Td colSpan={6} textAlign="center" color="gray.400" py={8}>
+                      <Td colSpan={7} textAlign="center" color="gray.400" py={8}>
                         No robots found
                       </Td>
                     </Tr>
@@ -1548,11 +1574,34 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
               {watchStatus && watchStatus.status === "running" && watchStatus.url && (
                 <Box p={4} bg="purple.900" borderRadius="md" border="1px solid" borderColor="purple.600">
                   <HStack justify="space-between" mb={2}>
-                    <Text color="white" fontWeight="bold">
-                      {watchStatus.mode === "surveillance"
-                        ? `👁 Watching: ${watchStatus.user_name || `User ${watchStatus.user_id}`} (Booking #${watchStatus.booking_id})`
-                        : "👤 Admin Workspace"}
-                    </Text>
+                    <VStack align="start" spacing={1}>
+                      <Text color="white" fontWeight="bold">
+                        {watchStatus.mode === "surveillance"
+                          ? `👁 Watching: ${watchStatus.user_name || `User ${watchStatus.user_id}`} (Booking #${watchStatus.booking_id})`
+                          : "👤 Admin Workspace"}
+                      </Text>
+                      {watchStatus.mode === "surveillance" && watchStatus.robot_name && (
+                        <HStack spacing={2}>
+                          {watchStatus.robot_image_url && (
+                            <Box
+                              as="img"
+                              src={watchStatus.robot_image_url}
+                              alt={watchStatus.robot_name}
+                              h="32px"
+                              w="32px"
+                              objectFit="cover"
+                              borderRadius="sm"
+                              border="1px solid"
+                              borderColor="purple.400"
+                              onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                          )}
+                          <Text color="purple.200" fontSize="sm">
+                            🤖 {watchStatus.robot_name} (ID: {watchStatus.robot_id})
+                          </Text>
+                        </HStack>
+                      )}
+                    </VStack>
                     <Badge colorScheme="green">Running</Badge>
                   </HStack>
                   <Button
@@ -1600,7 +1649,26 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                             </VStack>
                           </Td>
                           <Td>
-                            <Badge colorScheme="cyan">{booking.robot_type}</Badge>
+                            <VStack align="start" spacing={1}>
+                              <HStack spacing={2}>
+                                {booking.robot_image_url && (
+                                  <Box
+                                    as="img"
+                                    src={booking.robot_image_url}
+                                    alt={booking.robot_name}
+                                    h="24px"
+                                    w="24px"
+                                    objectFit="cover"
+                                    borderRadius="sm"
+                                    border="1px solid"
+                                    borderColor="cyan.600"
+                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                  />
+                                )}
+                                <Badge colorScheme="cyan">{booking.robot_name || booking.robot_type}</Badge>
+                              </HStack>
+                              <Text fontSize="xs" color="gray.500">ID: {booking.robot_id}</Text>
+                            </VStack>
                           </Td>
                           <Td color="gray.300" fontSize="xs">
                             {booking.start_time} – {booking.end_time}
@@ -1848,6 +1916,20 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                   placeholder="http://robot-api:8080/upload"
                   value={robotForm.upload_endpoint}
                   onChange={(e) => setRobotForm({...robotForm, upload_endpoint: e.target.value})}
+                  bg="gray.700"
+                  border="1px solid"
+                  borderColor="gray.600"
+                  color="white"
+                  _placeholder={{ color: "gray.400" }}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel color="gray.200">Image URL (container / display image)</FormLabel>
+                <Input
+                  placeholder="e.g. ghcr.io/org/ros2-image:latest or https://example.com/robot.png"
+                  value={robotForm.image_url}
+                  onChange={(e) => setRobotForm({...robotForm, image_url: e.target.value})}
                   bg="gray.700"
                   border="1px solid"
                   borderColor="gray.600"

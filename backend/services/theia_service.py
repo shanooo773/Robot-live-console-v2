@@ -379,9 +379,10 @@ class TheiaContainerManager:
             except Exception as e:
                 logger.error(f"Failed to clear admin watch port from database: {e}")
 
-    def start_admin_watch_container(self, admin_id: int, target_project_dir: Path) -> Dict:
+    def start_admin_watch_container(self, admin_id: int, target_project_dir: Path, container_image: str = None) -> Dict:
         """Start/restart the admin watch container mounting the given workspace directory.
-        Uses the booking image (muneeb/theia-ros-humble:v2) so the admin sees the same IDE."""
+        Uses the booking image (muneeb/theia-ros-humble:v2) so the admin sees the same IDE.
+        If container_image is provided, uses that instead (per-robot image)."""
         try:
             docker_check = subprocess.run(["docker", "--version"], capture_output=True, text=True, timeout=5)
             if docker_check.returncode != 0:
@@ -390,15 +391,16 @@ class TheiaContainerManager:
             container_name = self.get_admin_watch_container_name(admin_id)
             port = self.get_admin_watch_port(admin_id)
 
-            error = self._pull_image_if_needed(self.theia_booking_image)
+            image_to_use = container_image if container_image else self.theia_booking_image
+            error = self._pull_image_if_needed(image_to_use)
             if error:
                 return {"success": False, "error": error}
 
             # Stop/remove any existing admin watch container before starting a new one
             subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, text=True, timeout=15)
 
-            logger.info(f"Starting admin watch container {container_name} for admin {admin_id} mounting {target_project_dir}")
-            return self._run_theia_container(container_name, port, target_project_dir, self.theia_booking_image)
+            logger.info(f"Starting admin watch container {container_name} for admin {admin_id} mounting {target_project_dir} using image {image_to_use}")
+            return self._run_theia_container(container_name, port, target_project_dir, image_to_use)
 
         except subprocess.TimeoutExpired:
             return {"success": False, "error": "Docker operation timed out."}
@@ -761,8 +763,9 @@ int main() {
             logger.error(f"Error starting preview container for user {user_id}: {e}")
             return {"success": False, "error": f"Unexpected error: {str(e)}"}
     
-    def start_booking_container(self, user_id: int) -> Dict:
-        """Start the booking IDE container for user (uses booking image, theia-booking-<userid>).
+    def start_booking_container(self, user_id: int, container_image: str = None) -> Dict:
+        """Start the booking IDE container for user (uses booking image by default, theia-booking-<userid>).
+        If container_image is provided, uses that instead (per-robot image).
         Shares the same workspace directory as the preview container."""
         try:
             docker_check = subprocess.run(["docker", "--version"], capture_output=True, text=True, timeout=5)
@@ -776,12 +779,13 @@ int main() {
             port = self.get_user_booking_port(user_id)
             project_dir = self.get_user_project_dir(user_id)  # Same workspace as preview
             
-            error = self._pull_image_if_needed(self.theia_booking_image)
+            image_to_use = container_image if container_image else self.theia_booking_image
+            error = self._pull_image_if_needed(image_to_use)
             if error:
                 return {"success": False, "error": error}
             
-            logger.info(f"Starting booking container {container_name} for user {user_id} using image {self.theia_booking_image}")
-            return self._run_theia_container(container_name, port, project_dir, self.theia_booking_image)
+            logger.info(f"Starting booking container {container_name} for user {user_id} using image {image_to_use}")
+            return self._run_theia_container(container_name, port, project_dir, image_to_use)
             
         except subprocess.TimeoutExpired:
             return {"success": False, "error": "Docker operation timed out. Service may be under heavy load."}
