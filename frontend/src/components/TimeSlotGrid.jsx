@@ -49,7 +49,7 @@ const TimeSlotGrid = ({
       available.startTime === slot.startTime && 
       available.endTime === slot.endTime &&
       available.date === selectedDate &&
-      available.robotType === selectedRobot
+      available.robotId === selectedRobot
     );
 
     if (isAvailable) {
@@ -61,7 +61,7 @@ const TimeSlotGrid = ({
       booked.start_time === slot.startTime && 
       booked.end_time === slot.endTime &&
       booked.date === selectedDate &&
-      booked.robot_type === selectedRobot
+      booked.robot_id?.toString() === selectedRobot?.toString()
     );
 
     if (booking) {

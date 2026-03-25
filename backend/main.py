@@ -3,6 +3,7 @@ import time
 import json
 import asyncio
 import uuid
+import re
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -765,7 +766,9 @@ class UserResponse(BaseModel):
 
 # Booking Models
 class BookingCreate(BaseModel):
-    robot_type: str
+    """Create a booking for a specific robot instance."""
+    robot_id: Optional[int] = None
+    robot_type: Optional[str] = None  # Legacy/compatibility hint
     date: str
     start_time: str
     end_time: str
@@ -773,7 +776,10 @@ class BookingCreate(BaseModel):
 class BookingResponse(BaseModel):
     id: int
     user_id: int
-    robot_type: str
+    robot_id: Optional[int] = None
+    robot_type: Optional[str] = None
+    robot_name: Optional[str] = None
+    robot_image: Optional[str] = None
     date: str
     start_time: str
     end_time: str
@@ -830,6 +836,7 @@ class RobotCreate(BaseModel):
     webrtc_url: Optional[str] = None
     rtsp_url: Optional[str] = None
     upload_endpoint: Optional[str] = None
+    container_image: Optional[str] = None
     status: str = 'active'
 
 class RobotUpdate(BaseModel):
@@ -838,6 +845,7 @@ class RobotUpdate(BaseModel):
     webrtc_url: Optional[str] = None
     rtsp_url: Optional[str] = None
     upload_endpoint: Optional[str] = None
+    container_image: Optional[str] = None
     status: Optional[str] = None
 
 class RobotStatusUpdate(BaseModel):
@@ -850,9 +858,25 @@ class RobotResponse(BaseModel):
     webrtc_url: Optional[str] = None
     rtsp_url: Optional[str] = None
     upload_endpoint: Optional[str] = None
+    container_image: Optional[str] = None
     status: str
     created_at: str
     updated_at: Optional[str] = None
+
+
+def _validate_container_image(image: Optional[str]) -> Optional[str]:
+    """Validate and normalize container image names."""
+    if image is None:
+        return None
+    image = image.strip()
+    if not image:
+        return None
+    if not re.match(r"^[\w./:-]+$", image):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid container image format. Use registry/name:tag without spaces or shell characters."
+        )
+    return image
 
 # API Endpoints
 
@@ -975,6 +999,7 @@ async def create_booking(booking_data: BookingCreate, current_user: dict = Depen
     user_id = int(current_user["sub"])
     booking = booking_service.create_booking(
         user_id=user_id,
+        robot_id=booking_data.robot_id,
         robot_type=booking_data.robot_type,
         date=booking_data.date,
         start_time=booking_data.start_time,
@@ -1056,8 +1081,8 @@ async def get_booking_schedule(start_date: str, end_date: str):
     return {"bookings": bookings}
 
 @app.get("/bookings/available-slots")
-async def get_available_slots(date: str, robot_type: str, current_user: dict = Depends(get_current_user)):
-    """Get available time slots for a specific date and robot type (authenticated users only)"""
+async def get_available_slots(date: str, robot_id: Optional[int] = None, robot_type: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Get available time slots for a specific date and robot (authenticated users only)"""
     booking_service = service_manager.get_booking_service()
     
     try:
@@ -1066,14 +1091,24 @@ async def get_available_slots(date: str, robot_type: str, current_user: dict = D
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
-    # Validate robot type
-    available_robots = booking_service.get_available_robots()
-    if robot_type not in available_robots:
-        raise HTTPException(status_code=400, detail=f"Invalid robot type. Available types: {list(available_robots.keys())}")
+    if not robot_id and not robot_type:
+        raise HTTPException(status_code=400, detail="robot_id is required. Legacy requests may include robot_type for single-robot types.")
+
+    if robot_type:
+        available_robots = booking_service.get_available_robots()
+        if robot_type not in available_robots:
+            raise HTTPException(status_code=400, detail=f"Invalid robot type. Available types: {list(available_robots.keys())}")
+        robot_ids_for_type = available_robots[robot_type].get("robot_ids", [])
+        if len(robot_ids_for_type) > 1 and not robot_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Multiple robots found for this type. Please specify robot_id."
+            )
     
-    slots = booking_service.get_available_time_slots(date, robot_type)
+    slots = booking_service.get_available_time_slots(date, robot_id=robot_id, robot_type=robot_type)
     return {
         "date": date,
+        "robot_id": robot_id,
         "robot_type": robot_type,
         "available_slots": slots,
         "working_hours": "09:00-18:00",
@@ -1264,12 +1299,14 @@ async def admin_change_password(
 @app.post("/admin/robots", response_model=RobotResponse)
 async def create_robot(robot_data: RobotCreate, current_user: dict = Depends(require_admin)):
     """Create a new robot (admin only)"""
+    container_image = _validate_container_image(robot_data.container_image)
     robot = db.create_robot(
         name=robot_data.name,
         robot_type=robot_data.type,
         webrtc_url=robot_data.webrtc_url,
         rtsp_url=robot_data.rtsp_url,
         upload_endpoint=robot_data.upload_endpoint,
+        container_image=container_image,
         status=robot_data.status
     )
     return RobotResponse(**robot)
@@ -1305,6 +1342,7 @@ async def get_all_robots_admin(current_user: dict = Depends(require_admin)):
 @app.put("/admin/robots/{robot_id}", response_model=RobotResponse)
 async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dict = Depends(require_admin)):
     """Update a robot (admin only)"""
+    container_image = _validate_container_image(robot_data.container_image)
     success = db.update_robot(
         robot_id=robot_id,
         name=robot_data.name,
@@ -1312,6 +1350,7 @@ async def update_robot(robot_id: int, robot_data: RobotUpdate, current_user: dic
         webrtc_url=robot_data.webrtc_url,
         rtsp_url=robot_data.rtsp_url,
         upload_endpoint=robot_data.upload_endpoint,
+        container_image=container_image,
         status=robot_data.status
     )
     
@@ -1486,18 +1525,22 @@ def get_available_robots():
         
         # Create details from database registry data instead of hardcoded values
         details = {}
+        robots_by_id = {}
         for robot in robots:
             robot_type = robot["type"]
+            robots_by_id[robot["id"]] = robot
             if robot_type not in details:
                 details[robot_type] = {
                     "name": robot["name"],
-                    "description": f"Robot type: {robot_type}"
+                    "description": f"Robot type: {robot_type}",
+                    "container_image": robot.get("container_image")
                 }
         
         return {
             "robots": robot_types,
             "details": details,
-            "registry": robots  # Include full registry data for admin use
+            "registry": robots,  # Include full registry data for admin use
+            "by_id": robots_by_id
         }
     except Exception as e:
         # Log error but don't fall back to dummy data
@@ -1511,14 +1554,25 @@ def get_available_robots():
 
 # Video serving and access control
 @app.get("/videos/{robot_type}")
-async def get_video(robot_type: str, current_user: dict = Depends(get_current_user)):
+async def get_video(robot_type: str, robot_id: Optional[int] = None, current_user: dict = Depends(get_current_user)):
     """Serve video files for active booking sessions only"""
     # Check if user has active booking session for this robot type
     booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
+
+    resolved_robot_id = robot_id
+    robot_type_value = robot_type
+    robot_meta = None
+    # Allow numeric path param to represent robot_id
+    if resolved_robot_id is None and robot_type.isdigit():
+        resolved_robot_id = int(robot_type)
+    if resolved_robot_id:
+        robot_meta = db.get_robot_by_id(resolved_robot_id)
+        if robot_meta:
+            robot_type_value = robot_meta.get("type", robot_type_value)
     
     # Check if user has active session (during their booking time)
-    has_active_session = booking_service.has_active_session(user_id, robot_type)
+    has_active_session = booking_service.has_active_session(user_id, robot_type=robot_type_value if not resolved_robot_id else None, robot_id=resolved_robot_id)
     
     if not has_active_session:
         # Also check for admin access
@@ -1526,7 +1580,7 @@ async def get_video(robot_type: str, current_user: dict = Depends(get_current_us
         if not is_admin:
             raise HTTPException(
                 status_code=403, 
-                detail=f"Access denied. Video access requires an active booking session for {robot_type} robot during your scheduled time."
+                detail=f"Access denied. Video access requires an active booking session for this robot during your scheduled time. Include robot_id for specific robots."
             )
     
     # Define video file mapping
@@ -1536,10 +1590,10 @@ async def get_video(robot_type: str, current_user: dict = Depends(get_current_us
         "hand": "hand_simulation.mp4"
     }
     
-    if robot_type not in video_files:
-        raise HTTPException(status_code=404, detail=f"Video not found for robot type: {robot_type}")
+    if robot_type_value not in video_files:
+        raise HTTPException(status_code=404, detail=f"Video not found for robot type: {robot_type_value}")
     
-    video_path = Path("videos") / video_files[robot_type]
+    video_path = Path("videos") / video_files[robot_type_value]
     
     if not video_path.exists():
         raise HTTPException(
@@ -1550,7 +1604,7 @@ async def get_video(robot_type: str, current_user: dict = Depends(get_current_us
     return FileResponse(
         path=str(video_path),
         media_type="video/mp4",
-        filename=video_files[robot_type]
+        filename=video_files[robot_type_value]
     )
 
 @app.get("/access/check")
@@ -1982,6 +2036,7 @@ async def get_active_bookings_now(current_user: dict = Depends(require_admin)):
 
 class AdminWatchStartRequest(BaseModel):
     booking_id: int
+    robot_id: Optional[int] = None
 
 @app.post("/admin/theia/watch/start")
 async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = Depends(require_admin)):
@@ -1991,6 +2046,7 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
 
     admin_id = int(current_user["sub"])
     booking_id = body.booking_id
+    requested_robot_id = body.robot_id
 
     # Resolve the booking to get the target user
     try:
@@ -2004,6 +2060,12 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
     target_booking = next((b for b in active_bookings if b["id"] == booking_id), None)
     if target_booking is None:
         raise HTTPException(status_code=404, detail="Booking not found or not currently active")
+
+    if requested_robot_id and target_booking.get("robot_id") != requested_robot_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Booking does not match the requested robot_id. Please refresh active bookings."
+        )
 
     target_user_id = target_booking["user_id"]
     target_project_dir = theia_manager.get_user_project_dir(target_user_id)
@@ -2020,6 +2082,9 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
         "booking_id": booking_id,
         "user_id": target_user_id,
         "user_name": target_booking.get("user_name"),
+        "robot_id": target_booking.get("robot_id"),
+        "robot_image": target_booking.get("robot_image"),
+        "robot_name": target_booking.get("robot_name"),
     }
 
 @app.post("/admin/theia/watch/start-self")

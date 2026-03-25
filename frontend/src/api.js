@@ -154,8 +154,11 @@ export const getBookingSchedule = async (startDate, endDate) => {
   return { ...data, available_slots: ensureArray(data.available_slots) };
 };
 
-export const getAvailableSlots = async (date, robotType, token) => {
-  const response = await API.get(`/bookings/available-slots?date=${date}&robot_type=${robotType}`, {
+export const getAvailableSlots = async (date, robotId, token, robotType = null) => {
+  const params = new URLSearchParams({ date });
+  if (robotId) params.append("robot_id", robotId);
+  if (robotType) params.append("robot_type", robotType);
+  const response = await API.get(`/bookings/available-slots?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;
@@ -553,8 +556,10 @@ export const getActiveBookingsNow = async (token) => {
   return ensureArray(response.data?.bookings ?? response.data);
 };
 
-export const startAdminWatch = async (bookingId, token) => {
-  const response = await API.post("/admin/theia/watch/start", { booking_id: bookingId }, {
+export const startAdminWatch = async (bookingId, token, robotId = null) => {
+  const payload = { booking_id: bookingId };
+  if (robotId) payload.robot_id = robotId;
+  const response = await API.post("/admin/theia/watch/start", payload, {
     headers: { Authorization: `Bearer ${token}` }
   });
   return response.data;
