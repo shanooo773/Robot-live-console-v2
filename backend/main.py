@@ -2099,6 +2099,77 @@ class AdminWatchStartRequest(BaseModel):
     booking_id: int
     robot_id: int
 
+# ------------------------------------------------------------------
+# Admin settings endpoints
+# ------------------------------------------------------------------
+
+SURVEILLANCE_BASE_IMAGE_KEY = "surveillance_base_image"
+
+
+@app.get("/admin/settings")
+async def get_admin_settings(current_user: dict = Depends(require_admin)):
+    """Return current admin-configurable settings (admin only)."""
+    if not theia_manager:
+        raise HTTPException(status_code=503, detail="Theia manager not available")
+
+    allowed = theia_manager.get_allowed_images()
+    fallback = theia_manager.get_default_surveillance_image()
+
+    configured_image: str = fallback
+    if DATABASE_AVAILABLE:
+        try:
+            stored = db.get_admin_setting(SURVEILLANCE_BASE_IMAGE_KEY)
+            if stored and stored in allowed:
+                configured_image = stored
+            elif stored:
+                logger.warning(
+                    f"Stored surveillance_base_image '{stored}' is not in the allowlist; "
+                    f"falling back to '{fallback}'"
+                )
+        except Exception as e:
+            logger.error(f"Failed to read admin settings from DB: {e}")
+
+    return {
+        "surveillance_base_image": configured_image,
+        "allowed_images": allowed,
+    }
+
+
+class AdminSettingsUpdate(BaseModel):
+    surveillance_base_image: str
+
+
+@app.put("/admin/settings")
+async def update_admin_settings(body: AdminSettingsUpdate, current_user: dict = Depends(require_admin)):
+    """Update admin-configurable settings (admin only)."""
+    if not theia_manager:
+        raise HTTPException(status_code=503, detail="Theia manager not available")
+
+    image = body.surveillance_base_image.strip()
+    if not theia_manager.is_image_allowed(image):
+        allowed = theia_manager.get_allowed_images()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Image '{image}' is not in the allowlist. Permitted images: {allowed}",
+        )
+
+    if not DATABASE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Database not available; cannot persist settings")
+
+    try:
+        db.set_admin_setting(SURVEILLANCE_BASE_IMAGE_KEY, image)
+    except Exception as e:
+        logger.error(f"Failed to persist admin settings: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save settings")
+
+    logger.info(f"Admin {current_user.get('sub')} set surveillance_base_image='{image}'")
+    return {
+        "surveillance_base_image": image,
+        "allowed_images": theia_manager.get_allowed_images(),
+        "message": "Settings saved successfully",
+    }
+
+
 @app.post("/admin/theia/watch/start")
 async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = Depends(require_admin)):
     """Start/restart the admin watch container mounting a booked user's workspace (admin only)."""
@@ -2137,8 +2208,30 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
     target_project_dir = theia_manager.get_user_project_dir(target_user_id)
     theia_manager.ensure_user_project_dir(target_user_id)
 
+    # Determine image to use:
+    # 1. Per-robot container_image (highest priority)
+    # 2. Admin-configured surveillance_base_image (from DB settings)
+    # 3. Fallback handled inside theia_manager._resolve_image_to_use
+    robot_image = robot.get("container_image")
+    admin_configured_image: Optional[str] = None
+    if not robot_image and DATABASE_AVAILABLE:
+        try:
+            stored = db.get_admin_setting(SURVEILLANCE_BASE_IMAGE_KEY)
+            allowed = theia_manager.get_allowed_images()
+            if stored and stored in allowed:
+                admin_configured_image = stored
+            elif stored:
+                logger.warning(
+                    f"Admin-configured surveillance image '{stored}' is not in allowlist; "
+                    f"using default fallback"
+                )
+        except Exception as e:
+            logger.warning(f"Could not read admin surveillance image setting: {e}")
+
+    image_override = robot_image or admin_configured_image
+
     result = theia_manager.start_admin_watch_container(
-        admin_id, target_project_dir, image_override=robot.get("container_image")
+        admin_id, target_project_dir, image_override=image_override
     )
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=f"Failed to start watch container: {result.get('error')}")
@@ -2151,7 +2244,7 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
         "user_id": target_user_id,
         "user_name": target_booking.get("user_name"),
         "robot_id": target_booking.get("robot_id"),
-        "robot_image": robot.get("container_image") or target_booking.get("robot_image"),
+        "robot_image": robot_image or admin_configured_image,
         "robot_name": robot.get("name") or target_booking.get("robot_name"),
     }
 

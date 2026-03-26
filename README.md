@@ -132,6 +132,32 @@ Key configurations:
 - `MIN_BOOKING_LEAD_TIME_MINUTES`: Minimum minutes a booking must start in the future (default 0)
 - `BOOKING_MAX_DAYS_AHEAD`: Maximum number of days ahead a booking can be made, counting from today (default 7)
 - `DEFAULT_THEIA_IMAGE`: Fallback image for Theia booking/surveillance containers when a robot-specific image isn't set
+- `ALLOWED_SURVEILLANCE_IMAGES`: Comma-separated list of **additional** Docker images admins may choose for surveillance containers (e.g. `my-custom/ros:humble,another/image:latest`).  The built-in defaults (`elswork/theia` and `muneeb/theia-ros-humble:v2`) are always included.
+
+### Admin-configurable Surveillance Base Image
+
+Administrators can choose which Docker image is used when the admin watch (surveillance) container is started.
+
+**How it works:**
+1. Go to the Admin Dashboard → **Surveillance Settings** card.
+2. Select an image from the approved dropdown (populated from the allowlist).
+3. Click **Save Settings** – the choice is persisted in the database and survives restarts.
+4. When starting a watch container from an active booking, image priority is:
+   1. Per-robot `container_image` (highest priority)
+   2. Admin-configured `surveillance_base_image` (set via the UI)
+   3. Environment-variable defaults (`DEFAULT_THEIA_IMAGE`, `THEIA_BOOKING_IMAGE`, `THEIA_IMAGE`)
+
+**Configuring the allowlist:**
+- The default allowlist contains `elswork/theia` and `muneeb/theia-ros-humble:v2`.
+- To add more images set `ALLOWED_SURVEILLANCE_IMAGES` in `.env`:
+  ```
+  ALLOWED_SURVEILLANCE_IMAGES=my-org/custom-ros:humble,another/image:v1
+  ```
+- Arbitrary free-form image names entered by the admin are rejected; only images already on the allowlist can be selected.
+
+**Fallback behaviour:**
+- If the stored image is removed from the allowlist, the system falls back to the first image in the allowlist and logs a warning.
+- If the database is unavailable at startup, the env-variable defaults are used as before.
 
 ### VPS Configuration
 

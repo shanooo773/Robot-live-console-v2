@@ -80,6 +80,8 @@ import {
   startAdminWatchSelf,
   getAdminWatchStatus,
   stopAdminWatch,
+  getAdminSettings,
+  updateAdminSettings,
 } from "../api";
 import { ChevronDownIcon, DeleteIcon, EditIcon, AddIcon, ViewIcon } from "@chakra-ui/icons";
 
@@ -98,6 +100,10 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const [watchStatus, setWatchStatus] = useState(null);
   const [isWatchLoading, setIsWatchLoading] = useState(false);
   const [watchRobotSelection, setWatchRobotSelection] = useState({});
+  // Admin settings state
+  const [adminSettings, setAdminSettings] = useState({ surveillance_base_image: "", allowed_images: [] });
+  const [selectedBaseImage, setSelectedBaseImage] = useState("");
+  const [isSettingsLoading, setIsSettingsLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -153,13 +159,14 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     setHasError(false);
     
     try {
-      const [statsData, usersData, bookingsData, messagesData, announcementsData, robotsData] = await Promise.all([
+      const [statsData, usersData, bookingsData, messagesData, announcementsData, robotsData, settingsData] = await Promise.all([
         getAdminStats(authToken),
         getAllUsers(authToken),
         getAllBookings(authToken),
         getAllMessages(authToken),
         getAllAnnouncements(authToken),
-        getAllRobots(authToken)
+        getAllRobots(authToken),
+        getAdminSettings(authToken).catch(() => null),
       ]);
     setStats(statsData || null);
     setUsers(ensureArray(usersData));
@@ -167,6 +174,10 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     setMessages(ensureArray(messagesData));
     setAnnouncements(ensureArray(announcementsData));
     setRobots(ensureArray(robotsData));
+    if (settingsData) {
+      setAdminSettings(settingsData);
+      setSelectedBaseImage(settingsData.surveillance_base_image || "");
+    }
   } catch (error) {
     console.error("Failed to load dashboard data:", error);
     setHasError(true);
@@ -189,6 +200,33 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
       }, 100);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!selectedBaseImage) return;
+    setIsSettingsLoading(true);
+    try {
+      const result = await updateAdminSettings({ surveillance_base_image: selectedBaseImage }, authToken);
+      setAdminSettings(result);
+      toast({
+        title: "Settings saved",
+        description: `Surveillance base image set to: ${selectedBaseImage}`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      const detail = error?.response?.data?.detail || "Failed to save settings";
+      toast({
+        title: "Save failed",
+        description: detail,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSettingsLoading(false);
     }
   };
 
@@ -1717,6 +1755,58 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                   </Table>
                 </TableContainer>
               )}
+            </VStack>
+          </CardBody>
+        </Card>
+
+        {/* Surveillance Settings */}
+        <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
+          <CardHeader>
+            <Text fontSize="lg" fontWeight="bold" color="white">
+              ⚙️ Surveillance Settings
+            </Text>
+          </CardHeader>
+          <CardBody>
+            <VStack spacing={4} align="stretch" maxW="md">
+              <Box>
+                <Text color="gray.300" fontSize="sm" mb={1}>
+                  Base Docker image for surveillance containers
+                </Text>
+                <Text color="gray.500" fontSize="xs" mb={3}>
+                  This image is used when starting admin watch containers and no per-robot image is configured.
+                  Only approved images from the allowlist can be selected.
+                </Text>
+                <Select
+                  value={selectedBaseImage}
+                  onChange={(e) => setSelectedBaseImage(e.target.value)}
+                  bg="gray.700"
+                  borderColor="gray.500"
+                  color="white"
+                  size="sm"
+                  placeholder={adminSettings.allowed_images.length === 0 ? "Loading…" : "Select an image"}
+                >
+                  {adminSettings.allowed_images.map((img) => (
+                    <option key={img} value={img}>
+                      {img}
+                    </option>
+                  ))}
+                </Select>
+                {adminSettings.surveillance_base_image && (
+                  <Text color="gray.500" fontSize="xs" mt={1}>
+                    Current saved image: {adminSettings.surveillance_base_image}
+                  </Text>
+                )}
+              </Box>
+              <Button
+                colorScheme="blue"
+                size="sm"
+                alignSelf="flex-start"
+                isLoading={isSettingsLoading}
+                isDisabled={!selectedBaseImage || selectedBaseImage === adminSettings.surveillance_base_image}
+                onClick={handleSaveSettings}
+              >
+                Save Settings
+              </Button>
             </VStack>
           </CardBody>
         </Card>

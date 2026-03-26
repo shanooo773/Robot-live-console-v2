@@ -234,6 +234,15 @@ class DatabaseManager:
         except pymysql.Error:
             pass  # Column already exists
 
+        # Admin settings table for persistent key-value admin configuration
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS admin_settings (
+                setting_key VARCHAR(255) PRIMARY KEY,
+                setting_value TEXT,
+                updated_at TIMESTAMP {timestamp_default} ON UPDATE CURRENT_TIMESTAMP
+            )
+        """)
+
         # Create default admin user if none exists
         self._create_default_admin(cursor, conn)
         
@@ -1555,3 +1564,36 @@ class DatabaseManager:
         conn.close()
         
         return deleted
+
+    # ------------------------------------------------------------------
+    # Admin settings (key-value store)
+    # ------------------------------------------------------------------
+
+    def get_admin_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        """Return the value of an admin setting, or *default* if not set."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        cursor.execute(
+            f"SELECT setting_value FROM admin_settings WHERE setting_key = {placeholder}",
+            (key,),
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row is not None else default
+
+    def set_admin_setting(self, key: str, value: str) -> bool:
+        """Upsert an admin setting.  Returns True on success."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+        cursor.execute(
+            f"""
+            INSERT INTO admin_settings (setting_key, setting_value)
+            VALUES ({placeholder}, {placeholder})
+            ON DUPLICATE KEY UPDATE setting_value = {placeholder}
+            """,
+            (key, value, value),
+        )
+        conn.close()
+        return True

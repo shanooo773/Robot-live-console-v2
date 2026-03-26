@@ -590,3 +590,17 @@ export const stopAdminWatch = async (token) => {
   });
   return response.data;
 };
+
+export const getAdminSettings = async (token) => {
+  const response = await API.get("/admin/settings", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const updateAdminSettings = async (settings, token) => {
+  const response = await API.put("/admin/settings", settings, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
