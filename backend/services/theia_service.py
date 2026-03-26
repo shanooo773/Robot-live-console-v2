@@ -8,6 +8,28 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Default images that are always permitted.  Administrators may expand this
+# list at deployment time via the ALLOWED_SURVEILLANCE_IMAGES environment
+# variable (comma-separated image names).
+_DEFAULT_ALLOWED_IMAGES = [
+    "elswork/theia",
+    "muneeb/theia-ros-humble:v2",
+]
+
+
+def _build_allowed_images() -> List[str]:
+    """Return the de-duplicated allowlist of permitted surveillance images."""
+    extra_raw = os.getenv("ALLOWED_SURVEILLANCE_IMAGES", "")
+    extra = [img.strip() for img in extra_raw.split(",") if img.strip()]
+    seen: dict = {}
+    result = []
+    for img in _DEFAULT_ALLOWED_IMAGES + extra:
+        if img not in seen:
+            seen[img] = True
+            result.append(img)
+    return result
+
+
 class TheiaContainerManager:
     """Manages Eclipse Theia containers for users"""
     
@@ -24,6 +46,9 @@ class TheiaContainerManager:
         self.default_theia_image = os.getenv('DEFAULT_THEIA_IMAGE')
         self.theia_booking_image = os.getenv('THEIA_BOOKING_IMAGE')
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
+
+        # Allowed base images for admin-configurable surveillance
+        self.allowed_images = _build_allowed_images()
         
         # Container lifecycle configuration
         self.idle_timeout_hours = int(os.getenv('THEIA_IDLE_TIMEOUT_HOURS', 2))  # 2 hours idle timeout
@@ -69,7 +94,19 @@ class TheiaContainerManager:
         
         # Ensure demo user directories exist
         self._ensure_demo_user_directories()
-        
+
+    def get_allowed_images(self) -> List[str]:
+        """Return the allowlist of permitted surveillance base images."""
+        return list(self.allowed_images)
+
+    def is_image_allowed(self, image: str) -> bool:
+        """Return True if *image* is on the allowlist."""
+        return image.strip() in self.allowed_images
+
+    def get_default_surveillance_image(self) -> str:
+        """Return the first image in the allowlist (safe fallback)."""
+        return self.allowed_images[0]
+
     def _resolve_image_to_use(self, image_override: Optional[str]) -> str:
         """Normalize an override and return the selected image with fallbacks."""
         if isinstance(image_override, str):
