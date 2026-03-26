@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_ALLOWED_IMAGES = [
     "elswork/theia",
     "muneeb/theia-ros-humble:v2",
+    "hiwonder/theia-ros-humble:v1",
 ]
 
 
@@ -767,7 +768,6 @@ int main() {
             "--name", container_name,
             "-p", f"{port}:3000",
             "-v", f"{project_dir.absolute()}:/home/project",
-            "-v", "/var/lib/husarnet:/var/lib/husarnet",
             "--cap-add", "NET_ADMIN",
             "--device", "/dev/net/tun",
             "--sysctl", "net.ipv6.conf.all.disable_ipv6=0",

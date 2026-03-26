@@ -96,7 +96,6 @@ docker run -d \
     --name "$CONTAINER_NAME" \
     -p "$PORT:3000" \
     -v "$(pwd)/$PROJECT_DIR:/home/projec/:cached" \
-    -v "/var/lib/husarnet:/var/lib/husarnet" \
     --cap-add "NET_ADMIN" \
     --device "/dev/net/tun" \
     --sysctl "net.ipv6.conf.all.disable_ipv6=0" \
