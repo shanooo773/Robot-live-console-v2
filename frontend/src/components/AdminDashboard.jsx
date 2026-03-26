@@ -659,10 +659,10 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
           ...status,
           booking_id: status.booking_id ?? prev?.booking_id,
           robot_id: status.robot_id ?? prev?.robot_id,
-          robot_name: status.robot_name || prev?.robot_name,
-          robot_image: status.robot_image || prev?.robot_image,
+          robot_name: status.robot_name ?? prev?.robot_name,
+          robot_image: status.robot_image ?? prev?.robot_image,
           user_id: status.user_id ?? prev?.user_id,
-          user_name: status.user_name || prev?.user_name,
+          user_name: status.user_name ?? prev?.user_name,
         };
       });
     } catch (error) {
@@ -693,10 +693,10 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
         mode: result?.mode || "surveillance",
         booking_id: result?.booking_id ?? bookingId,
         robot_id: result?.robot_id ?? robotId,
-        robot_name: result?.robot_name || selectedRobot?.name,
-        robot_image: result?.robot_image || selectedRobot?.container_image,
+        robot_name: result?.robot_name ?? selectedRobot?.name,
+        robot_image: result?.robot_image ?? selectedRobot?.container_image,
         user_id: result?.user_id ?? selectedBookingNow?.user_id,
-        user_name: result?.user_name || selectedBookingNow?.user_name,
+        user_name: result?.user_name ?? selectedBookingNow?.user_name,
       });
       toast({
         title: "Watch container started",
