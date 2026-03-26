@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import logging
 from pathlib import Path
-from datetime import datetime, time
+from datetime import datetime, time as dt_time
 
 # Rate limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -1714,7 +1714,7 @@ def _resolve_booking_image(active_booking: Optional[Dict[str, Any]]) -> Optional
     return robot_details.get("container_image") or active_booking.get("robot_image")
 
 
-def _parse_booking_time(value: Optional[str]) -> Optional[time]:
+def _parse_booking_time(value: Optional[str]) -> Optional[dt_time]:
     """Parse booking time fields that may be HH:MM or HH:MM:SS."""
     normalized = (value or "").strip()
     for fmt in ("%H:%M", "%H:%M:%S"):
