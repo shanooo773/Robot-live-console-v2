@@ -58,12 +58,15 @@ class BookingService:
         }
     
     def _parse_time_string(self, time_str: str) -> time:
-        """Parse time string (HH:MM) to time object, enforcing 24-hour format"""
-        try:
-            return datetime.strptime(time_str.strip(), "%H:%M").time()
-        except ValueError as e:
-            logger.error(f"❌ Invalid time format '{time_str}', expected HH:MM (24-hour). Error: {e}")
-            raise ValueError(f"Invalid time format: {time_str}, expected HH:MM (24-hour)")
+        """Parse time string in HH:MM or HH:MM:SS (24-hour) to a time object."""
+        normalized = (time_str or "").strip()
+        for fmt in ("%H:%M", "%H:%M:%S"):
+            try:
+                return datetime.strptime(normalized, fmt).time()
+            except ValueError:
+                continue
+        logger.error(f"❌ Invalid time format '{time_str}', expected HH:MM or HH:MM:SS (24-hour)")
+        raise ValueError(f"Invalid time format: {time_str}, expected HH:MM or HH:MM:SS (24-hour)")
 
     def _times_overlap(self, start1: str, end1: str, start2: str, end2: str) -> bool:
         """Check if two time ranges overlap"""
@@ -82,8 +85,10 @@ class BookingService:
     def validate_booking_time(self, date: str, start_time: str, end_time: str) -> bool:
         try:
             booking_date = datetime.strptime(date, "%Y-%m-%d")
-            start_dt = datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M")
-            end_dt = datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M")
+            start_time_obj = self._parse_time_string(start_time)
+            end_time_obj = self._parse_time_string(end_time)
+            start_dt = datetime.combine(booking_date.date(), start_time_obj)
+            end_dt = datetime.combine(booking_date.date(), end_time_obj)
 
             now = datetime.now()
             today = now.date()
@@ -115,8 +120,6 @@ class BookingService:
                 return False
 
             # Validate working hours (9:00-18:00)
-            start_time_obj = self._parse_time_string(start_time)
-            end_time_obj = self._parse_time_string(end_time)
             working_start = time(9, 0)  # 9:00 AM
             working_end = time(18, 0)   # 6:00 PM
             
@@ -137,10 +140,6 @@ class BookingService:
             if duration < 0.5:
                 logger.warning(f"❌ Booking too short ({duration} hours), minimum allowed is 30 minutes")
                 return False
-
-            # Confirm both times are valid 24-hour
-            self._parse_time_string(start_time)
-            self._parse_time_string(end_time)
 
             return True
         except ValueError as e:
@@ -164,22 +163,8 @@ class BookingService:
                 logger.error(f"❌ BOOKING REJECTED - Invalid user ID: {user_id}")
                 raise HTTPException(status_code=400, detail="Invalid user authentication")
 
-            # Resolve robot_id if legacy clients only send robot_type
             if robot_id is None:
-                if robot_type:
-                    robots = [r for r in self.db.get_active_robots() if r.get("type") == robot_type]
-                    if len(robots) == 1:
-                        robot_id = robots[0]["id"]
-                        robot_type = robots[0].get("type")
-                    elif len(robots) == 0:
-                        raise HTTPException(status_code=404, detail=f"No active robot found for type '{robot_type}'")
-                    else:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Multiple robots found for type '{robot_type}'. Please provide robot_id."
-                        )
-                else:
-                    raise HTTPException(status_code=400, detail="robot_id is required to create a booking")
+                raise HTTPException(status_code=400, detail="robot_id is required to create a booking")
             
             # Create the booking (database layer will handle robot assignment and conflict detection)
             booking = self.db.create_booking(
@@ -354,23 +339,9 @@ class BookingService:
                 )
                 return []
 
-            # Resolve robot_id if only type provided
             if robot_id is None:
-                if robot_type:
-                    robots = [r for r in self.db.get_active_robots() if r.get("type") == robot_type]
-                    if len(robots) == 1:
-                        robot_id = robots[0]["id"]
-                        robot_type = robots[0].get("type")
-                    elif len(robots) == 0:
-                        logger.debug(f"🔍 SLOTS: no active robots found for type '{robot_type}'")
-                        return []
-                    else:
-                        # Ambiguous: multiple robots for type
-                        logger.debug(f"🔍 SLOTS: multiple robots for type '{robot_type}'; robot_id required")
-                        return []
-                else:
-                    logger.debug("🔍 SLOTS: robot_id and robot_type both missing – returning no slots")
-                    return []
+                logger.debug("🔍 SLOTS: robot_id missing – returning no slots")
+                return []
 
             robot_details = None
             try:
@@ -387,8 +358,9 @@ class BookingService:
             # Get existing bookings for this date and robot
             existing_bookings = self.db.get_bookings_for_date_range(date, date)
             robot_bookings = [
-                b for b in existing_bookings 
-                if b.get("robot_id") == robot_id and b["status"] == "active"
+                b
+                for b in existing_bookings
+                if b.get("robot_id") == robot_id and b.get("status") in ("active", "scheduled")
             ]
 
             # Generate potential slots within working hours (9:00-18:00)
@@ -418,7 +390,10 @@ class BookingService:
                     if slot_start_dt < current_time:
                         slot_available = False
                         conflict_reason = f"slot {start_time} is in the past (now={current_time.strftime('%H:%M')})"
-                    elif slot_start_dt <= current_time + timedelta(minutes=self.min_lead_time_minutes):
+                    elif (
+                        self.min_lead_time_minutes > 0
+                        and slot_start_dt <= current_time + timedelta(minutes=self.min_lead_time_minutes)
+                    ):
                         slot_available = False
                         conflict_reason = (
                             f"slot {start_time} is within lead-time window "

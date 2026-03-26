@@ -155,8 +155,11 @@ export const getBookingSchedule = async (startDate, endDate) => {
 };
 
 export const getAvailableSlots = async (date, robotId, token, robotType = null) => {
+  if (!robotId) {
+    throw new Error("robot_id is required to fetch available slots");
+  }
   const params = new URLSearchParams({ date });
-  if (robotId) params.append("robot_id", robotId);
+  params.append("robot_id", robotId);
   if (robotType) params.append("robot_type", robotType);
   const response = await API.get(`/bookings/available-slots?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` }

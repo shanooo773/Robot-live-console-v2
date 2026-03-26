@@ -250,12 +250,13 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
       }
     } catch (error) {
       console.error('Error loading available slots:', error);
-      setSlotError(`Failed to load time slots: ${error.message || 'Please try again'}`);
+      const backendDetail = error?.response?.data?.detail;
+      setSlotError(backendDetail || error.message || 'Failed to load time slots. Please try again.');
       setTimeSlots([]);
       
       toast({
         title: "Error loading time slots",
-        description: "Unable to fetch available booking slots. Please try again.",
+        description: backendDetail || "Unable to fetch available booking slots. Please try again.",
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -355,27 +356,6 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
         start_time: ensureTwentyFourHourFormat(slot.startTime),
         end_time: ensureTwentyFourHourFormat(slot.endTime)
       };
-      
-      // Client-side validation
-      const startHour = parseInt(slot.startTime.split(':')[0]);
-      const endHour = parseInt(slot.endTime.split(':')[0]);
-      
-      if (startHour < 9 || startHour >= 18) {
-        throw new Error("Bookings are only allowed during working hours (9:00 AM - 6:00 PM)");
-      }
-      
-      if (endHour > 18) {
-        throw new Error("Booking sessions cannot extend beyond 6:00 PM");
-      }
-      
-      const duration = endHour - startHour;
-      if (duration > 2) {
-        throw new Error("Maximum booking duration is 2 hours");
-      }
-      
-      if (duration < 1) {
-        throw new Error("Minimum booking duration is 1 hour");
-      }
       
       const booking = await createBooking(bookingData, authToken);
       

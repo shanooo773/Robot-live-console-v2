@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, time
 
 # Rate limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -557,12 +557,16 @@ async def _booking_autostop_loop():
     def _parse_booking_active(booking, current_date, current_time_obj):
         """Return True if booking is currently within its active time window."""
         try:
+            start_time_obj = _parse_booking_time(booking.get("start_time"))
+            end_time_obj = _parse_booking_time(booking.get("end_time"))
+            if not start_time_obj or not end_time_obj:
+                return False
             return (
                 booking.get("date") == current_date
                 and booking.get("status") == "active"
                 and booking.get("robot_id")
-                and datetime.strptime(booking["start_time"], "%H:%M").time() <= current_time_obj
-                and current_time_obj <= datetime.strptime(booking["end_time"], "%H:%M").time()
+                and start_time_obj <= current_time_obj
+                and current_time_obj <= end_time_obj
             )
         except (ValueError, KeyError):
             return False
@@ -997,6 +1001,8 @@ async def create_booking(booking_data: BookingCreate, current_user: dict = Depen
     """Create a new booking"""
     booking_service = service_manager.get_booking_service()
     user_id = int(current_user["sub"])
+    if booking_data.robot_id is None:
+        raise HTTPException(status_code=400, detail="robot_id is required to create a booking")
     booking = booking_service.create_booking(
         user_id=user_id,
         robot_id=booking_data.robot_id,
@@ -1091,19 +1097,8 @@ async def get_available_slots(date: str, robot_id: Optional[int] = None, robot_t
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
-    if not robot_id and not robot_type:
-        raise HTTPException(status_code=400, detail="robot_id is required. Legacy requests may include robot_type for single-robot types.")
-
-    if robot_type:
-        available_robots = booking_service.get_available_robots()
-        if robot_type not in available_robots:
-            raise HTTPException(status_code=400, detail=f"Invalid robot type. Available types: {list(available_robots.keys())}")
-        robot_ids_for_type = available_robots[robot_type].get("robot_ids", [])
-        if len(robot_ids_for_type) > 1 and not robot_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Multiple robots found for this type. Please specify robot_id."
-            )
+    if not robot_id:
+        raise HTTPException(status_code=400, detail="robot_id is required.")
     
     slots = booking_service.get_available_time_slots(date, robot_id=robot_id, robot_type=robot_type)
     return {
@@ -1664,8 +1659,10 @@ def _has_active_booking(user_id: int, is_demo: bool) -> bool:
         for booking in bookings:
             if (booking["date"] == current_date and booking["status"] == "active" and booking.get("robot_id")):
                 try:
-                    start_time_obj = datetime.strptime(booking["start_time"], "%H:%M").time()
-                    end_time_obj = datetime.strptime(booking["end_time"], "%H:%M").time()
+                    start_time_obj = _parse_booking_time(booking.get("start_time"))
+                    end_time_obj = _parse_booking_time(booking.get("end_time"))
+                    if not start_time_obj or not end_time_obj:
+                        continue
                     if start_time_obj <= current_time_obj <= end_time_obj:
                         return True
                 except ValueError:
@@ -1690,8 +1687,10 @@ def _get_active_booking_with_robot(user_id: int) -> Optional[Dict[str, Any]]:
                 and booking.get("robot_id")
             ):
                 try:
-                    start_time_obj = datetime.strptime(booking["start_time"], "%H:%M").time()
-                    end_time_obj = datetime.strptime(booking["end_time"], "%H:%M").time()
+                    start_time_obj = _parse_booking_time(booking.get("start_time"))
+                    end_time_obj = _parse_booking_time(booking.get("end_time"))
+                    if not start_time_obj or not end_time_obj:
+                        continue
                     if start_time_obj <= current_time_obj <= end_time_obj:
                         robot = db.get_robot_by_id(booking["robot_id"])
                         if robot:
@@ -1713,6 +1712,17 @@ def _resolve_booking_image(active_booking: Optional[Dict[str, Any]]) -> Optional
     robot_details = active_booking.get("robot_details") or {}
     # robot_image is kept for backward compatibility with stored booking records
     return robot_details.get("container_image") or active_booking.get("robot_image")
+
+
+def _parse_booking_time(value: Optional[str]) -> Optional[time]:
+    """Parse booking time fields that may be HH:MM or HH:MM:SS."""
+    normalized = (value or "").strip()
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(normalized, fmt).time()
+        except ValueError:
+            continue
+    return None
 
 @app.get("/theia/status")  
 async def get_theia_status(current_user: dict = Depends(get_current_user)):
