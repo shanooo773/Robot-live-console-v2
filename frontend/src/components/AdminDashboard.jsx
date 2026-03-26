@@ -652,7 +652,19 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const loadWatchStatus = async () => {
     try {
       const status = await getAdminWatchStatus(authToken);
-      setWatchStatus(status);
+      setWatchStatus((prev) => {
+        if (!status) return status;
+        if (status.mode !== "surveillance") return status;
+        return {
+          ...status,
+          booking_id: status.booking_id ?? prev?.booking_id,
+          robot_id: status.robot_id ?? prev?.robot_id,
+          robot_name: status.robot_name || prev?.robot_name,
+          robot_image: status.robot_image || prev?.robot_image,
+          user_id: status.user_id ?? prev?.user_id,
+          user_name: status.user_name || prev?.user_name,
+        };
+      });
     } catch (error) {
       setWatchStatus(null);
     }
@@ -671,8 +683,21 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     }
     setIsWatchLoading(true);
     try {
+      const selectedRobot = activeRobots.find((robot) => robot.id === robotId);
+      const selectedBookingNow = activeBookingsNow.find((booking) => booking.id === bookingId);
       const result = await startAdminWatch(bookingId, authToken, robotId);
-      setWatchStatus({ ...result, status: "running", ready: false });
+      setWatchStatus({
+        ...result,
+        status: "running",
+        ready: false,
+        mode: result?.mode || "surveillance",
+        booking_id: result?.booking_id ?? bookingId,
+        robot_id: result?.robot_id ?? robotId,
+        robot_name: result?.robot_name || selectedRobot?.name,
+        robot_image: result?.robot_image || selectedRobot?.container_image,
+        user_id: result?.user_id ?? selectedBookingNow?.user_id,
+        user_name: result?.user_name || selectedBookingNow?.user_name,
+      });
       toast({
         title: "Watch container started",
         description: `Watching workspace for booking #${bookingId}`,
@@ -684,7 +709,10 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     } catch (error) {
       toast({
         title: "Watch failed",
-        description: error.response?.data?.detail || "Failed to start watch container",
+        description:
+          error.response?.data?.detail ||
+          error.message ||
+          "Failed to start watch container",
         status: "error",
         duration: 4000,
         isClosable: true,
@@ -1644,9 +1672,12 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                           </Td>
                           <Td>
                             <VStack align="stretch" spacing={2}>
+                              <Text color="gray.300" fontSize="xs" fontWeight="semibold">
+                                Select Robot (required)
+                              </Text>
                               <Select
                                 size="xs"
-                                placeholder="Select active robot"
+                                placeholder={activeRobots.length ? "Select active robot" : "No active robots available"}
                                 value={watchRobotSelection[booking.id] ?? ""}
                                 onChange={(e) => {
                                   const value = e.target.value ? Number(e.target.value) : null;
@@ -1655,6 +1686,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                                 bg="gray.700"
                                 borderColor="gray.600"
                                 color="white"
+                                isDisabled={activeRobots.length === 0}
                               >
                                 {activeRobots.map((robot) => (
                                   <option key={robot.id} value={robot.id}>
@@ -1662,12 +1694,17 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                                   </option>
                                 ))}
                               </Select>
+                              {activeRobots.length === 0 && (
+                                <Text color="orange.300" fontSize="xs">
+                                  No active robots are available. Start Watch is disabled.
+                                </Text>
+                              )}
                               <Button
                                 size="xs"
                                 colorScheme="purple"
                                 leftIcon={<ViewIcon />}
                                 isLoading={isWatchLoading}
-                                isDisabled={!watchRobotSelection[booking.id]}
+                                isDisabled={activeRobots.length === 0 || !watchRobotSelection[booking.id]}
                                 onClick={() => handleWatchBooking(booking.id, watchRobotSelection[booking.id])}
                               >
                                 Start Watch
