@@ -35,6 +35,17 @@ class BookingService:
         except ValueError:
             self.min_lead_time_minutes = 0
             logger.warning("MIN_BOOKING_LEAD_TIME_MINUTES is invalid; defaulting to 0.")
+        try:
+            raw_max_days = int(os.getenv("BOOKING_MAX_DAYS_AHEAD", "7"))
+            if raw_max_days < 1:
+                logger.warning(
+                    f"BOOKING_MAX_DAYS_AHEAD={raw_max_days} is less than 1; clamping to 1."
+                )
+                raw_max_days = 1
+            self.max_booking_days_ahead = raw_max_days
+        except ValueError:
+            self.max_booking_days_ahead = 7
+            logger.warning("BOOKING_MAX_DAYS_AHEAD is invalid; defaulting to 7.")
         logger.info("✅ Booking service initialized successfully")
     
     def get_status(self) -> Dict[str, Any]:
@@ -75,8 +86,23 @@ class BookingService:
             end_dt = datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M")
 
             now = datetime.now()
+            today = now.date()
             min_advance_time = now + timedelta(minutes=self.min_lead_time_minutes)
-            
+
+            # Reject dates in the past
+            if booking_date.date() < today:
+                logger.warning(f"❌ Booking date {date} is in the past (today: {today})")
+                return False
+
+            # Enforce BOOKING_MAX_DAYS_AHEAD rolling window
+            days_ahead = (booking_date.date() - today).days
+            if days_ahead > self.max_booking_days_ahead:
+                logger.warning(
+                    f"❌ Booking date {date} is {days_ahead} days ahead, "
+                    f"exceeds BOOKING_MAX_DAYS_AHEAD={self.max_booking_days_ahead}"
+                )
+                return False
+
             # Check if booking is not in the past and respects configured lead time
             if start_dt < now:
                 logger.warning(f"❌ Booking start {start_dt} is in the past (now: {now})")
@@ -313,11 +339,21 @@ class BookingService:
             # Parse the requested date
             requested_date = datetime.strptime(date, "%Y-%m-%d").date()
             today = datetime.now().date()
-            
+
             # Don't allow booking for past dates
             if requested_date < today:
+                logger.debug(f"🔍 SLOTS: date {date} is in the past – returning no slots")
                 return []
-            
+
+            # Enforce BOOKING_MAX_DAYS_AHEAD rolling window
+            days_ahead = (requested_date - today).days
+            if days_ahead > self.max_booking_days_ahead:
+                logger.debug(
+                    f"🔍 SLOTS: date {date} is {days_ahead} days ahead, "
+                    f"exceeds BOOKING_MAX_DAYS_AHEAD={self.max_booking_days_ahead} – returning no slots"
+                )
+                return []
+
             # Resolve robot_id if only type provided
             if robot_id is None:
                 if robot_type:
@@ -326,11 +362,14 @@ class BookingService:
                         robot_id = robots[0]["id"]
                         robot_type = robots[0].get("type")
                     elif len(robots) == 0:
+                        logger.debug(f"🔍 SLOTS: no active robots found for type '{robot_type}'")
                         return []
                     else:
                         # Ambiguous: multiple robots for type
+                        logger.debug(f"🔍 SLOTS: multiple robots for type '{robot_type}'; robot_id required")
                         return []
                 else:
+                    logger.debug("🔍 SLOTS: robot_id and robot_type both missing – returning no slots")
                     return []
 
             robot_details = None
@@ -341,40 +380,51 @@ class BookingService:
             except Exception:
                 robot_details = None
 
+            if robot_details and robot_details.get("status") not in (None, "active"):
+                logger.debug(f"🔍 SLOTS: robot {robot_id} is not active (status={robot_details.get('status')}) – returning no slots")
+                return []
+
             # Get existing bookings for this date and robot
             existing_bookings = self.db.get_bookings_for_date_range(date, date)
             robot_bookings = [
                 b for b in existing_bookings 
                 if b.get("robot_id") == robot_id and b["status"] == "active"
             ]
-            
+
             # Generate potential slots within working hours (9:00-18:00)
             available_slots = []
             working_start = 9  # 9 AM
             working_end = 18   # 6 PM
             slot_duration = 1  # 1 hour slots
-            
+
             for hour in range(working_start, working_end):
                 start_time = f"{hour:02d}:00"
                 end_time = f"{hour + slot_duration:02d}:00"
-                
+
                 # Check if this slot conflicts with existing bookings
                 slot_available = True
+                conflict_reason = None
                 for booking in robot_bookings:
-                    if self._times_overlap(start_time, end_time, 
-                                         booking["start_time"], booking["end_time"]):
+                    if self._times_overlap(start_time, end_time,
+                                           booking["start_time"], booking["end_time"]):
                         slot_available = False
+                        conflict_reason = f"conflicts with existing booking {booking.get('id')}"
                         break
-                
-                # For today, also check if the slot is not in the past
-                if requested_date == today:
+
+                # For today, also check if the slot is not in the past or within lead time
+                if slot_available and requested_date == today:
                     current_time = datetime.now()
                     slot_start_dt = datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M")
                     if slot_start_dt < current_time:
                         slot_available = False
+                        conflict_reason = f"slot {start_time} is in the past (now={current_time.strftime('%H:%M')})"
                     elif slot_start_dt <= current_time + timedelta(minutes=self.min_lead_time_minutes):
                         slot_available = False
-                
+                        conflict_reason = (
+                            f"slot {start_time} is within lead-time window "
+                            f"({self.min_lead_time_minutes} min, now={current_time.strftime('%H:%M')})"
+                        )
+
                 if slot_available:
                     available_slots.append({
                         "date": date,
@@ -385,6 +435,8 @@ class BookingService:
                         "robot_image": robot_details.get("container_image") if robot_details else None,
                         "duration_hours": slot_duration
                     })
+                else:
+                    logger.debug(f"🔍 SLOTS: robot {robot_id} slot {date} {start_time}-{end_time} rejected – {conflict_reason}")
             
             logger.info(f"Found {len(available_slots)} available slots for robot {robot_id} on {date}")
             return available_slots
