@@ -189,6 +189,27 @@ cd app/backend && python main.py &
 cd app/frontend && npm run dev &
 ```
 
+### Backend booking tests
+
+From the repository root:
+
+```bash
+python -m pip install pytest requests
+python -m pytest backend/test_booking_lead_time.py -q
+```
+
+Optional API booking flow test (against a running backend) requires:
+
+- `BASE_URL` (example: `http://localhost:8000`)
+- `TOKEN` (Bearer JWT for an authenticated user)
+- `ROBOT_ID` (active robot id)
+
+Run:
+
+```bash
+BASE_URL=http://localhost:8000 TOKEN=<jwt> ROBOT_ID=1 python -m pytest backend/test_booking_e2e_api.py -q
+```
+
 ### Adding Videos
 
 1. Place MP4 files in `app/videos/`
