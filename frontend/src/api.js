@@ -557,8 +557,10 @@ export const getActiveBookingsNow = async (token) => {
 };
 
 export const startAdminWatch = async (bookingId, token, robotId = null) => {
-  const payload = { booking_id: bookingId };
-  if (robotId) payload.robot_id = robotId;
+  if (!robotId) {
+    throw new Error("robot_id is required to start surveillance");
+  }
+  const payload = { booking_id: bookingId, robot_id: robotId };
   const response = await API.post("/admin/theia/watch/start", payload, {
     headers: { Authorization: `Bearer ${token}` }
   });

@@ -6,6 +6,7 @@ Handles robot booking and scheduling with proper overlap detection and time comp
 """
 
 import logging
+import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime, time
 from fastapi import HTTPException
@@ -27,6 +28,13 @@ class BookingService:
         self.db = db
         self.available = True
         self.status = "available"
+        try:
+            self.min_lead_time_minutes = max(
+                0, int(os.getenv("MIN_BOOKING_LEAD_TIME_MINUTES", "0"))
+            )
+        except ValueError:
+            self.min_lead_time_minutes = 0
+            logger.warning("MIN_BOOKING_LEAD_TIME_MINUTES is invalid; defaulting to 0.")
         logger.info("✅ Booking service initialized successfully")
     
     def get_status(self) -> Dict[str, Any]:
@@ -67,11 +75,14 @@ class BookingService:
             end_dt = datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M")
 
             now = datetime.now()
-            min_advance_time = now + timedelta(minutes=10)
+            min_advance_time = now + timedelta(minutes=self.min_lead_time_minutes)
             
-            # Check if booking is not in the past
-            if start_dt <= min_advance_time:
-                logger.warning(f"❌ Booking start {start_dt} is in the past")
+            # Check if booking is not in the past and respects configured lead time
+            if start_dt < now:
+                logger.warning(f"❌ Booking start {start_dt} is in the past (now: {now})")
+                return False
+            if self.min_lead_time_minutes > 0 and start_dt <= min_advance_time:
+                logger.warning(f"❌ Booking start {start_dt} violates lead time ({self.min_lead_time_minutes} minutes)")
                 return False
             if end_dt <= start_dt:
                 logger.warning(f"❌ End time {end_dt} is not after start {start_dt}")
@@ -359,7 +370,9 @@ class BookingService:
                 if requested_date == today:
                     current_time = datetime.now()
                     slot_start_dt = datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M")
-                    if slot_start_dt <= current_time + timedelta(minutes=10):
+                    if slot_start_dt < current_time:
+                        slot_available = False
+                    elif slot_start_dt <= current_time + timedelta(minutes=self.min_lead_time_minutes):
                         slot_available = False
                 
                 if slot_available:

@@ -97,6 +97,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const [isActiveBookingsLoading, setIsActiveBookingsLoading] = useState(false);
   const [watchStatus, setWatchStatus] = useState(null);
   const [isWatchLoading, setIsWatchLoading] = useState(false);
+  const [watchRobotSelection, setWatchRobotSelection] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -658,6 +659,16 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   };
 
   const handleWatchBooking = async (bookingId, robotId) => {
+    if (!robotId) {
+      toast({
+        title: "Robot required",
+        description: "Select an active robot before starting surveillance.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
     setIsWatchLoading(true);
     try {
       const result = await startAdminWatch(bookingId, authToken, robotId);
@@ -780,6 +791,8 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     }
     return true;
   });
+
+  const activeRobots = robots.filter((robot) => robot.status === "active");
 
   return (
     <Container maxW="7xl" py={8}>
@@ -1622,15 +1635,36 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                             {booking.start_time} – {booking.end_time}
                           </Td>
                           <Td>
-                            <Button
-                              size="xs"
-                              colorScheme="purple"
-                              leftIcon={<ViewIcon />}
-                              isLoading={isWatchLoading}
-                              onClick={() => handleWatchBooking(booking.id, booking.robot_id)}
-                            >
-                              Watch
-                            </Button>
+                            <VStack align="stretch" spacing={2}>
+                              <Select
+                                size="xs"
+                                placeholder="Select active robot"
+                                value={watchRobotSelection[booking.id] ?? ""}
+                                onChange={(e) => {
+                                  const value = e.target.value ? Number(e.target.value) : null;
+                                  setWatchRobotSelection((prev) => ({ ...prev, [booking.id]: value }));
+                                }}
+                                bg="gray.700"
+                                borderColor="gray.600"
+                                color="white"
+                              >
+                                {activeRobots.map((robot) => (
+                                  <option key={robot.id} value={robot.id}>
+                                    #{robot.id} — {robot.name}
+                                  </option>
+                                ))}
+                              </Select>
+                              <Button
+                                size="xs"
+                                colorScheme="purple"
+                                leftIcon={<ViewIcon />}
+                                isLoading={isWatchLoading}
+                                isDisabled={!watchRobotSelection[booking.id]}
+                                onClick={() => handleWatchBooking(booking.id, watchRobotSelection[booking.id])}
+                              >
+                                Start Watch
+                              </Button>
+                            </VStack>
                           </Td>
                         </Tr>
                       ))}

@@ -129,6 +129,8 @@ Key configurations:
 - `VPS_URL`: VPS iframe URL
 - `CORS_ORIGINS`: Allowed frontend URLs
 - `VIDEO_STORAGE_PATH`: Video files directory
+- `MIN_BOOKING_LEAD_TIME_MINUTES`: Minimum minutes a booking must start in the future (default 0)
+- `DEFAULT_THEIA_IMAGE`: Fallback image for Theia booking/surveillance containers when a robot-specific image isn't set
 
 ### VPS Configuration
 

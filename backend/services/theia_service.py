@@ -21,7 +21,11 @@ class TheiaContainerManager:
         self.max_port = int(os.getenv('THEIA_MAX_PORT', 9000))
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
         self.theia_image = os.getenv('THEIA_IMAGE', 'elswork/theia')  # Preview mode image
-        self.theia_booking_image = os.getenv('THEIA_BOOKING_IMAGE', 'muneeb/theia-ros-humble:v2')  # Booking mode image
+        self.default_theia_image = os.getenv('DEFAULT_THEIA_IMAGE')
+        self.theia_booking_image = os.getenv(
+            'THEIA_BOOKING_IMAGE',
+            self.default_theia_image or 'muneeb/theia-ros-humble:v2'
+        )  # Booking mode image (per-robot override supported)
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
         
         # Container lifecycle configuration
@@ -69,6 +73,15 @@ class TheiaContainerManager:
         # Ensure demo user directories exist
         self._ensure_demo_user_directories()
         
+    def _resolve_image_to_use(self, image_override: Optional[str]) -> str:
+        """Normalize an override and return the selected image with fallbacks."""
+        if isinstance(image_override, str):
+            stripped = image_override.strip()
+            normalized_image_override = stripped if stripped else None
+        else:
+            normalized_image_override = image_override or None
+        return normalized_image_override or self.theia_booking_image or self.default_theia_image or self.theia_image
+
     def _load_port_mappings_from_db(self):
         """Load existing port mappings from database on startup"""
         if not self.db_manager:
@@ -379,7 +392,7 @@ class TheiaContainerManager:
             except Exception as e:
                 logger.error(f"Failed to clear admin watch port from database: {e}")
 
-    def start_admin_watch_container(self, admin_id: int, target_project_dir: Path) -> Dict:
+    def start_admin_watch_container(self, admin_id: int, target_project_dir: Path, image_override: Optional[str] = None) -> Dict:
         """Start/restart the admin watch container mounting the given workspace directory.
         Uses the booking image (muneeb/theia-ros-humble:v2) so the admin sees the same IDE."""
         try:
@@ -390,15 +403,19 @@ class TheiaContainerManager:
             container_name = self.get_admin_watch_container_name(admin_id)
             port = self.get_admin_watch_port(admin_id)
 
-            error = self._pull_image_if_needed(self.theia_booking_image)
+            image_to_use = self._resolve_image_to_use(image_override)
+            error = self._pull_image_if_needed(image_to_use)
             if error:
                 return {"success": False, "error": error}
 
             # Stop/remove any existing admin watch container before starting a new one
             subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, text=True, timeout=15)
 
-            logger.info(f"Starting admin watch container {container_name} for admin {admin_id} mounting {target_project_dir}")
-            return self._run_theia_container(container_name, port, target_project_dir, self.theia_booking_image)
+            logger.info(
+                f"Starting admin watch container {container_name} for admin {admin_id} mounting {target_project_dir} "
+                f"with image {image_to_use}"
+            )
+            return self._run_theia_container(container_name, port, target_project_dir, image_to_use)
 
         except subprocess.TimeoutExpired:
             return {"success": False, "error": "Docker operation timed out."}
@@ -761,7 +778,7 @@ int main() {
             logger.error(f"Error starting preview container for user {user_id}: {e}")
             return {"success": False, "error": f"Unexpected error: {str(e)}"}
     
-    def start_booking_container(self, user_id: int) -> Dict:
+    def start_booking_container(self, user_id: int, image_override: Optional[str] = None) -> Dict:
         """Start the booking IDE container for user (uses booking image, theia-booking-<userid>).
         Shares the same workspace directory as the preview container."""
         try:
@@ -776,12 +793,13 @@ int main() {
             port = self.get_user_booking_port(user_id)
             project_dir = self.get_user_project_dir(user_id)  # Same workspace as preview
             
-            error = self._pull_image_if_needed(self.theia_booking_image)
+            image_to_use = self._resolve_image_to_use(image_override)
+            error = self._pull_image_if_needed(image_to_use)
             if error:
                 return {"success": False, "error": error}
             
-            logger.info(f"Starting booking container {container_name} for user {user_id} using image {self.theia_booking_image}")
-            return self._run_theia_container(container_name, port, project_dir, self.theia_booking_image)
+            logger.info(f"Starting booking container {container_name} for user {user_id} using image {image_to_use}")
+            return self._run_theia_container(container_name, port, project_dir, image_to_use)
             
         except subprocess.TimeoutExpired:
             return {"success": False, "error": "Docker operation timed out. Service may be under heavy load."}
@@ -791,7 +809,7 @@ int main() {
             logger.error(f"Error starting booking container for user {user_id}: {e}")
             return {"success": False, "error": f"Unexpected error: {str(e)}"}
     
-    def start_container(self, user_id: int, booking_mode: bool = False) -> Dict:
+    def start_container(self, user_id: int, booking_mode: bool = False, booking_image: Optional[str] = None) -> Dict:
         """Start Theia container(s) for user.
         
         In the dual-container workflow:
@@ -810,7 +828,7 @@ int main() {
             return preview_result
         
         # Also start the booking container
-        booking_result = self.start_booking_container(user_id)
+        booking_result = self.start_booking_container(user_id, image_override=booking_image)
         
         if booking_result.get("success"):
             return booking_result  # Return booking container info as primary when in booking mode
@@ -910,7 +928,7 @@ int main() {
             logger.error(f"❌ Error deleting resources for user {user_id}: {e}")
             raise
     
-    def restart_container(self, user_id: int, booking_mode: bool = False) -> Dict:
+    def restart_container(self, user_id: int, booking_mode: bool = False, booking_image: Optional[str] = None) -> Dict:
         """Restart user's Theia container(s) with better error handling for crashed containers"""
         try:
             # Restart preview container
@@ -942,7 +960,7 @@ int main() {
                     except Exception as force_error:
                         logger.error(f"Failed to force remove booking container for user {user_id}: {force_error}")
             
-            return self.start_container(user_id, booking_mode=booking_mode)
+            return self.start_container(user_id, booking_mode=booking_mode, booking_image=booking_image)
         except Exception as e:
             logger.error(f"Error restarting container for user {user_id}: {e}")
             return {"success": False, "error": f"Restart failed: {str(e)}"}

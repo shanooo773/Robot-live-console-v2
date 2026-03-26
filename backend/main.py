@@ -1674,6 +1674,46 @@ def _has_active_booking(user_id: int, is_demo: bool) -> bool:
         logger.warning(f"Could not check booking status for user {user_id}: {e}")
     return False
 
+
+def _get_active_booking_with_robot(user_id: int) -> Optional[Dict[str, Any]]:
+    """Return the user's current active booking (with robot details if available)."""
+    try:
+        booking_service = service_manager.get_booking_service()
+        bookings = booking_service.get_user_bookings(user_id)
+        now = datetime.now()
+        current_date = now.strftime("%Y-%m-%d")
+        current_time_obj = now.time()
+        for booking in bookings:
+            if (
+                booking["date"] == current_date
+                and booking["status"] == "active"
+                and booking.get("robot_id")
+            ):
+                try:
+                    start_time_obj = datetime.strptime(booking["start_time"], "%H:%M").time()
+                    end_time_obj = datetime.strptime(booking["end_time"], "%H:%M").time()
+                    if start_time_obj <= current_time_obj <= end_time_obj:
+                        robot = db.get_robot_by_id(booking["robot_id"])
+                        if robot:
+                            booking_with_robot = dict(booking)
+                            booking_with_robot["robot_details"] = robot
+                            return booking_with_robot
+                        return booking
+                except ValueError:
+                    continue
+    except Exception as e:
+        logger.warning(f"Could not fetch active booking for user {user_id}: {e}")
+    return None
+
+
+def _resolve_booking_image(active_booking: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Return container image string from an active booking if available."""
+    if not active_booking:
+        return None
+    robot_details = active_booking.get("robot_details") or {}
+    # robot_image is kept for backward compatibility with stored booking records
+    return robot_details.get("container_image") or active_booking.get("robot_image")
+
 @app.get("/theia/status")  
 async def get_theia_status(current_user: dict = Depends(get_current_user)):
     """Get status of user's Theia containers - dual-container workflow.
@@ -1685,6 +1725,7 @@ async def get_theia_status(current_user: dict = Depends(get_current_user)):
     
     # Determine booking mode
     has_active_booking = _has_active_booking(user_id, is_demo_user(current_user))
+    active_booking = _get_active_booking_with_robot(user_id) if has_active_booking else None
     
     status = theia_manager.get_container_status(user_id)
     
@@ -1705,7 +1746,8 @@ async def get_theia_status(current_user: dict = Depends(get_current_user)):
     # Auto-start booking container if user has an active booking and it's not running
     if has_active_booking and status.get("booking_status") in ["not_created", "stopped", "error", None]:
         logger.info(f"🎯 Auto-starting booking container for user {user_id} (active booking)")
-        booking_result = theia_manager.start_booking_container(user_id)
+        booking_image = _resolve_booking_image(active_booking)
+        booking_result = theia_manager.start_booking_container(user_id, image_override=booking_image)
         if booking_result.get("success"):
             logger.info(f"✅ User {user_id} booking container auto-started successfully")
         else:
@@ -1774,6 +1816,7 @@ async def start_theia_container(current_user: dict = Depends(get_current_user)):
     user_id = int(current_user["sub"])
     
     has_active_booking = _has_active_booking(user_id, is_demo_user(current_user))
+    active_booking = _get_active_booking_with_robot(user_id) if has_active_booking else None
     if is_demo_user(current_user):
         logger.info(f"🎯 Demo user {user_id} starting Theia containers (preview + booking)")
     else:
@@ -1785,7 +1828,8 @@ async def start_theia_container(current_user: dict = Depends(get_current_user)):
     # Also start booking container if user has an active booking
     booking_result = None
     if has_active_booking or is_demo_user(current_user):
-        booking_result = theia_manager.start_booking_container(user_id)
+        booking_image = _resolve_booking_image(active_booking)
+        booking_result = theia_manager.start_booking_container(user_id, image_override=booking_image)
     
     if preview_result.get("success"):
         status = theia_manager.get_container_status(user_id)
@@ -1808,13 +1852,15 @@ async def start_booking_theia_container(current_user: dict = Depends(get_current
     user_id = int(current_user["sub"])
     
     has_active_booking = _has_active_booking(user_id, is_demo_user(current_user))
+    active_booking = _get_active_booking_with_robot(user_id) if has_active_booking else None
     if not has_active_booking and not is_demo_user(current_user):
         raise HTTPException(
             status_code=403,
             detail="No active booking found. Book a session to use the booking IDE."
         )
     
-    result = theia_manager.start_booking_container(user_id)
+    booking_image = _resolve_booking_image(active_booking)
+    result = theia_manager.start_booking_container(user_id, image_override=booking_image)
     if result.get("success"):
         return {
             "message": "Booking Theia container started successfully",
@@ -1863,8 +1909,10 @@ async def restart_theia_container(current_user: dict = Depends(get_current_user)
     
     # Determine booking mode so the restarted container uses the correct image
     booking_mode = _has_active_booking(user_id, is_demo_user(current_user))
+    active_booking = _get_active_booking_with_robot(user_id) if booking_mode else None
+    booking_image = _resolve_booking_image(active_booking)
     
-    result = theia_manager.restart_container(user_id, booking_mode=booking_mode)
+    result = theia_manager.restart_container(user_id, booking_mode=booking_mode, booking_image=booking_image)
     
     if result.get("success"):
         status = theia_manager.get_container_status(user_id)
@@ -1935,7 +1983,10 @@ async def admin_stop_theia_container(user_id: int, current_user: dict = Depends(
 @app.post("/theia/admin/restart/{user_id}")
 async def admin_restart_theia_container(user_id: int, current_user: dict = Depends(require_admin)):
     """Restart any user's Theia container (admin only)"""
-    result = theia_manager.restart_container(user_id)
+    booking_mode = _has_active_booking(user_id, False)
+    active_booking = _get_active_booking_with_robot(user_id) if booking_mode else None
+    booking_image = _resolve_booking_image(active_booking)
+    result = theia_manager.restart_container(user_id, booking_mode=booking_mode, booking_image=booking_image)
     
     if result.get("success"):
         return {
@@ -2036,7 +2087,7 @@ async def get_active_bookings_now(current_user: dict = Depends(require_admin)):
 
 class AdminWatchStartRequest(BaseModel):
     booking_id: int
-    robot_id: Optional[int] = None
+    robot_id: int
 
 @app.post("/admin/theia/watch/start")
 async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = Depends(require_admin)):
@@ -2061,6 +2112,11 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
     if target_booking is None:
         raise HTTPException(status_code=404, detail="Booking not found or not currently active")
 
+    # Validate requested robot
+    robot = db.get_robot_by_id(requested_robot_id)
+    if not robot or robot.get("status") != "active":
+        raise HTTPException(status_code=404, detail="Requested robot is not available or inactive")
+    
     if requested_robot_id and target_booking.get("robot_id") != requested_robot_id:
         raise HTTPException(
             status_code=400,
@@ -2071,7 +2127,9 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
     target_project_dir = theia_manager.get_user_project_dir(target_user_id)
     theia_manager.ensure_user_project_dir(target_user_id)
 
-    result = theia_manager.start_admin_watch_container(admin_id, target_project_dir)
+    result = theia_manager.start_admin_watch_container(
+        admin_id, target_project_dir, image_override=robot.get("container_image")
+    )
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=f"Failed to start watch container: {result.get('error')}")
 
@@ -2083,8 +2141,8 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
         "user_id": target_user_id,
         "user_name": target_booking.get("user_name"),
         "robot_id": target_booking.get("robot_id"),
-        "robot_image": target_booking.get("robot_image"),
-        "robot_name": target_booking.get("robot_name"),
+        "robot_image": robot.get("container_image") or target_booking.get("robot_image"),
+        "robot_name": robot.get("name") or target_booking.get("robot_name"),
     }
 
 @app.post("/admin/theia/watch/start-self")
