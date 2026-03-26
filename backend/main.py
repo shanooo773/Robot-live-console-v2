@@ -2213,7 +2213,7 @@ async def admin_watch_start(body: AdminWatchStartRequest, current_user: dict = D
     # 2. Admin-configured surveillance_base_image (from DB settings)
     # 3. Fallback handled inside theia_manager._resolve_image_to_use
     robot_image = robot.get("container_image")
-    admin_configured_image: str | None = None
+    admin_configured_image: Optional[str] = None
     if not robot_image and DATABASE_AVAILABLE:
         try:
             stored = db.get_admin_setting(SURVEILLANCE_BASE_IMAGE_KEY)

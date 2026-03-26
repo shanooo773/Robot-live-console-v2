@@ -1788,10 +1788,14 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                   {adminSettings.allowed_images.map((img) => (
                     <option key={img} value={img}>
                       {img}
-                      {img === adminSettings.surveillance_base_image ? " (current)" : ""}
                     </option>
                   ))}
                 </Select>
+                {adminSettings.surveillance_base_image && (
+                  <Text color="gray.500" fontSize="xs" mt={1}>
+                    Current saved image: {adminSettings.surveillance_base_image}
+                  </Text>
+                )}
               </Box>
               <Button
                 colorScheme="blue"

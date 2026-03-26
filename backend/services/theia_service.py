@@ -21,7 +21,7 @@ def _build_allowed_images() -> List[str]:
     """Return the de-duplicated allowlist of permitted surveillance images."""
     extra_raw = os.getenv("ALLOWED_SURVEILLANCE_IMAGES", "")
     extra = [img.strip() for img in extra_raw.split(",") if img.strip()]
-    seen: dict = {}
+    seen: Dict[str, bool] = {}
     result = []
     for img in _DEFAULT_ALLOWED_IMAGES + extra:
         if img not in seen:

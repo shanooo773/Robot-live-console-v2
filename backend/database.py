@@ -1591,9 +1591,9 @@ class DatabaseManager:
             f"""
             INSERT INTO admin_settings (setting_key, setting_value)
             VALUES ({placeholder}, {placeholder})
-            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+            ON DUPLICATE KEY UPDATE setting_value = {placeholder}
             """,
-            (key, value),
+            (key, value, value),
         )
         conn.close()
         return True
