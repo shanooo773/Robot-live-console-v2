@@ -137,3 +137,67 @@ def test_available_slots_today_with_15_minute_lead_time_excludes_near_term_slots
 
     assert "11:00" not in start_times  # within 15-minute lead window at 10:50
     assert "12:00" in start_times
+
+
+# ---------------------------------------------------------------------------
+# BOOKING_MAX_DAYS_AHEAD tests
+# ---------------------------------------------------------------------------
+
+def test_validate_booking_time_rejects_date_beyond_max_days_ahead(monkeypatch):
+    frozen_now = datetime(2026, 3, 26, 10, 0)
+    _freeze_now(monkeypatch, frozen_now)
+    monkeypatch.setenv("MIN_BOOKING_LEAD_TIME_MINUTES", "0")
+    monkeypatch.setenv("BOOKING_MAX_DAYS_AHEAD", "7")
+
+    service = BookingService(MockBookingDB())
+    # 8 days ahead – beyond the window
+    future_date = (frozen_now + timedelta(days=8)).strftime("%Y-%m-%d")
+
+    assert service.validate_booking_time(future_date, "10:00", "11:00") is False
+
+
+def test_validate_booking_time_allows_date_at_max_days_ahead_boundary(monkeypatch):
+    frozen_now = datetime(2026, 3, 26, 10, 0)
+    _freeze_now(monkeypatch, frozen_now)
+    monkeypatch.setenv("MIN_BOOKING_LEAD_TIME_MINUTES", "0")
+    monkeypatch.setenv("BOOKING_MAX_DAYS_AHEAD", "7")
+
+    service = BookingService(MockBookingDB())
+    # Exactly 7 days ahead – within the window
+    future_date = (frozen_now + timedelta(days=7)).strftime("%Y-%m-%d")
+
+    assert service.validate_booking_time(future_date, "10:00", "11:00") is True
+
+
+def test_available_slots_returns_empty_beyond_max_days_ahead(monkeypatch):
+    frozen_now = datetime(2026, 3, 26, 10, 0)
+    _freeze_now(monkeypatch, frozen_now)
+    monkeypatch.setenv("MIN_BOOKING_LEAD_TIME_MINUTES", "0")
+    monkeypatch.setenv("BOOKING_MAX_DAYS_AHEAD", "7")
+
+    service = BookingService(MockBookingDB())
+    future_date = (frozen_now + timedelta(days=8)).strftime("%Y-%m-%d")
+
+    slots = service.get_available_time_slots(date=future_date, robot_id=1)
+    assert slots == []
+
+
+def test_available_slots_returns_slots_within_max_days_ahead(monkeypatch):
+    frozen_now = datetime(2026, 3, 26, 10, 0)
+    _freeze_now(monkeypatch, frozen_now)
+    monkeypatch.setenv("MIN_BOOKING_LEAD_TIME_MINUTES", "0")
+    monkeypatch.setenv("BOOKING_MAX_DAYS_AHEAD", "7")
+
+    service = BookingService(MockBookingDB())
+    future_date = (frozen_now + timedelta(days=7)).strftime("%Y-%m-%d")
+
+    slots = service.get_available_time_slots(date=future_date, robot_id=1)
+    # Future date with no existing bookings – all 9 working-hour slots should be available
+    assert len(slots) == 9
+
+
+def test_max_days_ahead_default_is_seven(monkeypatch):
+    """When BOOKING_MAX_DAYS_AHEAD is not set the default must be 7."""
+    monkeypatch.delenv("BOOKING_MAX_DAYS_AHEAD", raising=False)
+    service = BookingService(MockBookingDB())
+    assert service.max_booking_days_ahead == 7

@@ -44,12 +44,12 @@ const TimeSlotGrid = ({
       return { status: 'disabled', reason: 'Select robot and date first' };
     }
 
-    // Check if slot is available
+    // Check if slot is available (use string comparison to handle int/string robotId mismatch)
     const isAvailable = availableSlots.some(available => 
       available.startTime === slot.startTime && 
       available.endTime === slot.endTime &&
       available.date === selectedDate &&
-      available.robotId === selectedRobot
+      String(available.robotId) === String(selectedRobot)
     );
 
     if (isAvailable) {
@@ -212,7 +212,7 @@ const TimeSlotGrid = ({
                       available.startTime === slot.startTime && 
                       available.endTime === slot.endTime &&
                       available.date === selectedDate &&
-                      available.robotType === selectedRobot
+                      String(available.robotId) === String(selectedRobot)
                     );
                     if (availableSlot) {
                       setHoveredSlot(slot.id);

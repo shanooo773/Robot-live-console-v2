@@ -130,6 +130,7 @@ Key configurations:
 - `CORS_ORIGINS`: Allowed frontend URLs
 - `VIDEO_STORAGE_PATH`: Video files directory
 - `MIN_BOOKING_LEAD_TIME_MINUTES`: Minimum minutes a booking must start in the future (default 0)
+- `BOOKING_MAX_DAYS_AHEAD`: Maximum number of days ahead a booking can be made, counting from today (default 7)
 - `DEFAULT_THEIA_IMAGE`: Fallback image for Theia booking/surveillance containers when a robot-specific image isn't set
 
 ### VPS Configuration
