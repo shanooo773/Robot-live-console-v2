@@ -7,6 +7,7 @@ import os
 import sys
 import types
 from datetime import datetime, timedelta
+import pytest
 
 # Allow importing backend/services without requiring full runtime dependencies
 if "database" not in sys.modules:
@@ -41,6 +42,7 @@ from services.booking_service import BookingService
 class MockBookingDB:
     def __init__(self, bookings=None):
         self._bookings = bookings or []
+        self.created_payload = None
 
     def get_active_robots(self):
         return [{"id": 1, "type": "turtlebot", "status": "active", "name": "TB3"}]
@@ -50,6 +52,20 @@ class MockBookingDB:
 
     def get_bookings_for_date_range(self, *_args, **_kwargs):
         return list(self._bookings)
+
+    def create_booking(self, **kwargs):
+        self.created_payload = kwargs
+        return {
+            "id": 123,
+            "user_id": kwargs["user_id"],
+            "robot_id": kwargs["robot_id"],
+            "robot_type": kwargs.get("robot_type") or "turtlebot",
+            "date": kwargs["date"],
+            "start_time": kwargs["start_time"],
+            "end_time": kwargs["end_time"],
+            "status": "active",
+            "created_at": "2026-03-26T10:00:00",
+        }
 
 
 def _freeze_now(monkeypatch, frozen_now: datetime):
@@ -98,6 +114,39 @@ def test_validate_booking_time_rejects_start_within_15_minutes(monkeypatch):
     date = frozen_now.strftime("%Y-%m-%d")
 
     assert service.validate_booking_time(date, "10:05", "10:35") is False
+
+
+def test_validate_booking_time_accepts_hh_mm_ss(monkeypatch):
+    frozen_now = datetime(2026, 3, 26, 10, 0)
+    _freeze_now(monkeypatch, frozen_now)
+    monkeypatch.setenv("MIN_BOOKING_LEAD_TIME_MINUTES", "0")
+
+    service = BookingService(MockBookingDB())
+    date = frozen_now.strftime("%Y-%m-%d")
+
+    assert service.validate_booking_time(date, "10:01:00", "10:31:00") is True
+
+
+def test_create_booking_requires_robot_id(monkeypatch):
+    frozen_now = datetime(2026, 3, 26, 10, 0)
+    _freeze_now(monkeypatch, frozen_now)
+    monkeypatch.setenv("MIN_BOOKING_LEAD_TIME_MINUTES", "0")
+
+    service = BookingService(MockBookingDB())
+    date = frozen_now.strftime("%Y-%m-%d")
+
+    with pytest.raises(booking_service_module.HTTPException) as exc_info:
+        service.create_booking(
+            user_id=1,
+            robot_id=None,
+            robot_type="turtlebot",
+            date=date,
+            start_time="11:00",
+            end_time="12:00",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "robot_id is required" in str(exc_info.value.detail)
 
 
 def test_no_hardcoded_ten_minute_lead_time_in_booking_logic():

@@ -2,7 +2,7 @@ import pymysql
 import os
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from typing import Optional, List, Dict, Any
 import json
 from dotenv import load_dotenv
@@ -800,7 +800,6 @@ class DatabaseManager:
         cursor = conn.cursor()
         now = datetime.now()
         current_date = now.strftime("%Y-%m-%d")
-        current_time = now.strftime("%H:%M")
         placeholder = self._get_placeholder()
         cursor.execute(f"""
             SELECT b.id, b.user_id, u.name, u.email, b.robot_type, b.robot_id,
@@ -810,29 +809,48 @@ class DatabaseManager:
             LEFT JOIN robots r ON b.robot_id = r.id
             WHERE b.date = {placeholder}
               AND b.status = 'active'
-              AND b.start_time <= {placeholder}
-              AND b.end_time >= {placeholder}
             ORDER BY b.start_time
-        """, (current_date, current_time, current_time))
+        """, (current_date,))
         bookings = cursor.fetchall()
         conn.close()
-        return [
-            {
-                "id": b[0],
-                "user_id": b[1],
-                "user_name": b[2],
-                "user_email": b[3],
-                "robot_type": b[4],
-                "robot_id": b[5],
-                "date": b[6],
-                "start_time": b[7],
-                "end_time": b[8],
-                "status": b[9],
-                "robot_name": b[10] or "Unknown",
-                "robot_image": b[11]
-            }
-            for b in bookings
-        ]
+
+        current_time_obj = now.time()
+        active_now = []
+        for b in bookings:
+            start_time_obj = self._parse_time_value(b[7])
+            end_time_obj = self._parse_time_value(b[8])
+            if not start_time_obj or not end_time_obj:
+                continue
+            if not (start_time_obj <= current_time_obj <= end_time_obj):
+                continue
+            active_now.append(
+                {
+                    "id": b[0],
+                    "user_id": b[1],
+                    "user_name": b[2],
+                    "user_email": b[3],
+                    "robot_type": b[4],
+                    "robot_id": b[5],
+                    "date": b[6],
+                    "start_time": b[7],
+                    "end_time": b[8],
+                    "status": b[9],
+                    "robot_name": b[10] or "Unknown",
+                    "robot_image": b[11],
+                }
+            )
+        return active_now
+
+    @staticmethod
+    def _parse_time_value(value: Optional[str]) -> Optional[time]:
+        """Parse HH:MM or HH:MM:SS time string; return None when parsing fails."""
+        normalized = (value or "").strip()
+        for fmt in ("%H:%M", "%H:%M:%S"):
+            try:
+                return datetime.strptime(normalized, fmt).time()
+            except ValueError:
+                continue
+        return None
 
     
     def _find_available_robot(self, robot_type: str, date: str, start_time: str, end_time: str, cursor) -> Optional[Dict[str, Any]]:
@@ -870,19 +888,10 @@ class DatabaseManager:
         """Check if a specific robot is available for the given time slot"""
         placeholder = self._get_placeholder()
 
-        # Enforce at most one active booking per robot regardless of time window
-        cursor.execute(f"""
-            SELECT id FROM bookings 
-            WHERE robot_id = {placeholder} AND status = 'active'
-        """, (robot_id,))
-        existing_active = cursor.fetchone()
-        if existing_active:
-            return False
-
         # Get existing bookings for this robot on the same date
         cursor.execute(f"""
             SELECT start_time, end_time FROM bookings 
-            WHERE robot_id = {placeholder} AND date = {placeholder} AND status = 'active'
+            WHERE robot_id = {placeholder} AND date = {placeholder} AND status IN ('active', 'scheduled')
         """, (robot_id, date))
         
         existing_bookings = cursor.fetchall()
@@ -891,7 +900,10 @@ class DatabaseManager:
         from datetime import time
         
         def parse_time_string(time_str: str) -> time:
-            return datetime.strptime(time_str.strip(), "%H:%M").time()
+            parsed = self._parse_time_value(time_str)
+            if parsed is None:
+                raise ValueError(f"Invalid time format: {time_str}")
+            return parsed
         
         def times_overlap(start1: str, end1: str, start2: str, end2: str) -> bool:
             t1_start = parse_time_string(start1)
@@ -919,16 +931,7 @@ class DatabaseManager:
                 raise HTTPException(status_code=404, detail=f"Robot {robot_id} not found or inactive")
             robot_type = robot_type or robot.get("type")
 
-            # Enforce only one active booking per robot_id at a time
-            cursor.execute(f"SELECT id FROM bookings WHERE robot_id = {placeholder} AND status = 'active'", (robot_id,))
-            active_existing = cursor.fetchone()
-            if active_existing:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Robot {robot_id} already has an active booking"
-                )
-
-            # Enforce single active booking per robot/time window
+            # Enforce no overlap for this robot/time window
             if not self._is_robot_available(robot_id, date, start_time, end_time, cursor):
                 raise HTTPException(
                     status_code=409,
@@ -1123,7 +1126,7 @@ class DatabaseManager:
             FROM bookings b
             JOIN users u ON b.user_id = u.id
             LEFT JOIN robots r ON b.robot_id = r.id  
-            WHERE b.date >= {self._get_placeholder()} AND b.date <= {self._get_placeholder()} AND b.status = 'active'
+            WHERE b.date >= {self._get_placeholder()} AND b.date <= {self._get_placeholder()} AND b.status IN ('active', 'scheduled')
             ORDER BY b.date, b.start_time
         """, (start_date, end_date))
         

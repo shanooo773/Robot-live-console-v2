@@ -22,10 +22,7 @@ class TheiaContainerManager:
         self.max_containers = int(os.getenv('THEIA_MAX_CONTAINERS', 50))
         self.theia_image = os.getenv('THEIA_IMAGE', 'elswork/theia')  # Preview mode image
         self.default_theia_image = os.getenv('DEFAULT_THEIA_IMAGE')
-        self.theia_booking_image = os.getenv(
-            'THEIA_BOOKING_IMAGE',
-            self.default_theia_image or 'muneeb/theia-ros-humble:v2'
-        )  # Booking mode image (per-robot override supported)
+        self.theia_booking_image = os.getenv('THEIA_BOOKING_IMAGE')
         self.docker_network = os.getenv('DOCKER_NETWORK', 'robot-console-network')
         
         # Container lifecycle configuration
@@ -80,7 +77,12 @@ class TheiaContainerManager:
             normalized_image_override = stripped if stripped else None
         else:
             normalized_image_override = image_override or None
-        return normalized_image_override or self.theia_booking_image or self.default_theia_image or self.theia_image
+        return (
+            normalized_image_override
+            or self.default_theia_image
+            or self.theia_booking_image
+            or self.theia_image
+        )
 
     def _load_port_mappings_from_db(self):
         """Load existing port mappings from database on startup"""

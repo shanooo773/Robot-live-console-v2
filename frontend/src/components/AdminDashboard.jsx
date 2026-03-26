@@ -793,6 +793,14 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   });
 
   const activeRobots = robots.filter((robot) => robot.status === "active");
+  const watchTargetLabel = watchStatus?.user_name || `User ${watchStatus?.user_id}`;
+  const watchRobotDetails = [
+    `Robot #${watchStatus?.robot_id || "N/A"}`,
+    watchStatus?.robot_name,
+    watchStatus?.robot_image,
+  ]
+    .filter(Boolean)
+    .join(" • ");
 
   return (
     <Container maxW="7xl" py={8}>
@@ -1569,7 +1577,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                       )}
                       <Text color="white" fontWeight="bold">
                         {watchStatus.mode === "surveillance"
-                          ? `👁 Watching: ${watchStatus.user_name || `User ${watchStatus.user_id}`} (Booking #${watchStatus.booking_id}, Robot #${watchStatus.robot_id || 'N/A'})`
+                          ? `👁 Watching: ${watchTargetLabel} (Booking #${watchStatus.booking_id}, ${watchRobotDetails})`
                           : "👤 Admin Workspace"}
                       </Text>
                     </HStack>
