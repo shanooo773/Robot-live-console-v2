@@ -678,7 +678,21 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
     setIsActiveBookingsLoading(true);
     try {
       const bookings = await getActiveBookingsNow(authToken);
-      setActiveBookingsNow(ensureArray(bookings));
+      const bookingList = ensureArray(bookings);
+      setActiveBookingsNow(bookingList);
+      // Pre-select each booking's own robot if it is in the active robots list
+      setWatchRobotSelection((prev) => {
+        const activeRobotIds = new Set(
+          robots.filter((r) => r.status === "active").map((r) => r.id)
+        );
+        const preselected = { ...prev };
+        bookingList.forEach((booking) => {
+          if (booking.robot_id && preselected[booking.id] === undefined && activeRobotIds.has(booking.robot_id)) {
+            preselected[booking.id] = booking.robot_id;
+          }
+        });
+        return preselected;
+      });
     } catch (error) {
       console.error("Failed to load active bookings:", error);
       setActiveBookingsNow([]);
@@ -1728,7 +1742,7 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
                               >
                                 {activeRobots.map((robot) => (
                                   <option key={robot.id} value={robot.id}>
-                                    #{robot.id} — {robot.name}
+                                    {robot.name} (ID {robot.id})
                                   </option>
                                 ))}
                               </Select>
