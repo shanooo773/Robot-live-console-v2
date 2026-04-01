@@ -927,6 +927,34 @@ class DatabaseManager:
         
         return True
     
+    def _has_user_overlap(self, user_id: int, date: str, start_time: str, end_time: str, cursor) -> bool:
+        """Return True if the user already has a booking overlapping the given time slot (across all robots)."""
+        placeholder = self._get_placeholder()
+
+        cursor.execute(f"""
+            SELECT start_time, end_time FROM bookings
+            WHERE user_id = {placeholder} AND date = {placeholder} AND status IN ('active', 'scheduled')
+        """, (user_id, date))
+
+        existing_bookings = cursor.fetchall()
+
+        def parse_t(t_str: str):
+            parsed = self._parse_time_value(t_str)
+            if parsed is None:
+                raise ValueError(f"Invalid time format: {t_str}")
+            return parsed
+
+        new_start = parse_t(start_time)
+        new_end = parse_t(end_time)
+
+        for existing_start, existing_end in existing_bookings:
+            ex_start = parse_t(existing_start)
+            ex_end = parse_t(existing_end)
+            if new_start < ex_end and ex_start < new_end:
+                return True
+
+        return False
+
     def create_booking(self, user_id: int, robot_id: int, date: str, start_time: str, end_time: str, robot_type: Optional[str] = None) -> Dict[str, Any]:
         """Create a new booking for a specific robot instance"""
         conn = self.get_connection()
@@ -945,6 +973,13 @@ class DatabaseManager:
                 raise HTTPException(
                     status_code=409,
                     detail=f"Robot {robot_id} is already booked for the requested time slot"
+                )
+
+            # Enforce no overlap for this user across all robots
+            if self._has_user_overlap(user_id, date, start_time, end_time, cursor):
+                raise HTTPException(
+                    status_code=409,
+                    detail="User already has a booking that overlaps this time slot"
                 )
             
             cursor.execute(f"""
