@@ -236,7 +236,7 @@
 
   text-align: center;
 
-  background-image: url("/robot-back.png");
+  background-image: url("/robot-back.png?v=1");
   background-size: cover;
   background-position: center;
 
@@ -770,7 +770,7 @@ min-height:320px;        /* ⭐ same height for all cards */
 .contact-section {
 
   position: relative;
-  padding-top: 80px;
+  padding-top: 5px;
   padding-bottom: 80px;
 
   text-align: center;
@@ -812,6 +812,9 @@ min-height:320px;        /* ⭐ same height for all cards */
   font-size: 14px;
   outline: none;
   transition: 0.3s;
+
+  background: #ffffff;   /* 🔥 ADD THIS */
+  color: #1e293b;        /* 🔥 ADD THIS */
 }
 
 .contact-form input:focus,
@@ -1106,4 +1109,112 @@ box-shadow:0 15px 35px rgba(79,70,229,0.35);
 
 .hero-buttons a{
 text-decoration:none;
+}
+
+.console-section,
+.environment-section,
+.why-section,
+.feedback-section,
+.faq-section,
+.contact-section {
+  position: relative;
+  z-index: 1;
+}
+
+.console-section::before,
+.environment-section::before,
+.why-section::before,
+.feedback-section::before,
+.faq-section::before,
+.contact-section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.7); /* 🔥 CONTROL THIS */
+  z-index: 0;
+}
+
+.console-section > *,
+.environment-section > *,
+.why-section > *,
+.feedback-section > *,
+.faq-section > *,
+.contact-section > * {
+  position: relative;
+  z-index: 2;
+}
+
+.contact-form input::placeholder,
+.contact-form textarea::placeholder {
+  color: #94a3b8; /* visible grey */
+  opacity: 1;
+}
+
+.input-group {
+  position: relative;
+}
+
+.input-group input,
+.input-group textarea {
+  width: 100%;
+  padding: 18px 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  outline: none;
+  font-size: 14px;
+  background: #fff;
+}
+
+/* LABEL */
+.input-group label {
+  position: absolute;
+  left: 14px;
+  top: 16px;
+  color: #94a3b8;
+  font-size: 14px;
+  pointer-events: none;
+  transition: 0.25s ease;
+}
+
+/* FLOAT EFFECT */
+.input-group input:focus + label,
+.input-group input:valid + label,
+.input-group textarea:focus + label,
+.input-group textarea:valid + label {
+  top: -8px;
+  left: 12px;
+  font-size: 12px;
+  background: white;
+  padding: 0 6px;
+  color: #4f46e5;
+}
+
+.input-group {
+  width: 100%;
+}
+
+/* ================= LOGOUT BUTTON (SAME AS PRIMARY) ================= */
+
+/* ================= FORCE PRIMARY BUTTON ================= */
+
+.logout-btn {
+  background: linear-gradient(135deg,#4f46e5,#7c3aed) !important;
+  color: white !important;
+
+  border: none !important;
+
+  padding: 12px 24px;
+  border-radius: 14px;
+
+  font-weight: 600;
+
+  box-shadow: 0 12px 30px rgba(79,70,229,0.35);
+
+  cursor: pointer;
+  transition: 0.25s ease;
+}
+
+.logout-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 45px rgba(79,70,229,0.45);
 }
