@@ -21,6 +21,7 @@ const ResetPasswordPage = ({ onSuccess, resetToken }) => {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
   const toast = useToast();
 
   // Validate resetToken is provided
@@ -92,85 +93,90 @@ const ResetPasswordPage = ({ onSuccess, resetToken }) => {
 
   // Show error if no token
   if (!resetToken) {
-    return (
-      <Container maxW="md" py={20}>
-        <Card bg="gray.800" border="1px solid" borderColor="red.600">
-          <CardBody>
-            <VStack spacing={4}>
-              <Text fontSize="4xl">❌</Text>
-              <Heading size="lg" color="white">Invalid Reset Link</Heading>
-              <Alert status="error" bg="red.900" color="red.100" border="1px solid" borderColor="red.600">
-                <AlertIcon color="red.300" />
-                <Text fontSize="sm">
-                  This password reset link is invalid or has expired. Please request a new one.
-                </Text>
-              </Alert>
-              <Button colorScheme="blue" onClick={onSuccess}>
-                Go to Login
-              </Button>
-            </VStack>
-          </CardBody>
-        </Card>
-      </Container>
+    return 
+    (
+            <div className="login-wrapper">
+        <div className="login-card" style={{ textAlign: "center" }}>
+          <h2>❌ Invalid Link</h2>
+
+          <p className="login-sub">
+            This reset link is invalid or expired.
+          </p>
+
+          <button className="login-btn" onClick={onSuccess}>
+            Go to Login
+          </button>
+        </div>
+      </div>
     );
   }
 
-  return (
-    <Container maxW="md" py={20}>
-      <Card bg="gray.800" border="1px solid" borderColor="gray.600">
-        <CardBody>
-          <VStack spacing={4} as="form" onSubmit={handleSubmit}>
-            <Text fontSize="4xl">🔑</Text>
-            <Heading size="lg" color="white">Reset Password</Heading>
-            <Text color="gray.300" textAlign="center">
-              Enter your new password below
-            </Text>
+  return 
+  (
 
-            <FormControl isRequired>
-              <FormLabel color="gray.200">New Password</FormLabel>
-              <Input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                minLength={8}
-                placeholder="At least 8 characters"
-                bg="gray.700"
-                border="1px solid"
-                borderColor="gray.600"
-                color="white"
-                _placeholder={{ color: "gray.400" }}
-              />
-            </FormControl>
+        <div className="login-wrapper">
 
-            <FormControl isRequired>
-              <FormLabel color="gray.200">Confirm Password</FormLabel>
-              <Input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                minLength={8}
-                placeholder="Re-enter your password"
-                bg="gray.700"
-                border="1px solid"
-                borderColor="gray.600"
-                color="white"
-                _placeholder={{ color: "gray.400" }}
-              />
-            </FormControl>
+      <div className="login-card">
 
-            <Button
-              type="submit"
-              colorScheme="blue"
-              w="full"
-              isLoading={loading}
-              loadingText="Resetting..."
+        <h2>Reset Password 🔑</h2>
+
+        <p className="login-sub">
+          Enter your new password below
+        </p>
+
+        <form onSubmit={handleSubmit}>
+
+          {/* PASSWORD */}
+          <div className="input-box">
+            <Lock size={18} />
+
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="At least 8 characters"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              minLength={8}
+            />
+
+            <button
+              type="button"
+              className="eye-btn"
+              onClick={() => setShowPassword(!showPassword)}
             >
-              Reset Password
-            </Button>
-          </VStack>
-        </CardBody>
-      </Card>
-    </Container>
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+
+          {/* CONFIRM PASSWORD */}
+          <div className="input-box">
+            <Lock size={18} />
+
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Re-enter your password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              minLength={8}
+            />
+          </div>
+
+          {/* BUTTON */}
+          <button className="login-btn" disabled={loading}>
+            {loading ? "Resetting..." : "Reset Password"}
+          </button>
+
+          {/* BACK */}
+          <p className="back-login" onClick={onSuccess}>
+            ← Back to Login
+          </p>
+
+        </form>
+
+      </div>
+
+    </div>
   );
 };
 
