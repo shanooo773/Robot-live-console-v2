@@ -1,0 +1,38 @@
+/* VERIFY EMAIL PAGE */
+
+.verify-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ICONS */
+
+.verify-icon {
+  font-size: 50px;
+  margin-bottom: 12px;
+}
+
+.verify-icon.small {
+  font-size: 40px;
+}
+
+/* TEXT */
+
+.verify-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.verify-sub {
+  color: #64748b;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.verify-error {
+  color: #ef4444;
+}
