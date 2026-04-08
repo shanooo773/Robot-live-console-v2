@@ -1,22 +1,10 @@
-import {
-  Box,
-  Button,
-  VStack,
-  Heading,
-  Text,
-  useToast,
-  Container,
-  Card,
-  CardBody,
-  Alert,
-  AlertIcon,
-  Spinner,
-} from "@chakra-ui/react";
 import { useState, useEffect } from "react";
+import { useToast } from "@chakra-ui/react";
 import { confirmEmail } from "../api";
+import "../styles/verifyemail.css"; // 👈 ADD THIS
 
 const VerifyEmailPage = ({ token, onSuccess }) => {
-  const [status, setStatus] = useState("loading"); // loading | success | error
+  const [status, setStatus] = useState("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const toast = useToast();
 
@@ -48,68 +36,56 @@ const VerifyEmailPage = ({ token, onSuccess }) => {
   }, [token, toast]);
 
   return (
-    <Container maxW="md" py={20}>
-      <Card bg="gray.800" border="1px solid" borderColor="gray.600">
-        <CardBody>
-          <VStack spacing={6}>
-            {status === "loading" && (
-              <>
-                <Spinner size="xl" color="blue.400" />
-                <Heading size="md" color="white">
-                  Verifying your email…
-                </Heading>
-              </>
-            )}
+    <div className="login-wrapper verify-wrapper">
+      <div className="login-card" style={{ textAlign: "center" }}>
 
-            {status === "success" && (
-              <>
-                <Text fontSize="4xl">✅</Text>
-                <Heading size="lg" color="white">
-                  Email Verified!
-                </Heading>
-                <Alert
-                  status="success"
-                  bg="green.900"
-                  color="green.100"
-                  border="1px solid"
-                  borderColor="green.600"
-                >
-                  <AlertIcon color="green.300" />
-                  <Text fontSize="sm">
-                    Your account has been activated. You can now sign in.
-                  </Text>
-                </Alert>
-                <Button colorScheme="blue" w="full" onClick={onSuccess}>
-                  Go to Sign In
-                </Button>
-              </>
-            )}
+        {/* LOADING */}
+        {status === "loading" && (
+          <>
+            <div className="verify-icon small">⏳</div>
+            <h2 className="verify-title">Verifying Your Email...</h2>
+            <p className="verify-sub">
+              Please wait while we verify your account
+            </p>
+          </>
+        )}
 
-            {status === "error" && (
-              <>
-                <Text fontSize="4xl">❌</Text>
-                <Heading size="lg" color="white">
-                  Verification Failed
-                </Heading>
-                <Alert
-                  status="error"
-                  bg="red.900"
-                  color="red.100"
-                  border="1px solid"
-                  borderColor="red.600"
-                >
-                  <AlertIcon color="red.300" />
-                  <Text fontSize="sm">{errorMessage}</Text>
-                </Alert>
-                <Button colorScheme="blue" w="full" onClick={onSuccess}>
-                  Back to Sign In
-                </Button>
-              </>
-            )}
-          </VStack>
-        </CardBody>
-      </Card>
-    </Container>
+        {/* SUCCESS */}
+        {status === "success" && (
+          <>
+            <div className="verify-icon">✅</div>
+            <h2 className="verify-title">Email Verified!</h2>
+
+            <p className="verify-sub">
+              Your account has been activated. You can now sign in.
+            </p>
+
+            <button className="login-btn" onClick={onSuccess}>
+              Go to Sign In
+            </button>
+          </>
+        )}
+
+        {/* ERROR */}
+        {status === "error" && (
+          <>
+            <div className="verify-icon">❌</div>
+            <h2 className="verify-title">Verification Failed</h2>
+
+            <p className="verify-sub verify-error">
+              {errorMessage}
+            </p>
+
+            <button className="login-btn" onClick={onSuccess}>
+              Back to Sign In
+            </button>
+          </>
+        )}
+
+        <p className="secure-text">🔒 Your data is securely encrypted</p>
+
+      </div>
+    </div>
   );
 };
 
