@@ -5,13 +5,18 @@ import { loginUser, registerUser, googleLogin, resendConfirmation } from "../api
 import { useToast } from "@chakra-ui/react";
 import { FcGoogle } from "react-icons/fc";
 
-const AuthPage = ({ onAuth, onBack, onForgotPassword }) => {
+const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showRegPassword, setShowRegPassword] = useState(false);
 
   // "login" or "register" or "emailSent"
-  const [activeView, setActiveView] = useState("login");
+  const [activeView, setActiveView] = useState(mode || "login");
+  useEffect(() => {
+    if (mode) {
+      setActiveView(mode);
+    }
+  }, [mode]);
 
   const [loginData, setLoginData] = useState({ email: "", password: "" });
   const [registerData, setRegisterData] = useState({
