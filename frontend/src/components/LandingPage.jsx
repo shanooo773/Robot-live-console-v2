@@ -7,7 +7,7 @@ import {
   ArrowRight, Menu, X
 } from "lucide-react";
 
-const LandingPage = ({ onGetStarted }) => {
+const LandingPage = ({ onLogin, onSignup }) => {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const heroText = useSpring({
@@ -97,7 +97,7 @@ const LandingPage = ({ onGetStarted }) => {
             <button
               className="nav-login-btn"
               style={{ background: "none", border: "none", cursor: "pointer", color: "#475569", fontSize: "18px", fontWeight: "500", padding: 0 }}
-              onClick={() => { setMenuOpen(false); onGetStarted(); }}
+              onClick={() => { setMenuOpen(false); onLogin(); }}
             >
               Login
             </button>
@@ -106,7 +106,7 @@ const LandingPage = ({ onGetStarted }) => {
           <button
             className="btn-primary1"
             style={{ border: "none", cursor: "pointer" }}
-            onClick={() => { setMenuOpen(false); onGetStarted(); }}
+            onClick={() => { setMenuOpen(false); onSignup(); }}
           >
             Sign Up
           </button>
@@ -139,7 +139,7 @@ const LandingPage = ({ onGetStarted }) => {
 
           <div className="hero-buttons">
 
-            <button className="hero-primary-btn" onClick={onGetStarted}>
+            <button className="hero-primary-btn" onClick={onSignup}>
               Start Robotics
             </button>
 
@@ -211,7 +211,7 @@ const LandingPage = ({ onGetStarted }) => {
         </div>
 
         <div className="big-cta-wrapper">
-          <button className="big-cta-btn" onClick={onGetStarted}>
+          <button className="big-cta-btn" onClick={onSignup}>
             Get Started
           </button>
         </div>

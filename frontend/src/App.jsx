@@ -18,6 +18,7 @@ function App() {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [resetToken, setResetToken] = useState(null);
   const [verifyToken, setVerifyToken] = useState(null);
+  const [authMode, setAuthMode] = useState("login");
 
   useEffect(() => {
     // Check for special tokens in URL
@@ -82,8 +83,8 @@ function App() {
     const token = authToken || localStorage.getItem('authToken');
     if (token) {
       // Stop booking container first, then preview container
-      try { await stopBookingContainer(token); } catch (_) {}
-      try { await stopTheiaContainer(token); } catch (_) {}
+      try { await stopBookingContainer(token); } catch (_) { }
+      try { await stopTheiaContainer(token); } catch (_) { }
     }
     setUser(null);
     setAuthToken(null);
@@ -97,33 +98,48 @@ function App() {
   };
 
   return (
-    <Box 
-      minH="100vh" 
-      bg="#0f0a19" 
+    <Box
+      minH="100vh"
+      bg="#0f0a19"
       color="gray.500"
-      css={{ 
+      css={{
         scrollBehavior: 'smooth',
         overflowX: 'hidden',
         overflowY: 'auto'
       }}
     >
       {currentPage === "landing" && (
-        <LandingPage onGetStarted={() => setCurrentPage("auth")} />
+
+
+        <LandingPage
+          onLogin={() => {
+            setAuthMode("login");
+            setCurrentPage("auth");
+          }}
+          onSignup={() => {
+            setAuthMode("register");
+            setCurrentPage("auth");
+          }}
+        />
+
+
+
       )}
       {currentPage === "auth" && (
-        <AuthPage 
-          onAuth={handleAuth} 
+        <AuthPage
+          mode={authMode}
+          onAuth={handleAuth}
           onBack={() => setCurrentPage("landing")}
           onForgotPassword={() => setCurrentPage("forgotPassword")}
         />
       )}
       {currentPage === "forgotPassword" && (
-        <ForgotPasswordPage 
+        <ForgotPasswordPage
           onBack={() => setCurrentPage("auth")}
         />
       )}
       {currentPage === "resetPassword" && (
-        <ResetPasswordPage 
+        <ResetPasswordPage
           resetToken={resetToken}
           onSuccess={() => {
             setResetToken(null);
@@ -141,18 +157,18 @@ function App() {
         />
       )}
       {currentPage === "booking" && (
-        <BookingPage 
+        <BookingPage
           user={user}
           authToken={authToken}
-          onBooking={handleBooking} 
+          onBooking={handleBooking}
           onLogout={handleLogout}
           onAdminAccess={user?.role === 'admin' ? handleAdminAccess : null}
         />
       )}
       {currentPage === "editor" && (
-        <NeonRobotConsole 
-          user={user} 
-          slot={selectedSlot} 
+        <NeonRobotConsole
+          user={user}
+          slot={selectedSlot}
           authToken={authToken}
           onBack={() => setCurrentPage("booking")}
           onLogout={handleLogout}
