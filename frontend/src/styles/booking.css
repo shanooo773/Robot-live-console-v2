@@ -140,7 +140,7 @@
 .input-group label {
   position: absolute;
   left: 14px;
-  top: -8px; /* 👈 yeh main fix hai */
+  top: -20px; /* 👈 yeh main fix hai */
   font-size: 12px;
   color: #4f46e5;
   background: white;
