@@ -626,59 +626,61 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onAdminAccess }) =>
           )}
 
           {/* Robot and Date Selection */}
-          <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
-            <CardHeader>
-              <Text fontSize="lg" fontWeight="bold" color="white">
+                    <div className="booking-select-section">
+
+            <div className="booking-card">
+
+              <div className="booking-card-title">
                 Select Robot and Date
-              </Text>
-            </CardHeader>
-            <CardBody>
-              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                <FormControl>
-                  <FormLabel color="gray.300">Date</FormLabel>
-                  <Select
+              </div>
+
+              <div className="booking-select-grid">
+
+                {/* DATE */}
+                <div className="input-group">
+                  <label>Date</label>
+                  <select
                     value={selectedDate}
                     onChange={(e) => setSelectedDate(e.target.value)}
-                    bg="gray.700"
-                    border="1px solid"
-                    borderColor="gray.600"
-                    color="white"
-                    placeholder="Select a date"
                   >
+                    <option value="">Select a date</option>
                     {getDateOptions().map(option => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
                     ))}
-                  </Select>
-                </FormControl>
+                  </select>
+                </div>
 
-                <FormControl>
-                  <FormLabel color="gray.300">Robot Environment</FormLabel>
-                  <Select
+                {/* ROBOT */}
+                <div className="input-group">
+                  <label>Robot Environment</label>
+                  <select
                     value={selectedRobotId}
                     onChange={(e) => setSelectedRobotId(e.target.value)}
-                    bg="gray.700"
-                    border="1px solid"
-                    borderColor="gray.600"
-                    color="white"
-                    placeholder="Select a robot"
                   >
+                    <option value="">Select a robot</option>
                     {safeAvailableRobotsKeys.map(robotKey => (
+
                       <option key={robotKey} value={robotKey}>
                         {availableRobots[robotKey].emoji} {availableRobots[robotKey].name} ({availableRobots[robotKey].type})
                       </option>
+
                     ))}
-                  </Select>
-                </FormControl>
-              </SimpleGrid>
+                  </select>
+                </div>
+
+              </div>
+
+              {/* AUTO FETCH TEXT */}
               {isAutoFetching && (
-                <Text mt={3} color="blue.300" fontSize="sm">
+                <div className="auto-fetch-text">
                   🔄 Auto-fetching available time slots...
-                </Text>
+                </div>
               )}
-            </CardBody>
-          </Card>
+
+            </div>
+          </div>
 
           {/* Error Display */}
           {slotError && (

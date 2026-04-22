@@ -149,7 +149,7 @@ const TimeSlotGrid = ({
     <VStack spacing={4} align="stretch">
       <HStack justify="space-between" align="center">
         <VStack align="start" spacing={1}>
-          <Text fontSize="lg" fontWeight="bold" color="white">
+          <Text fontSize="lg" fontWeight="bold" color="black">
             Time Slots for {new Date(selectedDate).toLocaleDateString('en-US', { 
               weekday: 'long', 
               month: 'long', 
@@ -159,7 +159,7 @@ const TimeSlotGrid = ({
           </Text>
           <HStack>
             <Text fontSize="xl">{availableRobots[selectedRobot]?.emoji || "🤖"}</Text>
-            <Text color="gray.300">
+            <Text color="gray.900">
               {availableRobots[selectedRobot]?.name || selectedRobot}
             </Text>
           </HStack>
@@ -168,15 +168,15 @@ const TimeSlotGrid = ({
         <HStack spacing={4}>
           <HStack spacing={2}>
             <Box w={3} h={3} bg="green.500" borderRadius="sm" />
-            <Text fontSize="sm" color="gray.300">Available</Text>
+            <Text fontSize="sm" color="gray.900">Available</Text>
           </HStack>
           <HStack spacing={2}>
             <Box w={3} h={3} bg="red.500" borderRadius="sm" />
-            <Text fontSize="sm" color="gray.300">Booked</Text>
+            <Text fontSize="sm" color="gray.900">Booked</Text>
           </HStack>
           <HStack spacing={2}>
             <Box w={3} h={3} bg="gray.500" borderRadius="sm" />
-            <Text fontSize="sm" color="gray.300">Unavailable</Text>
+            <Text fontSize="sm" color="gray.900">Unavailable</Text>
           </HStack>
         </HStack>
       </HStack>
