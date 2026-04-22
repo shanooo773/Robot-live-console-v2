@@ -93,8 +93,7 @@ const ResetPasswordPage = ({ onSuccess, resetToken }) => {
 
   // Show error if no token
   if (!resetToken) {
-    return 
-    (
+    return (
             <div className="login-wrapper">
         <div className="login-card" style={{ textAlign: "center" }}>
           <h2>❌ Invalid Link</h2>
@@ -111,8 +110,7 @@ const ResetPasswordPage = ({ onSuccess, resetToken }) => {
     );
   }
 
-  return 
-  (
+  return (
 
         <div className="login-wrapper">
 
