@@ -2,87 +2,61 @@ import { extendTheme } from "@chakra-ui/react";
 
 const theme = extendTheme({
   config: {
-    initialColorMode: "dark",
+    initialColorMode: "light",
     useSystemColorMode: false,
   },
   fonts: {
-    heading: "'Orbitron', sans-serif",
-    body: "'Rajdhani', sans-serif",
-    mono: "'Exo 2', monospace",
+    heading: "'Inter', sans-serif",
+    body: "'Inter', sans-serif",
+    mono: "'JetBrains Mono', monospace",
   },
   colors: {
     brand: {
-      50: "#e6f3ff",
-      100: "#b3d9ff",
-      200: "#80bfff",
-      300: "#4da6ff",
-      400: "#1a8cff",
-      500: "#0066cc",
-      600: "#0052a3",
-      700: "#003d7a",
-      800: "#002952",
-      900: "#001429",
+      50: "#EFF6FF",
+      100: "#DBEAFE",
+      200: "#BFDBFE",
+      300: "#93C5FD",
+      400: "#60A5FA",
+      500: "#2563EB",
+      600: "#1D4ED8",
+      700: "#1E40AF",
+      800: "#1E3A8A",
+      900: "#1E3470",
     },
     blue: {
-      50: "#e6f3ff",
-      100: "#b3d9ff",
-      200: "#80bfff",
-      300: "#4da6ff",
-      400: "#1a8cff",
-      500: "#0066cc",
-      600: "#0052a3",
-      700: "#003d7a",
-      800: "#002952",
-      900: "#001429",
+      50: "#EFF6FF",
+      100: "#DBEAFE",
+      200: "#BFDBFE",
+      300: "#93C5FD",
+      400: "#60A5FA",
+      500: "#2563EB",
+      600: "#1D4ED8",
+      700: "#1E40AF",
+      800: "#1E3A8A",
+      900: "#1E3470",
     },
-    neon: {
-      cyan: "rgba(0,255,200,0.8)",
-      blue: "rgba(0,191,255,0.8)",
-      purple: "rgba(138,43,226,0.8)",
-      pink: "rgba(255,20,147,0.8)",
-      green: "rgba(50,205,50,0.8)",
-    }
   },
   styles: {
     global: {
       body: {
-        bg: "linear-gradient(135deg, #0a0015 0%, #1a0033 25%, #001a33 50%, #003366 75%, #004080 100%)",
+        bg: "#F0F4FF",
+        color: "#1E293B",
         minHeight: "100vh",
-        fontFamily: "'Rajdhani', sans-serif",
+        fontFamily: "'Inter', sans-serif",
         overflowX: "hidden",
         overflowY: "auto",
       },
       "@keyframes pulse": {
-        "0%, 100%": {
-          opacity: 1,
-        },
-        "50%": {
-          opacity: 0.8,
-        },
+        "0%, 100%": { opacity: 1 },
+        "50%": { opacity: 0.8 },
       },
       "@keyframes float": {
-        "0%, 100%": {
-          transform: "translateY(0px)",
-        },
-        "50%": {
-          transform: "translateY(-20px)",
-        },
+        "0%, 100%": { transform: "translateY(0px)" },
+        "50%": { transform: "translateY(-20px)" },
       },
-      "@keyframes neonGlow": {
-        "0%, 100%": {
-          textShadow: "0 0 5px rgba(0,255,200,0.5), 0 0 10px rgba(0,255,200,0.3), 0 0 15px rgba(0,255,200,0.1)",
-        },
-        "50%": {
-          textShadow: "0 0 10px rgba(0,255,200,0.8), 0 0 20px rgba(0,255,200,0.6), 0 0 30px rgba(0,255,200,0.4)",
-        },
-      },
-      "@keyframes borderGlow": {
-        "0%, 100%": {
-          boxShadow: "0 0 5px rgba(0,255,200,0.3), inset 0 0 5px rgba(0,255,200,0.1)",
-        },
-        "50%": {
-          boxShadow: "0 0 20px rgba(0,255,200,0.6), inset 0 0 10px rgba(0,255,200,0.2)",
-        },
+      "@keyframes fadeSlideUp": {
+        from: { opacity: 0, transform: "translateY(16px)" },
+        to: { opacity: 1, transform: "translateY(0)" },
       },
     },
   },
@@ -90,15 +64,13 @@ const theme = extendTheme({
     Card: {
       baseStyle: {
         container: {
-          background: "rgba(26, 32, 44, 0.3)",
-          backdropFilter: "blur(12px)",
-          border: "1px solid rgba(0,255,200,0.2)",
-          borderRadius: "12px",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,255,200,0.1)",
-          transition: "all 0.3s ease",
+          background: "white",
+          border: "1px solid #E2E8F0",
+          borderRadius: "16px",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+          transition: "all 0.2s ease",
           _hover: {
-            border: "1px solid rgba(0,255,200,0.4)",
-            boxShadow: "0 12px 48px rgba(0,0,0,0.4), 0 0 20px rgba(0,255,200,0.2)",
+            boxShadow: "0 8px 24px rgba(37,99,235,0.12)",
             transform: "translateY(-2px)",
           },
         },
@@ -106,53 +78,45 @@ const theme = extendTheme({
     },
     Button: {
       baseStyle: {
-        borderRadius: "full",
+        borderRadius: "10px",
         fontWeight: "600",
-        fontFamily: "'Exo 2', sans-serif",
-        transition: "all 0.3s ease",
+        fontFamily: "'Inter', sans-serif",
+        transition: "all 0.2s ease",
         _focus: {
-          boxShadow: "0 0 0 3px rgba(0,255,200,0.3)",
+          boxShadow: "0 0 0 3px rgba(37,99,235,0.25)",
         },
       },
       variants: {
         solid: {
-          bg: "rgba(0,191,255,0.2)",
+          bg: "brand.500",
           color: "white",
-          border: "1px solid rgba(0,191,255,0.4)",
-          boxShadow: "0 4px 20px rgba(0,191,255,0.2)",
-          backdropFilter: "blur(8px)",
           _hover: {
-            bg: "rgba(0,191,255,0.3)",
-            border: "1px solid rgba(0,191,255,0.6)",
-            boxShadow: "0 6px 30px rgba(0,191,255,0.4), 0 0 20px rgba(0,191,255,0.2)",
-            transform: "translateY(-2px)",
+            bg: "brand.600",
+            transform: "translateY(-1px)",
+            boxShadow: "0 4px 12px rgba(37,99,235,0.3)",
           },
           _active: {
             transform: "translateY(0)",
+            bg: "brand.700",
           },
         },
         ghost: {
           bg: "transparent",
-          color: "gray.300",
-          border: "1px solid transparent",
+          color: "gray.600",
           _hover: {
-            bg: "rgba(0,255,200,0.1)",
-            color: "white",
-            border: "1px solid rgba(0,255,200,0.3)",
-            boxShadow: "0 0 15px rgba(0,255,200,0.2)",
+            bg: "gray.100",
+            color: "gray.900",
           },
         },
-        neonPrimary: {
-          bg: "rgba(0,255,200,0.1)",
-          color: "rgba(0,255,200,1)",
-          border: "2px solid rgba(0,255,200,0.5)",
-          textShadow: "0 0 10px rgba(0,255,200,0.8)",
-          boxShadow: "0 0 20px rgba(0,255,200,0.3), inset 0 0 20px rgba(0,255,200,0.1)",
+        outline: {
+          bg: "white",
+          border: "1.5px solid",
+          borderColor: "gray.200",
+          color: "gray.700",
           _hover: {
-            bg: "rgba(0,255,200,0.2)",
-            border: "2px solid rgba(0,255,200,0.8)",
-            boxShadow: "0 0 30px rgba(0,255,200,0.6), inset 0 0 30px rgba(0,255,200,0.2)",
-            transform: "translateY(-2px)",
+            borderColor: "brand.500",
+            color: "brand.600",
+            bg: "brand.50",
           },
         },
       },
@@ -160,9 +124,7 @@ const theme = extendTheme({
     Text: {
       variants: {
         neonGlow: {
-          color: "rgba(0,255,200,1)",
-          textShadow: "0 0 10px rgba(0,255,200,0.8), 0 0 20px rgba(0,255,200,0.4)",
-          fontFamily: "'Orbitron', sans-serif",
+          color: "brand.600",
           fontWeight: "700",
         },
       },
@@ -170,17 +132,16 @@ const theme = extendTheme({
     Box: {
       variants: {
         glassPanel: {
-          bg: "rgba(26, 32, 44, 0.2)",
+          bg: "rgba(255,255,255,0.85)",
           backdropFilter: "blur(12px)",
-          border: "1px solid rgba(0,255,200,0.2)",
+          border: "1px solid #E2E8F0",
           borderRadius: "8px",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
         },
         neonBorder: {
-          border: "1px solid rgba(0,255,200,0.4)",
+          border: "1.5px solid #E2E8F0",
           borderRadius: "8px",
-          boxShadow: "0 0 15px rgba(0,255,200,0.2), inset 0 0 15px rgba(0,255,200,0.1)",
-          animation: "borderGlow 2s ease-in-out infinite alternate",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
         },
       },
     },

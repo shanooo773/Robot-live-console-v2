@@ -1,515 +1,436 @@
-/* ================= LOGIN / SIGNUP PAGE ================= */
+/* ================= SPLIT AUTH LAYOUT ================= */
 
-.login-wrapper{
-min-height:100vh;
-
-display:flex;
-align-items:center;
-justify-content:center;
-
-background:url("/s1.png");
-background-size:cover;
-background-position:center;
-
-position:relative;
-
-/* background animation */
-animation:bgZoom 20s ease-in-out infinite alternate;
+.login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  background: #ffffff;
+  animation: none;
 }
 
-
-/* BACKGROUND ZOOM ANIMATION */
-
-@keyframes bgZoom{
-
-from{
-background-size:105%;
+.login-wrapper::before,
+.login-wrapper::after {
+  display: none;
 }
 
-to{
-background-size:115%;
+/* HERO PANEL (LEFT) */
+
+.auth-hero {
+  flex: 0 0 52%;
+  background: linear-gradient(145deg, #0F1F4A 0%, #1a3a7a 50%, #2563EB 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 60px 52px;
+  position: relative;
+  overflow: hidden;
+  color: white;
 }
 
+.auth-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
 }
 
-
-/* LIGHT OVERLAY */
-
-.login-wrapper::before{
-
-content:"";
-position:absolute;
-inset:0;
-
-background:linear-gradient(
-to right,
-rgba(90, 88, 88, 0.65),
-rgba(255,255,255,0.15)
-);
-
-backdrop-filter:blur(2px);
-z-index:1;
-
+.auth-hero__logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 44px;
 }
 
-
-/* SOFT GLOW EFFECT */
-
-.login-wrapper::after{
-
-content:"";
-position:absolute;
-
-width:500px;
-height:500px;
-
-top:50%;
-left:50%;
-
-transform:translate(-50%,-50%);
-
-background:radial-gradient(
-circle,
-rgba(99,102,241,0.25),
-transparent 70%
-);
-
-filter:blur(120px);
-z-index:1;
-
+.auth-hero__tagline {
+  font-size: 38px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-bottom: 16px;
+  color: white;
 }
 
+.auth-hero__tagline span {
+  color: #93C5FD;
+}
+
+.auth-hero__sub {
+  font-size: 16px;
+  opacity: 0.8;
+  line-height: 1.65;
+  margin-bottom: 44px;
+  max-width: 400px;
+  color: white;
+}
+
+.auth-hero__features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-hero__features li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  opacity: 0.9;
+  color: white;
+}
+
+.auth-hero__features li::before {
+  content: "✓";
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* FORM PANEL (RIGHT) */
+
+.auth-form-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 40px;
+  background: #ffffff;
+}
 
 /* ================= LOGIN CARD ================= */
 
-.login-card{
-
-width:100%;
-max-width:410px;
-
-background:rgba(255,255,255,0.9);
-backdrop-filter:blur(12px);
-
-padding:32px 18px;
-
-position:relative;
-z-index:2;
-
-border-radius:20px;
-
-border:1px solid #e2e8f0;
-
-box-shadow:0 35px 90px rgba(0,0,0,0.15);
-
-animation:loginFade 0.8s ease;
-
-transition:0.3s ease;
-
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  background: transparent;
+  backdrop-filter: none;
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  animation: loginFade 0.5s ease;
+  transition: none;
 }
 
-
-/* CARD HOVER EFFECT */
-
-.login-card:hover{
-
-transform:translateY(-6px);
-box-shadow:0 45px 100px rgba(0,0,0,0.18);
-
+.login-card:hover {
+  transform: none;
+  box-shadow: none;
 }
 
-
-/* CARD FADE ANIMATION */
-
-@keyframes loginFade{
-
-from{
-opacity:0;
-transform:translateY(40px);
-}
-
-to{
-opacity:1;
-transform:translateY(0);
-}
-
+@keyframes loginFade {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 
 /* ================= LOGIN TITLE ================= */
 
-.login-card h2{
+.login-card h2 {
+  font-size: 26px;
+  text-align: left;
+  margin-bottom: 8px;
+  color: #0f172a;
+  font-weight: 700;
+}
 
-font-size:24px;
-text-align:center;
-margin-bottom:8px;
-color: #0f172a;
-font-weight: 700;
+.login-sub {
+  color: #64748b;
+  margin-bottom: 28px;
+  text-align: left;
 }
 
 
-.login-sub{
+/* ================= LOGIN LOGO (inside form panel) ================= */
 
-color:#64748b;
-margin-bottom:30px;
-text-align:center;
-
+.login-logo {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  font-weight: 700;
+  font-size: 18px;
+  margin-bottom: 16px;
+  color: #2563EB;
 }
 
+/* ================= STEM EDUCATION BADGE ================= */
 
-/* ================= LOGIN LOGO ================= */
-
-.login-logo{
-
-display:flex;
-justify-content:center;
-align-items:center;
-
-font-weight:700;
-font-size:16px;
-
-margin-bottom:15px;
-
-color:#4f46e5;
-
+.auth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #EFF6FF;
+  color: #2563EB;
+  border: 1px solid #BFDBFE;
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 14px;
 }
 
 
 /* ================= ROBOT ANIMATION ================= */
 
-@keyframes robotWave{
-
-0%{transform:rotate(0deg);}
-50%{transform:rotate(12deg);}
-100%{transform:rotate(0deg);}
-
+@keyframes robotWave {
+  0%   { transform: rotate(0deg); }
+  50%  { transform: rotate(12deg); }
+  100% { transform: rotate(0deg); }
 }
 
-.robot{
-
-display:inline-block;
-animation:robotWave 2s infinite;
-
+.robot {
+  display: inline-block;
+  animation: robotWave 2s infinite;
 }
 
 
 /* ================= INPUT BOX ================= */
 
-.input-box{
-
-display:flex;
-align-items:center;
-
-gap:12px;
-
-border:1px solid #e2e8f0;
-
-padding:10px 14px;
-
-border-radius:12px;
-
-margin-bottom:12px;
-
-background:white;
-
-transition:0.25s;
-
+.input-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1.5px solid #e2e8f0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  background: white;
+  transition: 0.2s;
 }
 
-
-.input-box:hover{
-
-border-color:#6366f1;
-
+.input-box:hover {
+  border-color: #93C5FD;
 }
 
-
-/* INPUT FIELD */
-
-.input-box input{
-  border:none;
-  outline:none;
-  flex:1;
-  font-size:14px;
-
-  background: transparent !important;   /* 🔥 ADD */
-  color: #1e293b !important;            /* 🔥 ADD */
+.input-box input {
+  border: none;
+  outline: none;
+  flex: 1;
+  font-size: 14px;
+  background: transparent !important;
+  color: #1e293b !important;
+  font-family: 'Inter', sans-serif;
 }
 
-.input-box input::placeholder{
-color:#94a3b8;
-opacity:1;
+.input-box input::placeholder {
+  color: #94a3b8;
+  opacity: 1;
 }
-
 
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
-input:-webkit-autofill:focus{
-
--webkit-box-shadow: 0 0 0 1000px white inset !important;
-box-shadow: 0 0 0 1000px white inset !important;
-
--webkit-text-fill-color: #1e293b !important;
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px white inset !important;
+  box-shadow: 0 0 0 1000px white inset !important;
+  -webkit-text-fill-color: #1e293b !important;
+  transition: background-color 9999s ease-in-out 0s;
 }
 
-/* PASSWORD EYE BUTTON */
-
-.eye-btn{
-
-border:none;
-background:none;
-
-cursor:pointer;
-
+.eye-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
 }
 
-
-/* INPUT FOCUS */
-
-.input-box:focus-within{
-
-border-color:#4f46e5;
-box-shadow:0 0 0 3px rgba(79,70,229,0.15);
-
+.input-box:focus-within {
+  border-color: #2563EB;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
 }
 
 
 /* ================= FORGOT PASSWORD ================= */
 
-.forgot-pass{
-
-text-align:right;
-font-size:13px;
-
-margin-bottom:12px;
-
+.forgot-pass {
+  text-align: right;
+  font-size: 13px;
+  margin-bottom: 12px;
 }
 
-
-.forgot-pass a{
-
-color:#4f46e5;
-text-decoration:none;
-
+.forgot-pass a {
+  color: #2563EB;
+  text-decoration: none;
 }
 
-
-.forgot-pass a:hover{
-
-text-decoration:underline;
-
+.forgot-pass a:hover {
+  text-decoration: underline;
 }
 
 
 /* ================= LOGIN BUTTON ================= */
 
-.login-btn{
-
-width:100%;
-
-margin-top:10px;
-
-padding:13px;
-
-border-radius:12px;
-
-border:none;
-
-background:linear-gradient(135deg,#4f46e5,#7c3aed);
-
-color:white;
-
-font-weight:600;
-
-cursor:pointer;
-
-transition:0.3s;
-
+.login-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  color: white;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: 0.2s;
+  font-family: 'Inter', sans-serif;
 }
 
+.login-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(37,99,235,0.35);
+}
 
-.login-btn:hover{
-
-transform:translateY(-3px);
-box-shadow:0 15px 40px rgba(99,102,241,0.35);
-
+.login-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
 }
 
 
 /* ================= DIVIDER ================= */
 
-.login-divider{
-
-display:flex;
-align-items:center;
-
-margin:13px 0;
-
-gap:15px;
-
-
+.login-divider {
+  display: flex;
+  align-items: center;
+  margin: 18px 0;
+  gap: 12px;
 }
 
-
-.login-divider span{
-
-flex:1;
-
-height:1px;
-
-background:linear-gradient(
-to right,
-transparent,
-#e2e8f0,
-transparent
-);
-
+.login-divider span {
+  flex: 1;
+  height: 1px;
+  background: #e2e8f0;
 }
 
-
-.login-divider p{
-
-font-size:12px;
-
-letter-spacing:1px;
-
-font-weight:600;
-
-color:#94a3b8;
-
-margin:0;
-
+.login-divider p {
+  font-size: 12px;
+  letter-spacing: 1px;
+  font-weight: 600;
+  color: #94a3b8;
+  margin: 0;
 }
 
 
 /* ================= SOCIAL BUTTONS ================= */
 
-.social-buttons{
+.social-buttons {
+  display: flex;
+  gap: 10px;
+}
 
-display:flex;
-gap:12px;
+.social-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1.5px solid #e2e8f0;
+  background: white;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.2s;
+  font-family: 'Inter', sans-serif;
+  color: #374151;
+}
 
+.social-btn:hover {
+  border-color: #2563EB;
+  background: #EFF6FF;
+}
+
+.social-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 
-.social-btn{
+/* ================= CREATE ACCOUNT / BACK ================= */
 
-flex:1;
-
-display:flex;
-align-items:center;
-justify-content:center;
-
-gap:8px;
-
-padding:10px 12px;
-
-border-radius:10px;
-
-border:1px solid #e2e8f0;
-
-background:white;
-
-font-size:13px;
-
-cursor:pointer;
-
-transition:0.3s;
-
+.create-account {
+  margin-top: 18px;
+  font-size: 13px;
+  text-align: center;
+  color: #64748b;
 }
 
-
-.social-btn:hover{
-
-border-color:#4f46e5;
-
+.create-account a {
+  color: #2563EB;
+  font-weight: 600;
+  text-decoration: none;
 }
 
-
-.social-icon{
-
-width:18px;
-height:18px;
-
+.create-account a:hover {
+  text-decoration: underline;
 }
-
-
-/* ================= CREATE ACCOUNT ================= */
-
-.create-account{
-
-margin-top:20px;
-
-font-size:13px;
-
-text-align:center;
-
-}
-
-
-.create-account a{
-
-color:#4f46e5;
-
-font-weight:600;
-
-text-decoration:none;
-
-}
-
-
-
-
-.create-account a:hover{
-
-text-decoration:underline;
-
-}
-
 
 .back-login {
   margin-top: 10px;
   text-align: center;
-  color: #222; /* dark black */
+  color: #475569;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
 }
 
 .back-login:hover {
-  color:#4f46e5; /* pure black on hover */
-  text-decoration: none;
+  color: #2563EB;
 }
+
 
 /* ================= SECURITY TEXT ================= */
 
-.secure-text{
-
-font-size:12px;
-
-color:#64748b;
-
-text-align:center;
-
-margin-top:12px;
-
+.secure-text {
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+  margin-top: 14px;
 }
 
-/* 🔥 REMOVE CHROME AUTOFILL BLACK */
 
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus,
-input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 1000px white inset !important;
-  box-shadow: 0 0 0 1000px white inset !important;
+/* ================= RESPONSIVE ================= */
 
-  -webkit-text-fill-color: #1e293b !important;
-  transition: background-color 9999s ease-in-out 0s;
-}
+@media (max-width: 768px) {
+  .login-wrapper {
+    flex-direction: column;
+  }
 
-/* PLACEHOLDER COLOR FIX */
+  .auth-hero {
+    flex: 0 0 auto;
+    min-height: 200px;
+    padding: 32px 24px;
+  }
 
-.input-box input::placeholder{
-  color: #64748b;   /* visible grey */
-  opacity: 1;
+  .auth-hero__tagline {
+    font-size: 26px;
+  }
+
+  .auth-hero__sub {
+    font-size: 14px;
+    margin-bottom: 0;
+  }
+
+  .auth-hero__features {
+    display: none;
+  }
+
+  .auth-form-panel {
+    padding: 32px 20px;
+  }
 }

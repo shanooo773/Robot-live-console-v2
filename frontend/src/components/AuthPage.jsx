@@ -38,9 +38,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
       setIsLoading(true);
       const result = await googleLogin(response.credential);
 
-      // Store token consistently
-      localStorage.setItem("token", result.access_token);
-      localStorage.setItem("user", JSON.stringify(result.user));
+      localStorage.setItem("authToken", result.access_token);
 
       onAuth(result.user, result.access_token);
       toast({
@@ -91,6 +89,22 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
         isClosable: true,
       });
     }
+  };
+
+  const handleGithubSignIn = () => {
+    const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID;
+    if (!clientId) {
+      toast({
+        title: "GitHub Sign-In not available",
+        description: "GitHub Sign-In is not configured",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+    const redirectUri = `${window.location.origin}/auth/github/callback`;
+    window.location.href = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=user%3Aemail`;
   };
 
   const handleLogin = async (e) => {
@@ -227,35 +241,52 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
     }
   };
 
+  const HeroPanel = () => (
+    <div className="auth-hero">
+      <div className="auth-hero__logo">🤖 Anybot</div>
+      <div className="auth-hero__tagline">Build. Code. Simulate.<br /><span>Learn Robotics.</span></div>
+      <p className="auth-hero__sub">Access real ROS + Gazebo development environments designed for STEM students and future robotics engineers.</p>
+      <ul className="auth-hero__features">
+        <li>TurtleBot Navigation</li>
+        <li>Robot Arm Manipulation</li>
+        <li>Real-Time Simulation</li>
+        <li>Live Video Feedback</li>
+      </ul>
+    </div>
+  );
+
   // "Check your email" screen shown after successful registration
   if (activeView === "emailSent") {
     return (
       <div className="login-wrapper">
-        <div className="login-card">
-          <div className="login-logo">🤖 My Anybot</div>
-          <h2>📧 Check Your Email</h2>
-          <p className="login-sub">
-            We sent a confirmation link to <strong>{registrationEmail}</strong>.
-            Click the link to activate your account, then sign in.
-          </p>
-          <p className="login-sub" style={{ fontSize: "13px", marginTop: "-15px" }}>
-            Didn't receive it? Check your spam folder or resend.
-          </p>
-          <button
-            className="login-btn"
-            onClick={handleResendConfirmation}
-            style={{ marginBottom: "12px" }}
-          >
-            Resend Confirmation Email
-          </button>
-          <button
-            className="login-btn"
-            style={{ background: "transparent", color: "#64748b", boxShadow: "none", border: "1px solid #e2e8f0" }}
-            onClick={() => { setRegistrationEmail(null); setActiveView("login"); }}
-          >
-            Back to Sign In
-          </button>
-          <p className="secure-text">🔒 Your data is securely encrypted</p>
+        <HeroPanel />
+        <div className="auth-form-panel">
+          <div className="login-card">
+            <div className="login-logo">🤖 My Anybot</div>
+            <h2>📧 Check Your Email</h2>
+            <p className="login-sub">
+              We sent a confirmation link to <strong>{registrationEmail}</strong>.
+              Click the link to activate your account, then sign in.
+            </p>
+            <p className="login-sub" style={{ fontSize: "13px", marginTop: "-15px" }}>
+              Didn't receive it? Check your spam folder or resend.
+            </p>
+            <button
+              className="login-btn"
+              onClick={handleResendConfirmation}
+              style={{ marginBottom: "12px" }}
+            >
+              Resend Confirmation Email
+            </button>
+            <button
+              className="login-btn"
+              style={{ background: "transparent", color: "#64748b", boxShadow: "none", border: "1px solid #e2e8f0" }}
+              onClick={() => { setRegistrationEmail(null); setActiveView("login"); }}
+            >
+              Back to Sign In
+            </button>
+            <p className="secure-text">🔒 Your data is securely encrypted</p>
+          </div>
         </div>
       </div>
     );
@@ -265,22 +296,164 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
   if (activeView === "login") {
     return (
       <div className="login-wrapper">
+        <HeroPanel />
+        <div className="auth-form-panel">
+          <div className="login-card">
+
+            {/* BADGE */}
+            <div className="auth-badge">🎓 Designed for STEM Education</div>
+
+            <h2>Welcome Back, Future Engineer 👋</h2>
+
+            <p className="login-sub">Log in to continue building and simulating your robotics projects.</p>
+
+            {errorMsg && (
+              <p style={{ color: "#ef4444", fontSize: "13px", marginBottom: "10px" }}>
+                {errorMsg}
+              </p>
+            )}
+
+            <form onSubmit={handleLogin}>
+
+              {/* EMAIL */}
+              <div className="input-box">
+                <Mail size={18} />
+                <input
+                  type="email"
+                  placeholder="Enter your email"
+                  required
+                  value={loginData.email}
+                  onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                />
+              </div>
+
+              {/* PASSWORD */}
+              <div className="input-box">
+                <Lock size={18} />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Enter your password"
+                  required
+                  minLength={6}
+                  value={loginData.password}
+                  onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                />
+                <button
+                  type="button"
+                  className="eye-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
+              {/* FORGOT PASSWORD */}
+              <p className="forgot-pass">
+                {onForgotPassword && (
+                  <button
+                    type="button"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#2563EB", fontSize: "13px", padding: 0 }}
+                    onClick={onForgotPassword}
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </p>
+
+              {/* LOGIN BUTTON */}
+              <button className="login-btn" disabled={isLoading}>
+                {isLoading ? "Signing In..." : "Continue to Robotics Console"}
+              </button>
+
+            </form>
+
+            {/* DIVIDER */}
+            <div className="login-divider">
+              <span></span>
+              <p>or</p>
+              <span></span>
+            </div>
+
+            {/* SOCIAL LOGIN */}
+            <div className="social-buttons">
+
+              <button className="social-btn" onClick={handleGoogleSignIn} disabled={isLoading}>
+                <FcGoogle size={18} />
+                Continue with Google
+              </button>
+
+              <button className="social-btn" onClick={handleGithubSignIn} disabled={isLoading}>
+                <Github size={18} />
+                Continue with GitHub
+              </button>
+
+            </div>
+
+            {/* CREATE ACCOUNT */}
+            <p className="create-account">
+              New to Anybot?{" "}
+              <button
+                type="button"
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#2563EB", fontWeight: 600, fontSize: "inherit", padding: 0 }}
+                onClick={() => { setErrorMsg(""); setActiveView("register"); }}
+              >
+                Create Account
+              </button>
+            </p>
+
+            {/* BACK TO HOME */}
+            <p className="create-account" style={{ marginTop: "8px" }}>
+              <button
+                type="button"
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", fontSize: "13px", padding: 0 }}
+                onClick={onBack}
+              >
+                ← Back to Home
+              </button>
+            </p>
+
+            {/* SECURITY MESSAGE */}
+            <p className="secure-text">🔒 Your data is securely encrypted</p>
+
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Register view
+  return (
+    <div className="login-wrapper">
+      <HeroPanel />
+      <div className="auth-form-panel">
         <div className="login-card">
 
-          {/* LOGO */}
-          <div className="login-logo">🤖 My Anybot</div>
+          {/* BADGE */}
+          <div className="auth-badge">🎓 Designed for STEM Education</div>
 
-          <h2>Welcome Back <span className="robot">🤖</span></h2>
+          <h2>Create Your Account 🚀</h2>
 
-          <p className="login-sub">Login to continue to your robotics console</p>
+          <p className="login-sub">Start your robotics journey with Anybot</p>
 
           {errorMsg && (
-            <p style={{ color: "#ef4444", fontSize: "13px", textAlign: "center", marginBottom: "10px" }}>
+            <p style={{ color: "#ef4444", fontSize: "13px", marginBottom: "10px" }}>
               {errorMsg}
             </p>
           )}
 
-          <form onSubmit={handleLogin}>
+          <form onSubmit={handleRegister}>
+
+            {/* NAME */}
+            <div className="input-box">
+              <User size={18} />
+              <input
+                type="text"
+                placeholder="Enter your full name"
+                required
+                value={registerData.name}
+                onChange={(e) => setRegisterData({ ...registerData, name: e.target.value })}
+              />
+            </div>
 
             {/* EMAIL */}
             <div className="input-box">
@@ -289,8 +462,8 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
                 type="email"
                 placeholder="Enter your email"
                 required
-                value={loginData.email}
-                onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                value={registerData.email}
+                onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })}
               />
             </div>
 
@@ -298,38 +471,37 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
             <div className="input-box">
               <Lock size={18} />
               <input
-                type={showPassword ? "text" : "password"}
-                placeholder="Enter your password"
+                type={showRegPassword ? "text" : "password"}
+                placeholder="Create a password"
                 required
                 minLength={6}
-                value={loginData.password}
-                onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                value={registerData.password}
+                onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
               />
               <button
                 type="button"
                 className="eye-btn"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowRegPassword(!showRegPassword)}
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showRegPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
 
-            {/* FORGOT PASSWORD */}
-            <p className="forgot-pass">
-              {onForgotPassword && (
-                <button
-                  type="button"
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "#4f46e5", fontSize: "13px", padding: 0 }}
-                  onClick={onForgotPassword}
-                >
-                  Forgot password?
-                </button>
-              )}
-            </p>
+            {/* CONFIRM PASSWORD */}
+            <div className="input-box">
+              <Lock size={18} />
+              <input
+                type={showRegPassword ? "text" : "password"}
+                placeholder="Confirm your password"
+                required
+                minLength={6}
+                value={registerData.confirmPassword}
+                onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })}
+              />
+            </div>
 
-            {/* LOGIN BUTTON */}
-            <button className="login-btn" disabled={isLoading}>
-              {isLoading ? "Signing In..." : "Continue to Robotics Console"}
+            <button type="submit" className="login-btn" disabled={isLoading}>
+              {isLoading ? "Creating Account..." : "Create Account"}
             </button>
 
           </form>
@@ -341,41 +513,30 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
             <span></span>
           </div>
 
-          {/* SOCIAL LOGIN */}
+          {/* SOCIAL SIGNUP */}
           <div className="social-buttons">
 
-            <button className="social-btn" onClick={handleGoogleSignIn} disabled={isLoading}>
+            <button type="button" className="social-btn" onClick={handleGoogleSignIn} disabled={isLoading}>
               <FcGoogle size={18} />
-              Continue with Google
+              Sign up with Google
             </button>
 
-            <button className="social-btn" disabled>
+            <button type="button" className="social-btn" onClick={handleGithubSignIn} disabled={isLoading}>
               <Github size={18} />
-              Continue with GitHub
+              Sign up with GitHub
             </button>
 
           </div>
 
-          {/* CREATE ACCOUNT */}
+          {/* ALREADY HAVE ACCOUNT */}
           <p className="create-account">
-            New to Anybot?{" "}
+            Already have an account?{" "}
             <button
               type="button"
-              style={{ background: "none", border: "none", cursor: "pointer", color: "#4f46e5", fontWeight: 600, fontSize: "inherit", padding: 0 }}
-              onClick={() => { setErrorMsg(""); setActiveView("register"); }}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "#2563EB", fontWeight: 600, fontSize: "inherit", padding: 0 }}
+              onClick={() => { setErrorMsg(""); setActiveView("login"); }}
             >
-              Create Account
-            </button>
-          </p>
-
-          {/* BACK TO HOME */}
-          <p className="create-account" style={{ marginTop: "8px" }}>
-            <button
-              type="button"
-              style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", fontSize: "13px", padding: 0 }}
-              onClick={onBack}
-            >
-              ← Back to Home
+              Login
             </button>
           </p>
 
@@ -383,130 +544,6 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
           <p className="secure-text">🔒 Your data is securely encrypted</p>
 
         </div>
-      </div>
-    );
-  }
-
-  // Register view
-  return (
-    <div className="login-wrapper">
-      <div className="login-card">
-
-        {/* LOGO */}
-        <div className="login-logo">🤖 My Anybot</div>
-
-        <h2>Create Your Account 🚀</h2>
-
-        <p className="login-sub">Start your robotics journey with My Anybot</p>
-
-        {errorMsg && (
-          <p style={{ color: "#ef4444", fontSize: "13px", textAlign: "center", marginBottom: "10px" }}>
-            {errorMsg}
-          </p>
-        )}
-
-        <form onSubmit={handleRegister}>
-
-          {/* NAME */}
-          <div className="input-box">
-            <User size={18} />
-            <input
-              type="text"
-              placeholder="Enter your full name"
-              required
-              value={registerData.name}
-              onChange={(e) => setRegisterData({ ...registerData, name: e.target.value })}
-            />
-          </div>
-
-          {/* EMAIL */}
-          <div className="input-box">
-            <Mail size={18} />
-            <input
-              type="email"
-              placeholder="Enter your email"
-              required
-              value={registerData.email}
-              onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })}
-            />
-          </div>
-
-          {/* PASSWORD */}
-          <div className="input-box">
-            <Lock size={18} />
-            <input
-              type={showRegPassword ? "text" : "password"}
-              placeholder="Create a password"
-              required
-              minLength={6}
-              value={registerData.password}
-              onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
-            />
-            <button
-              type="button"
-              className="eye-btn"
-              onClick={() => setShowRegPassword(!showRegPassword)}
-            >
-              {showRegPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-            </button>
-          </div>
-
-          {/* CONFIRM PASSWORD */}
-          <div className="input-box">
-            <Lock size={18} />
-            <input
-              type={showRegPassword ? "text" : "password"}
-              placeholder="Confirm your password"
-              required
-              minLength={6}
-              value={registerData.confirmPassword}
-              onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })}
-            />
-          </div>
-
-          <button type="submit" className="login-btn" disabled={isLoading}>
-            {isLoading ? "Creating Account..." : "Create Account"}
-          </button>
-
-        </form>
-
-        {/* DIVIDER */}
-        <div className="login-divider">
-          <span></span>
-          <p>or</p>
-          <span></span>
-        </div>
-
-        {/* SOCIAL SIGNUP */}
-        <div className="social-buttons">
-
-          <button type="button" className="social-btn" onClick={handleGoogleSignIn} disabled={isLoading}>
-            <FcGoogle size={18} />
-            Sign up with Google
-          </button>
-
-          <button type="button" className="social-btn" disabled>
-            <Github size={18} />
-            Sign up with GitHub
-          </button>
-
-        </div>
-
-        {/* ALREADY HAVE ACCOUNT */}
-        <p className="create-account">
-          Already have an account?{" "}
-          <button
-            type="button"
-            style={{ background: "none", border: "none", cursor: "pointer", color: "#4f46e5", fontWeight: 600, fontSize: "inherit", padding: 0 }}
-            onClick={() => { setErrorMsg(""); setActiveView("login"); }}
-          >
-            Login
-          </button>
-        </p>
-
-        {/* SECURITY MESSAGE */}
-        <p className="secure-text">🔒 Your data is securely encrypted</p>
-
       </div>
     </div>
   );

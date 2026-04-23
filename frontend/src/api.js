@@ -96,6 +96,11 @@ export const googleLogin = async (idToken) => {
   return response.data;
 }
 
+export const githubLogin = async (code) => {
+  const response = await API.post("/auth/github", { code });
+  return response.data;
+}
+
 export const forgotPassword = async (email) => {
   const response = await API.post("/auth/forgot-password", { email });
   return response.data;

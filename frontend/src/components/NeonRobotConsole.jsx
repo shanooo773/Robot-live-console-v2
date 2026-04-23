@@ -473,10 +473,12 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
 
   if (loading) {
     return (
-      <Box h="100vh" w="100vw" display="flex" alignItems="center" justifyContent="center">
+      <Box h="100vh" w="100vw" bg="#0F172A" display="flex" alignItems="center" justifyContent="center">
         <VStack spacing={6}>
-          <Spinner size="xl" color="neon.cyan" />
-          <Text variant="neonGlow" fontSize="lg">Initializing Development Environment...</Text>
+          <Spinner size="xl" color="blue.400" />
+          <Text color="blue.300" fontSize="lg" fontWeight="600" fontFamily="'Inter', sans-serif">
+            Initializing Development Environment...
+          </Text>
         </VStack>
       </Box>
     );
@@ -506,20 +508,19 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
         right="0"
         zIndex="1000"
         h="60px"
-        bg="rgba(26, 32, 44, 0.2)"
-        backdropFilter="blur(12px)"
-        borderBottom="1px solid rgba(0,255,200,0.3)"
+        bg="#1E293B"
+        borderBottom="1px solid rgba(255,255,255,0.1)"
         display="flex"
         alignItems="center"
         px={6}
-        boxShadow="0 4px 20px rgba(0,0,0,0.3)"
+        boxShadow="0 4px 20px rgba(0,0,0,0.25)"
       >
         <HStack spacing={4} flex="1">
           {/* Left side - User info */}
           <HStack spacing={3}>
-            <Avatar size="sm" name={user.name} />
+            <Avatar size="sm" name={user.name} bg="blue.500" />
             <VStack align="start" spacing={0}>
-              <Text color="white" fontSize="sm" fontWeight="600" fontFamily="'Exo 2', sans-serif">
+              <Text color="white" fontSize="sm" fontWeight="600" fontFamily="'Inter', sans-serif">
                 {user.name}
               </Text>
               {(user?.isDemoUser || user?.isDemoAdmin || localStorage.getItem('isDemoUser') || localStorage.getItem('isDemoAdmin')) && (
@@ -537,31 +538,37 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
                 icon={<ChevronRightIcon />}
                 size="sm"
                 variant="ghost"
+                color="gray.300"
                 onClick={expandIDE}
                 isActive={panelLayout === "ide-expanded"}
-                _active={{ bg: "rgba(0,255,200,0.2)" }}
+                _active={{ bg: "rgba(37,99,235,0.25)", color: "blue.300" }}
+                _hover={{ bg: "rgba(255,255,255,0.1)", color: "white" }}
               />
             </Tooltip>
-            
+
             <Tooltip label="Expand Video" placement="bottom">
               <IconButton
                 icon={<ViewIcon />}
                 size="sm"
                 variant="ghost"
+                color="gray.300"
                 onClick={expandVideo}
                 isActive={panelLayout === "video-expanded"}
-                _active={{ bg: "rgba(0,255,200,0.2)" }}
+                _active={{ bg: "rgba(37,99,235,0.25)", color: "blue.300" }}
+                _hover={{ bg: "rgba(255,255,255,0.1)", color: "white" }}
               />
             </Tooltip>
-            
+
             <Tooltip label="Reset Split View" placement="bottom">
               <IconButton
                 icon={<ViewOffIcon />}
                 size="sm"
                 variant="ghost"
+                color="gray.300"
                 onClick={resetSplit}
                 isActive={panelLayout === "split"}
-                _active={{ bg: "rgba(0,255,200,0.2)" }}
+                _active={{ bg: "rgba(37,99,235,0.25)", color: "blue.300" }}
+                _hover={{ bg: "rgba(255,255,255,0.1)", color: "white" }}
               />
             </Tooltip>
           </HStack>
@@ -675,12 +682,11 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
             top="0"
             bottom="0"
             w="4px"
-            bg="rgba(0,255,200,0.3)"
+            bg="rgba(255,255,255,0.12)"
             cursor="col-resize"
             zIndex="10"
             _hover={{
-              bg: "rgba(0,255,200,0.6)",
-              boxShadow: "0 0 10px rgba(0,255,200,0.4)",
+              bg: "rgba(37,99,235,0.5)",
             }}
             onMouseDown={handleMouseDown}
             transform="translateX(-2px)"
@@ -692,13 +698,13 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
               transform="translate(-50%, -50%)"
               w="20px"
               h="40px"
-              bg="rgba(0,255,200,0.2)"
+              bg="rgba(255,255,255,0.1)"
               borderRadius="4px"
               display="flex"
               alignItems="center"
               justifyContent="center"
               fontSize="xs"
-              color="neon.cyan"
+              color="gray.400"
             >
               ⋮
             </Box>
@@ -741,30 +747,30 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
                   </video>
                 ) : userMode === "preview" ? (
                   // Preview mode - show booking requirement message
-                  <VStack 
-                    justify="center" 
-                    align="center" 
-                    h="100%" 
+                  <VStack
+                    justify="center"
+                    align="center"
+                    h="100%"
                     spacing={6}
                     p={8}
+                    bg="gray.900"
                   >
                     <Text fontSize="4xl">📹</Text>
                     <VStack spacing={3} textAlign="center">
                       <Badge colorScheme="orange" fontSize="md" p={2}>
                         Preview Mode
                       </Badge>
-                      <Text color="neon.cyan" fontSize="lg" fontWeight="bold">
+                      <Text color="blue.300" fontSize="lg" fontWeight="bold">
                         Live Robot Feed
                       </Text>
-                      <Text color="gray.300" maxW="300px">
+                      <Text color="gray.400" maxW="300px">
                         👉 To access the real-time robot feed, please book the service.
                       </Text>
                     </VStack>
-                    <Button 
-                      colorScheme="orange" 
+                    <Button
+                      colorScheme="orange"
                       onClick={onBack}
                       size="md"
-                      variant="neonPrimary"
                     >
                       📅 Book Robot Session
                     </Button>
@@ -824,68 +830,68 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
 
       {/* Enhanced Logs Modal */}
       <Modal isOpen={isLogsOpen} onClose={onLogsClose} size="xl">
-        <ModalOverlay backdropFilter="blur(4px)" />
-        <ModalContent bg="rgba(26, 32, 44, 0.9)" backdropFilter="blur(12px)" border="1px solid rgba(0,255,200,0.3)">
-          <ModalHeader color="white" fontFamily="'Orbitron', sans-serif">
+        <ModalOverlay backdropFilter="blur(4px)" bg="rgba(0,0,0,0.5)" />
+        <ModalContent bg="white" border="1px solid #E2E8F0" boxShadow="0 20px 60px rgba(0,0,0,0.15)">
+          <ModalHeader color="gray.800" fontFamily="'Inter', sans-serif" fontWeight="700">
             Development Console Logs
           </ModalHeader>
-          <ModalCloseButton color="white" />
-          <ModalBody pb={6} color="gray.300">
+          <ModalCloseButton />
+          <ModalBody pb={6} color="gray.600">
             <VStack spacing={4} align="start">
               <Box>
-                <Text fontWeight="bold" color="neon.cyan" mb={2}>Current Session:</Text>
+                <Text fontWeight="bold" color="brand.600" mb={2}>Current Session:</Text>
                 <Text>Robot Type: {robotNames[robot]?.name || robot}</Text>
                 <Text>IDE Status: Eclipse Theia {theiaStatus?.status === "running" ? "Running" : "Stopped"}</Text>
                 <Text>WebRTC Status: {hasAccess ? "Available" : "Booking Required"}</Text>
                 <Text>User: {user.name} {(user?.isDemoUser || user?.isDemoAdmin) ? "(Demo)" : ""}</Text>
               </Box>
-              
+
               <Box>
-                <Text fontWeight="bold" color="neon.cyan" mb={2}>Container Lifecycle:</Text>
+                <Text fontWeight="bold" color="brand.600" mb={2}>Container Lifecycle:</Text>
                 <VStack spacing={1} align="start" fontSize="sm">
-                  <Text color="gray.400">• IDE auto-starts on first access</Text>
-                  <Text color="gray.400">• Available 24/7 for code preview and editing</Text>
-                  <Text color="gray.400">• Persistent workspace in isolated container</Text>
-                  <Text color="gray.400">• Auto-cleanup after configurable timeout</Text>
+                  <Text color="gray.500">• IDE auto-starts on first access</Text>
+                  <Text color="gray.500">• Available 24/7 for code preview and editing</Text>
+                  <Text color="gray.500">• Persistent workspace in isolated container</Text>
+                  <Text color="gray.500">• Auto-cleanup after configurable timeout</Text>
                 </VStack>
               </Box>
-              
+
               <Box>
-                <Text fontWeight="bold" color="neon.cyan" mb={2}>WebRTC Events:</Text>
+                <Text fontWeight="bold" color="brand.600" mb={2}>WebRTC Events:</Text>
                 <VStack spacing={1} align="start" fontSize="sm">
                   {hasAccess ? (
                     <>
-                      <Text color="green.300">✓ WebRTC access granted - active booking detected</Text>
-                      <Text color="gray.400">• Live robot feed available during session</Text>
-                      <Text color="gray.400">• Direct WebRTC connection to robot</Text>
+                      <Text color="green.600">✓ WebRTC access granted - active booking detected</Text>
+                      <Text color="gray.500">• Live robot feed available during session</Text>
+                      <Text color="gray.500">• Direct WebRTC connection to robot</Text>
                     </>
                   ) : (
                     <>
-                      <Text color="orange.300">⚠ WebRTC access restricted</Text>
-                      <Text color="gray.400">• To access the robot feed, please book a session</Text>
-                      <Text color="gray.400">• IDE remains available for code development</Text>
+                      <Text color="orange.600">⚠ WebRTC access restricted</Text>
+                      <Text color="gray.500">• To access the robot feed, please book a session</Text>
+                      <Text color="gray.500">• IDE remains available for code development</Text>
                     </>
                   )}
                 </VStack>
               </Box>
-              
+
               <Box>
-                <Text fontWeight="bold" color="neon.cyan" mb={2}>Code Push Results:</Text>
+                <Text fontWeight="bold" color="brand.600" mb={2}>Code Push Results:</Text>
                 <VStack spacing={1} align="start" fontSize="sm">
-                  <Text color="gray.400">• "Run Code" pushes workspace code to robot endpoint</Text>
-                  <Text color="gray.400">• Code execution logged for debugging</Text>
-                  <Text color="gray.400">• Results available in robot simulation videos</Text>
+                  <Text color="gray.500">• "Run Code" pushes workspace code to robot endpoint</Text>
+                  <Text color="gray.500">• Code execution logged for debugging</Text>
+                  <Text color="gray.500">• Results available in robot simulation videos</Text>
                 </VStack>
               </Box>
-              
+
               <Box>
-                <Text fontWeight="bold" color="neon.cyan" mb={2}>Usage Instructions:</Text>
+                <Text fontWeight="bold" color="brand.600" mb={2}>Usage Instructions:</Text>
                 <VStack spacing={1} align="start" fontSize="sm">
-                  <Text>• Use the IDE panel to write and test robot code (always available)</Text>
-                  <Text>• {userMode === "preview" ? "Book a session to execute code on robot" : "Click 'Run Code' to execute code on the robot"}</Text>
-                  <Text>• Monitor execution through the video feed (booking mode only)</Text>
-                  <Text>• Drag the center divider to resize panels</Text>
-                  <Text>• Preview Mode: Code editing only | Booking Mode: Full robot access</Text>
+                  <Text color="gray.600">• Use the IDE panel to write and test robot code (always available)</Text>
+                  <Text color="gray.600">• {userMode === "preview" ? "Book a session to execute code on robot" : "Click 'Run Code' to execute code on the robot"}</Text>
+                  <Text color="gray.600">• Monitor execution through the video feed (booking mode only)</Text>
+                  <Text color="gray.600">• Drag the center divider to resize panels</Text>
+                  <Text color="gray.600">• Preview Mode: Code editing only | Booking Mode: Full robot access</Text>
                 </VStack>
               </Box>
             </VStack>

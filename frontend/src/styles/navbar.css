@@ -1,0 +1,225 @@
+/* ================= ANYBOT NAVBAR ================= */
+
+.anybot-navbar {
+  width: 100%;
+  background: white;
+  border-bottom: 1px solid #e8edf5;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
+}
+
+.anybot-navbar__inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 28px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 40px;
+}
+
+/* Logo */
+.anybot-navbar__logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.anybot-navbar__logo-icon {
+  width: 30px;
+  height: 30px;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.anybot-navbar__logo-text {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.3px;
+}
+
+/* Nav Links */
+.anybot-navbar__links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+}
+
+.anybot-navbar__link {
+  background: none;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: 'Inter', sans-serif;
+}
+
+.anybot-navbar__link:hover {
+  color: #1e293b;
+  background: #f1f5f9;
+}
+
+.anybot-navbar__link.active {
+  color: #2563EB;
+  background: #EFF6FF;
+  font-weight: 600;
+}
+
+/* Right Side */
+.anybot-navbar__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.anybot-navbar__bell {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid #e2e8f0;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #64748b;
+  transition: 0.15s;
+}
+
+.anybot-navbar__bell:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+/* Avatar */
+.anybot-navbar__avatar-wrap {
+  position: relative;
+}
+
+.anybot-navbar__avatar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: 'Inter', sans-serif;
+}
+
+.anybot-navbar__avatar span {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.anybot-navbar__avatar svg {
+  color: #64748b;
+}
+
+/* Dropdown */
+.anybot-navbar__dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  width: 220px;
+  overflow: hidden;
+  animation: dropdownFade 0.15s ease;
+}
+
+@keyframes dropdownFade {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.anybot-navbar__dropdown-header {
+  padding: 14px 16px;
+}
+
+.anybot-navbar__dropdown-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.anybot-navbar__dropdown-email {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anybot-navbar__dropdown-divider {
+  height: 1px;
+  background: #f1f5f9;
+  margin: 0;
+}
+
+.anybot-navbar__dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  font-size: 13.5px;
+  color: #374151;
+  cursor: pointer;
+  text-align: left;
+  transition: 0.12s;
+  font-family: 'Inter', sans-serif;
+}
+
+.anybot-navbar__dropdown-item:hover {
+  background: #f8fafc;
+  color: #2563EB;
+}
+
+.anybot-navbar__dropdown-item.danger {
+  color: #ef4444;
+}
+
+.anybot-navbar__dropdown-item.danger:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+@media (max-width: 768px) {
+  .anybot-navbar__links {
+    display: none;
+  }
+
+  .anybot-navbar__inner {
+    gap: 16px;
+  }
+}

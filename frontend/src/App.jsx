@@ -2,17 +2,18 @@ import { useState, useEffect } from "react";
 import { Box } from "@chakra-ui/react";
 import LandingPage from "./components/LandingPage";
 import AuthPage from "./components/AuthPage";
+import Dashboard from "./components/Dashboard";
 import BookingPage from "./components/BookingPage";
 import NeonRobotConsole from "./components/NeonRobotConsole";
 import AdminDashboard from "./components/AdminDashboard";
 import ForgotPasswordPage from "./components/ForgotPasswordPage";
 import ResetPasswordPage from "./components/ResetPasswordPage";
 import VerifyEmailPage from "./components/VerifyEmailPage";
-import { getCurrentUser, stopBookingContainer, stopTheiaContainer } from "./api";
+import { getCurrentUser, stopBookingContainer, stopTheiaContainer, githubLogin } from "./api";
 import { startTheiaWarmup, stopTheiaWarmup } from "./utils/theiaWarmup";
 
 function App() {
-  const [currentPage, setCurrentPage] = useState("landing"); // landing, auth, booking, editor, admin, forgotPassword, resetPassword, verifyEmail
+  const [currentPage, setCurrentPage] = useState("landing");
   const [user, setUser] = useState(null);
   const [authToken, setAuthToken] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -21,44 +22,53 @@ function App() {
   const [authMode, setAuthMode] = useState("login");
 
   useEffect(() => {
-    // Check for special tokens in URL
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     const path = window.location.pathname;
 
-    // Email verification link: /verify-email?token=...
     if (path === '/verify-email' && token) {
       setVerifyToken(token);
       setCurrentPage("verifyEmail");
       return;
     }
 
-    // Password reset link: /reset-password?token=...
     if (path === '/reset-password' && token) {
       setResetToken(token);
       setCurrentPage("resetPassword");
       return;
     }
 
-    // Legacy: token in query string on root path (old reset-password flow)
+    const code = urlParams.get('code');
+    if (path === '/auth/github/callback' && code) {
+      githubLogin(code)
+        .then(result => {
+          localStorage.setItem("authToken", result.access_token);
+          window.history.replaceState({}, document.title, "/");
+          handleAuth(result.user, result.access_token);
+        })
+        .catch(() => {
+          window.history.replaceState({}, document.title, "/");
+          setCurrentPage("auth");
+        });
+      return;
+    }
+
     if (!path.startsWith('/verify-email') && token) {
       setResetToken(token);
       setCurrentPage("resetPassword");
       return;
     }
 
-    // Check for existing authenticated session
     const authTokenStored = localStorage.getItem('authToken');
     if (authTokenStored) {
       getCurrentUser(authTokenStored)
         .then(userData => {
           setUser(userData);
           setAuthToken(authTokenStored);
-          setCurrentPage("booking");
+          setCurrentPage("dashboard");
           startTheiaWarmup(authTokenStored);
         })
-        .catch(error => {
-          console.error('Token validation failed:', error);
+        .catch(() => {
           localStorage.removeItem('authToken');
         });
     }
@@ -67,7 +77,7 @@ function App() {
   const handleAuth = (userData, token) => {
     setUser(userData);
     setAuthToken(token);
-    setCurrentPage("booking");
+    setCurrentPage("dashboard");
     startTheiaWarmup(token);
   };
 
@@ -77,12 +87,9 @@ function App() {
   };
 
   const handleLogout = async () => {
-    // Stop warmup loop before clearing auth
     stopTheiaWarmup();
-    // Stop containers BEFORE clearing auth token so the requests can authenticate
     const token = authToken || localStorage.getItem('authToken');
     if (token) {
-      // Stop booking container first, then preview container
       try { await stopBookingContainer(token); } catch (_) { }
       try { await stopTheiaContainer(token); } catch (_) { }
     }
@@ -93,38 +100,47 @@ function App() {
     setCurrentPage("landing");
   };
 
-  const handleAdminAccess = () => {
-    setCurrentPage("admin");
+  const handleNavigate = (page) => {
+    if (page === "editor") {
+      setSelectedSlot({
+        id: `code_preview_${Date.now()}`,
+        robotType: 'turtlebot',
+        date: new Date().toISOString().split('T')[0],
+        startTime: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+        endTime: new Date(Date.now() + 1 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+        bookingId: 'code_preview',
+        available: true,
+        bookedBy: user?.name,
+        isPreview: true
+      });
+    }
+    setCurrentPage(page);
+  };
+
+  const handleAdminAccess = () => setCurrentPage("admin");
+
+  const sharedProps = {
+    user,
+    authToken,
+    onLogout: handleLogout,
+    onNavigate: handleNavigate,
+    onAdminAccess: user?.role === 'admin' ? handleAdminAccess : null,
   };
 
   return (
     <Box
       minH="100vh"
-      bg="#0f0a19"
-      color="gray.500"
-      css={{
-        scrollBehavior: 'smooth',
-        overflowX: 'hidden',
-        overflowY: 'auto'
-      }}
+      bg="#F0F4FF"
+      color="gray.800"
+      css={{ scrollBehavior: 'smooth', overflowX: 'hidden', overflowY: 'auto' }}
     >
       {currentPage === "landing" && (
-
-
         <LandingPage
-          onLogin={() => {
-            setAuthMode("login");
-            setCurrentPage("auth");
-          }}
-          onSignup={() => {
-            setAuthMode("register");
-            setCurrentPage("auth");
-          }}
+          onLogin={() => { setAuthMode("login"); setCurrentPage("auth"); }}
+          onSignup={() => { setAuthMode("register"); setCurrentPage("auth"); }}
         />
-
-
-
       )}
+
       {currentPage === "auth" && (
         <AuthPage
           mode={authMode}
@@ -133,52 +149,54 @@ function App() {
           onForgotPassword={() => setCurrentPage("forgotPassword")}
         />
       )}
+
       {currentPage === "forgotPassword" && (
-        <ForgotPasswordPage
-          onBack={() => setCurrentPage("auth")}
-        />
+        <ForgotPasswordPage onBack={() => setCurrentPage("auth")} />
       )}
+
       {currentPage === "resetPassword" && (
         <ResetPasswordPage
           resetToken={resetToken}
-          onSuccess={() => {
-            setResetToken(null);
-            setCurrentPage("auth");
-          }}
+          onSuccess={() => { setResetToken(null); setCurrentPage("auth"); }}
         />
       )}
+
       {currentPage === "verifyEmail" && (
         <VerifyEmailPage
           token={verifyToken}
-          onSuccess={() => {
-            setVerifyToken(null);
-            setCurrentPage("auth");
-          }}
+          onSuccess={() => { setVerifyToken(null); setCurrentPage("auth"); }}
         />
       )}
-      {currentPage === "booking" && (
-        <BookingPage
-          user={user}
-          authToken={authToken}
+
+      {currentPage === "dashboard" && user && (
+        <Dashboard
+          {...sharedProps}
           onBooking={handleBooking}
-          onLogout={handleLogout}
-          onAdminAccess={user?.role === 'admin' ? handleAdminAccess : null}
         />
       )}
+
+      {currentPage === "booking" && user && (
+        <BookingPage
+          {...sharedProps}
+          onBooking={handleBooking}
+        />
+      )}
+
       {currentPage === "editor" && (
         <NeonRobotConsole
           user={user}
           slot={selectedSlot}
           authToken={authToken}
-          onBack={() => setCurrentPage("booking")}
+          onBack={() => setCurrentPage("dashboard")}
           onLogout={handleLogout}
         />
       )}
+
       {currentPage === "admin" && user?.role === 'admin' && (
         <AdminDashboard
           user={user}
           authToken={authToken}
-          onBack={() => setCurrentPage("booking")}
+          onBack={() => setCurrentPage("dashboard")}
           onLogout={handleLogout}
         />
       )}
