@@ -330,34 +330,39 @@ input:-webkit-autofill:focus {
 
 .social-buttons {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .social-btn {
-  flex: 1;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 11px 12px;
+  gap: 10px;
+  padding: 12px 16px;
   border-radius: 10px;
   border: 1.5px solid #e2e8f0;
-  background: white;
-  font-size: 13px;
+  background: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  transition: 0.2s;
+  transition: all 0.2s ease;
   font-family: 'Inter', sans-serif;
-  color: #374151;
+  color: #24292f;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .social-btn:hover {
-  border-color: #2563EB;
-  background: #EFF6FF;
+  border-color: #6e7681;
+  background: #f6f8fa;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .social-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 

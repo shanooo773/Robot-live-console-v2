@@ -95,8 +95,9 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
     window.google.accounts.id.renderButton(googleBtnRef.current, {
       theme: "outline",
       size: "large",
-      width: googleBtnRef.current.offsetWidth || 300,
+      width: googleBtnRef.current.offsetWidth || 340,
       text: activeView === "login" ? "continue_with" : "signup_with",
+      shape: "rectangular",
       locale: "en",
     });
   }, [handleGoogleResponse, activeView]);
@@ -387,7 +388,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
             {/* SOCIAL LOGIN */}
             <div className="social-buttons">
 
-              <div ref={googleBtnRef} style={{ width: "100%", minHeight: "40px", display: "flex", justifyContent: "center" }} />
+              <div ref={googleBtnRef} style={{ width: "100%", minHeight: "44px", display: "flex", justifyContent: "stretch" }} />
 
               <button className="social-btn" onClick={handleGithubSignIn} disabled={isLoading}>
                 <Github size={18} />
