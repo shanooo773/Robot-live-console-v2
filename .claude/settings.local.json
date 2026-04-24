@@ -4,7 +4,8 @@
       "Bash(npx vite *)",
       "Bash(npm run *)",
       "Bash(npm install *)",
-      "Bash(node_modules/.bin/vite build *)"
+      "Bash(node_modules/.bin/vite build *)",
+      "Bash(git -C C:/aaaaaaaaaaaaaaaaa/web/Robot-live-console-v2 ls-files --others --exclude-standard)"
     ]
   }
 }
