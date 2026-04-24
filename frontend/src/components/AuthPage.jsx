@@ -18,19 +18,6 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
     }
   }, [mode]);
 
-  useEffect(() => {
-    if (oauthError) {
-      setErrorMsg(oauthError);
-      toast({
-        title: "GitHub login failed",
-        description: oauthError,
-        status: "error",
-        duration: 4000,
-        isClosable: true,
-      });
-    }
-  }, [oauthError, toast]);
-
   const [loginData, setLoginData] = useState({ email: "", password: "" });
   const [registerData, setRegisterData] = useState({
     name: "",
@@ -44,6 +31,19 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
 
   const toast = useToast();
   const googleInitialized = useRef(false);
+
+  useEffect(() => {
+    if (oauthError) {
+      setErrorMsg(oauthError);
+      toast({
+        title: "GitHub login failed",
+        description: oauthError,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    }
+  }, [oauthError, toast]);
 
   // Memoize Google response handler to prevent unnecessary re-renders
   // Fix: store JWT under 'token' so API interceptor attaches it
