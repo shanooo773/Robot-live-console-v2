@@ -10,9 +10,6 @@ export default defineConfig({
     allowedHosts: [
       'anybot.brainswarmrobotics.com'
     ],
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
-    },
     proxy: {
       // Proxy API calls to backend during development
       '/theia': {
