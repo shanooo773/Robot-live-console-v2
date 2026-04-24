@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Github, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
 import { loginUser, registerUser, googleLogin, resendConfirmation } from "../api";
 import { useToast } from "@chakra-ui/react";
-import { FcGoogle } from "react-icons/fc";
 
 const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -31,6 +30,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
 
   const toast = useToast();
   const googleInitialized = useRef(false);
+  const googleBtnRef = useRef(null);
 
   useEffect(() => {
     if (oauthError) {
@@ -76,10 +76,10 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
     }
   }, [onAuth, toast]);
 
-  // Initialize Google Sign-In — guard against double-init warning
+  // Initialize Google Sign-In and render button — uses popup flow to avoid FedCM AbortErrors
   useEffect(() => {
-    if (googleInitialized.current) return;
-    if (window.google && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+    if (!window.google || !import.meta.env.VITE_GOOGLE_CLIENT_ID || !googleBtnRef.current) return;
+    if (!googleInitialized.current) {
       try {
         window.google.accounts.id.initialize({
           client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
@@ -89,23 +89,17 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
         googleInitialized.current = true;
       } catch (error) {
         console.error("Google Sign-In initialization failed:", error);
+        return;
       }
     }
-  }, [handleGoogleResponse]);
-
-  const handleGoogleSignIn = () => {
-    if (window.google && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
-      window.google.accounts.id.prompt();
-    } else {
-      toast({
-        title: "Google Sign-In not available",
-        description: "Google Sign-In is not configured",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  };
+    window.google.accounts.id.renderButton(googleBtnRef.current, {
+      theme: "outline",
+      size: "large",
+      width: googleBtnRef.current.offsetWidth || 300,
+      text: activeView === "login" ? "continue_with" : "signup_with",
+      locale: "en",
+    });
+  }, [handleGoogleResponse, activeView]);
 
   const handleGithubSignIn = () => {
     const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID;
@@ -393,10 +387,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
             {/* SOCIAL LOGIN */}
             <div className="social-buttons">
 
-              <button className="social-btn" onClick={handleGoogleSignIn} disabled={isLoading}>
-                <FcGoogle size={18} />
-                Continue with Google
-              </button>
+              <div ref={googleBtnRef} style={{ width: "100%", minHeight: "40px", display: "flex", justifyContent: "center" }} />
 
               <button className="social-btn" onClick={handleGithubSignIn} disabled={isLoading}>
                 <Github size={18} />
@@ -532,10 +523,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
           {/* SOCIAL SIGNUP */}
           <div className="social-buttons">
 
-            <button type="button" className="social-btn" onClick={handleGoogleSignIn} disabled={isLoading}>
-              <FcGoogle size={18} />
-              Sign up with Google
-            </button>
+            <div ref={googleBtnRef} style={{ width: "100%", minHeight: "40px", display: "flex", justifyContent: "center" }} />
 
             <button type="button" className="social-btn" onClick={handleGithubSignIn} disabled={isLoading}>
               <Github size={18} />
