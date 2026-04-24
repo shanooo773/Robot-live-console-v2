@@ -918,8 +918,14 @@ async def login(request: Request, user_data: UserLogin):
 async def google_login(request: Request, google_data: GoogleLogin):
     """Login or register user with Google OAuth"""
     auth_service = service_manager.get_auth_service()
-    # verify_oauth2_token makes a blocking HTTP request to Google — run in thread pool
-    return await asyncio.to_thread(auth_service.login_with_google, google_data.id_token)
+    try:
+        # verify_oauth2_token makes a blocking HTTP request to Google — run in thread pool
+        return await asyncio.to_thread(auth_service.login_with_google, google_data.id_token)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Google login unhandled error: {e}")
+        raise HTTPException(status_code=500, detail="Google login failed. Please try again.")
 
 @app.post("/auth/github", response_model=TokenResponse)
 @limiter.limit("10/minute")

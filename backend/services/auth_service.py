@@ -252,7 +252,10 @@ class AuthService:
 
             # Verify the Google ID token
             try:
-                # Use a short-timeout transport so the VPS doesn't hang 120s waiting for Google's cert endpoint
+                import requests as http_requests
+                from google.auth import exceptions as google_exceptions
+
+                # Short-timeout transport — default is 120s which hangs the event loop
                 class _ShortTimeoutRequest(requests.Request):
                     def __call__(self, url, method="GET", body=None, headers=None, timeout=10, **kwargs):
                         return super().__call__(url, method=method, body=body, headers=headers, timeout=timeout, **kwargs)
@@ -262,29 +265,37 @@ class AuthService:
                     _ShortTimeoutRequest(),
                     google_client_id
                 )
-                
+
                 # Check if Google email is verified
                 if idinfo.get("email_verified") is not True:
-                    logger.warning(f"⚠️ Unverified Google email attempted login")
+                    logger.warning("⚠️ Unverified Google email attempted login")
                     raise HTTPException(
-                        status_code=401, 
+                        status_code=401,
                         detail="Google email not verified. Please verify your email with Google first."
                     )
-                
+
                 # Extract user information from Google token
                 google_user_id = idinfo['sub']
                 email = idinfo.get('email')
-                
+
                 if not email:
                     raise HTTPException(status_code=400, detail="Email not provided by Google")
-                
+
                 name = idinfo.get('name', email.split('@')[0])
-                
+
                 logger.info(f"✅ Google token verified for: {email}")
-                
+
+            except HTTPException:
+                raise
             except ValueError as e:
                 logger.warning(f"⚠️ Invalid Google token: {e}")
                 raise HTTPException(status_code=401, detail="Invalid Google token")
+            except (http_requests.exceptions.Timeout, http_requests.exceptions.ConnectionError) as e:
+                logger.error(f"❌ Could not reach Google cert endpoint: {e}")
+                raise HTTPException(status_code=503, detail="Google verification service unreachable. Please try again.")
+            except google_exceptions.TransportError as e:
+                logger.error(f"❌ Google transport error: {e}")
+                raise HTTPException(status_code=503, detail="Google verification service unreachable. Please try again.")
             
             # Upsert user in database (create or update)
             user = self.db.upsert_google_user(email, name, google_user_id)
