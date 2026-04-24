@@ -1979,6 +1979,31 @@ async def schedule_container_cleanup(current_user: dict = Depends(get_current_us
             detail=f"Failed to schedule container cleanup: {str(e)}"
         )
 
+@app.get("/theia/logs")
+async def get_theia_logs(
+    type: str = "preview",
+    lines: int = 200,
+    current_user: dict = Depends(get_current_user)
+):
+    """Return the last N log lines from the requesting user's preview or booking container.
+
+    Query params:
+        type  – "preview" (default) or "booking"
+        lines – number of tail lines, clamped to 1-500
+    """
+    if not theia_manager:
+        raise HTTPException(status_code=503, detail="Theia service not available")
+
+    if type not in ("preview", "booking"):
+        raise HTTPException(status_code=400, detail="type must be 'preview' or 'booking'")
+
+    user_id = int(current_user["sub"])
+    lines = min(max(lines, 1), 500)
+
+    result = theia_manager.get_container_logs(user_id, container_type=type, lines=lines)
+    return result
+
+
 @app.get("/theia/containers")
 async def list_theia_containers(current_user: dict = Depends(require_admin)):
     """List all Theia containers (admin only)"""
@@ -2969,6 +2994,155 @@ async def get_webrtc_config(current_user: dict = Depends(get_current_user)):
         "ice_transport_policy": "all",  # Use both STUN and TURN
         "bundle_policy": "max-bundle"
     }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Community
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _rank_for(total: int) -> dict:
+    if total >= 500:
+        return {"rank": "Legend",        "emoji": "🚀", "color": "purple"}
+    if total >= 200:
+        return {"rank": "Diamond",       "emoji": "💎", "color": "cyan"}
+    if total >= 100:
+        return {"rank": "Gold Member",   "emoji": "🥇", "color": "gold"}
+    if total >= 50:
+        return {"rank": "Silver Member", "emoji": "🥈", "color": "silver"}
+    if total >= 10:
+        return {"rank": "Member",        "emoji": "🔵", "color": "blue"}
+    return      {"rank": "Newbie",       "emoji": "🤖", "color": "gray"}
+
+
+def _enrich(item: dict) -> dict:
+    """Attach rank info to any dict that has total_messages."""
+    item["rank_info"] = _rank_for(item.get("total_messages", 0))
+    return item
+
+
+@app.get("/community/posts")
+async def community_get_posts(
+    page: int = 1,
+    limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+):
+    limit = min(max(limit, 1), 50)
+    result = db.get_community_posts(page=page, limit=limit)
+    result["posts"] = [_enrich(p) for p in result["posts"]]
+    return result
+
+
+@app.post("/community/posts")
+async def community_create_post(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = int(current_user["sub"])
+    if db.is_community_blocked(user_id):
+        raise HTTPException(status_code=403, detail="You have been blocked from community posting.")
+    body = await request.json()
+    content = (body.get("content") or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Content cannot be empty.")
+    if len(content) > 1000:
+        raise HTTPException(status_code=400, detail="Post must be 1000 characters or less.")
+    post = db.create_community_post(user_id, content)
+    return _enrich(post)
+
+
+@app.get("/community/posts/{post_id}/replies")
+async def community_get_replies(
+    post_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    replies = db.get_community_replies(post_id)
+    return [_enrich(r) for r in replies]
+
+
+@app.post("/community/posts/{post_id}/reply")
+async def community_create_reply(
+    post_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = int(current_user["sub"])
+    if db.is_community_blocked(user_id):
+        raise HTTPException(status_code=403, detail="You have been blocked from community posting.")
+    body = await request.json()
+    content = (body.get("content") or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Reply cannot be empty.")
+    if len(content) > 500:
+        raise HTTPException(status_code=400, detail="Reply must be 500 characters or less.")
+    try:
+        reply = db.create_community_reply(post_id, user_id, content)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return _enrich(reply)
+
+
+@app.delete("/community/posts/{post_id}")
+async def community_delete_post(
+    post_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = int(current_user["sub"])
+    is_admin = current_user.get("role") == "admin"
+    try:
+        ok = db.delete_community_post(post_id, user_id, is_admin)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Post not found.")
+    return {"success": True}
+
+
+@app.delete("/community/replies/{reply_id}")
+async def community_delete_reply(
+    reply_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = int(current_user["sub"])
+    is_admin = current_user.get("role") == "admin"
+    try:
+        ok = db.delete_community_reply(reply_id, user_id, is_admin)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Reply not found.")
+    return {"success": True}
+
+
+@app.get("/community/leaderboard")
+async def community_leaderboard(
+    current_user: dict = Depends(get_current_user),
+):
+    board = db.get_community_leaderboard(limit=10)
+    return [_enrich(u) for u in board]
+
+
+@app.get("/admin/community/users")
+async def admin_community_users(current_user: dict = Depends(require_admin)):
+    users = db.get_community_users_for_admin()
+    return [_enrich(u) for u in users]
+
+
+@app.patch("/admin/community/users/{user_id}/block")
+async def admin_community_block(
+    user_id: int,
+    request: Request,
+    current_user: dict = Depends(require_admin),
+):
+    body = await request.json()
+    blocked = bool(body.get("blocked", True))
+    ok = db.set_community_blocked(user_id, blocked)
+    if not ok:
+        raise HTTPException(status_code=404, detail="User not found.")
+    action = "blocked" if blocked else "unblocked"
+    logger.info(f"Admin {current_user['sub']} {action} user {user_id} from community")
+    return {"success": True, "user_id": user_id, "community_blocked": blocked}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn

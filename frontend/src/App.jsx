@@ -6,6 +6,8 @@ import Dashboard from "./components/Dashboard";
 import BookingPage from "./components/BookingPage";
 import NeonRobotConsole from "./components/NeonRobotConsole";
 import AdminDashboard from "./components/AdminDashboard";
+import CommunityPage from "./components/CommunityPage";
+import DocsPage from "./components/DocsPage";
 import ForgotPasswordPage from "./components/ForgotPasswordPage";
 import ResetPasswordPage from "./components/ResetPasswordPage";
 import VerifyEmailPage from "./components/VerifyEmailPage";
@@ -189,6 +191,18 @@ function App() {
           authToken={authToken}
           onBack={() => setCurrentPage("dashboard")}
           onLogout={handleLogout}
+        />
+      )}
+
+      {currentPage === "community" && user && (
+        <CommunityPage
+          {...sharedProps}
+        />
+      )}
+
+      {currentPage === "docs" && user && (
+        <DocsPage
+          {...sharedProps}
         />
       )}
 

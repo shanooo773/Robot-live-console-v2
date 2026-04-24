@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { 
   Box, 
   HStack, 
@@ -16,6 +16,7 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
+  ModalFooter,
   ModalCloseButton,
   useDisclosure,
   IconButton,
@@ -34,7 +35,7 @@ import TheiaIDE from "./TheiaIDE";
 import WebRTCVideoPlayer from "./WebRTCVideoPlayer";
 import RobotSelector from "./RobotSelector";
 import FileSelector from "./FileSelector";
-import { checkAccess, getVideo, getMyActiveBookings, getAvailableRobots } from "../api";
+import { checkAccess, getVideo, getMyActiveBookings, getAvailableRobots, getContainerLogs } from "../api";
 
 const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
   // Layout state
@@ -64,7 +65,17 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
   
   // Modal state
   const { isOpen: isLogsOpen, onOpen: onLogsOpen, onClose: onLogsClose } = useDisclosure();
-  
+
+  // Logs state
+  const [logs, setLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState(null);
+  const [logsType, setLogsType] = useState("preview");
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const logsTypeRef = useRef("preview");
+  const logsAutoRefreshRef = useRef(null);
+  const logsEndRef = useRef(null);
+
   const toast = useToast();
   const containerRef = useRef();
 
@@ -247,6 +258,65 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
     document.body.style.userSelect = '';
   };
 
+  // ── Container logs ────────────────────────────────────────────────
+  const fetchLogs = useCallback(async (typeOverride) => {
+    const type = typeOverride || logsTypeRef.current;
+    setLogsLoading(true);
+    setLogsError(null);
+    try {
+      const data = await getContainerLogs(authToken, type);
+      const raw = data.logs;
+      const lines = Array.isArray(raw)
+        ? raw
+        : typeof raw === "string"
+          ? raw.split("\n").filter(Boolean)
+          : [];
+      setLogs(lines);
+    } catch (e) {
+      setLogsError(e?.response?.data?.detail || e.message || "Failed to fetch logs");
+      setLogs([]);
+    } finally {
+      setLogsLoading(false);
+    }
+  }, [authToken]);
+
+  const switchLogsType = (type) => {
+    setLogsType(type);
+    logsTypeRef.current = type;
+    fetchLogs(type);
+  };
+
+  // Fetch on modal open; clear on close
+  useEffect(() => {
+    if (!isLogsOpen) {
+      clearInterval(logsAutoRefreshRef.current);
+      logsAutoRefreshRef.current = null;
+      setAutoRefresh(false);
+      setLogs([]);
+      return;
+    }
+    const defaultType = hasActiveBooking ? "booking" : "preview";
+    switchLogsType(defaultType);
+  }, [isLogsOpen, hasActiveBooking]);
+
+  // Scroll to bottom when new logs arrive
+  useEffect(() => {
+    if (isLogsOpen && logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [logs, isLogsOpen]);
+
+  // Auto-refresh every 5 s when enabled
+  useEffect(() => {
+    if (!autoRefresh || !isLogsOpen) {
+      clearInterval(logsAutoRefreshRef.current);
+      logsAutoRefreshRef.current = null;
+      return;
+    }
+    logsAutoRefreshRef.current = setInterval(() => fetchLogs(), 5000);
+    return () => clearInterval(logsAutoRefreshRef.current);
+  }, [autoRefresh, isLogsOpen, fetchLogs]);
+
   useEffect(() => {
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove);
@@ -387,12 +457,18 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
             isClosable: true,
           });
           
+          const isPreview = !slot?.bookingId || slot?.isPreview;
           await fetch('/theia/start', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${authToken}`,
               'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify(
+              isPreview
+                ? { mode: "preview" }
+                : { mode: "booking", booking_id: slot.bookingId, robot_id: slot.robotId, robot_type: slot.robotType }
+            ),
           });
         }
       }
@@ -658,9 +734,10 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
           overflow="hidden"
         >
           <Box h="100%" variant="glassPanel" borderRadius="0">
-            <TheiaIDE 
-              user={user} 
+            <TheiaIDE
+              user={user}
               authToken={authToken}
+              slot={slot}
               onError={(error) => {
                 toast({
                   title: "IDE Error",
@@ -828,74 +905,129 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
         </Box>
       </Box>
 
-      {/* Enhanced Logs Modal */}
-      <Modal isOpen={isLogsOpen} onClose={onLogsClose} size="xl">
-        <ModalOverlay backdropFilter="blur(4px)" bg="rgba(0,0,0,0.5)" />
-        <ModalContent bg="white" border="1px solid #E2E8F0" boxShadow="0 20px 60px rgba(0,0,0,0.15)">
-          <ModalHeader color="gray.800" fontFamily="'Inter', sans-serif" fontWeight="700">
-            Development Console Logs
+      {/* Container Logs Modal */}
+      <Modal isOpen={isLogsOpen} onClose={onLogsClose} size="4xl">
+        <ModalOverlay backdropFilter="blur(4px)" bg="rgba(0,0,0,0.6)" />
+        <ModalContent bg="#1E293B" border="1px solid rgba(255,255,255,0.1)" boxShadow="0 20px 60px rgba(0,0,0,0.5)">
+          <ModalHeader pb={3} borderBottom="1px solid rgba(255,255,255,0.08)">
+            <HStack justify="space-between" align="center" pr={8}>
+              <HStack spacing={3}>
+                <Text color="white" fontFamily="'Inter', sans-serif" fontWeight="700" fontSize="md">
+                  Container Logs
+                </Text>
+                <Badge colorScheme={autoRefresh ? "green" : "gray"} fontSize="xs">
+                  {autoRefresh ? "● Live" : "Paused"}
+                </Badge>
+              </HStack>
+              {/* Tab buttons */}
+              <HStack spacing={1}>
+                <Button
+                  size="xs"
+                  variant={logsType === "preview" ? "solid" : "ghost"}
+                  colorScheme={logsType === "preview" ? "blue" : "gray"}
+                  onClick={() => switchLogsType("preview")}
+                  color={logsType === "preview" ? "white" : "gray.400"}
+                >
+                  Preview IDE
+                </Button>
+                {hasActiveBooking && (
+                  <Button
+                    size="xs"
+                    variant={logsType === "booking" ? "solid" : "ghost"}
+                    colorScheme={logsType === "booking" ? "green" : "gray"}
+                    onClick={() => switchLogsType("booking")}
+                    color={logsType === "booking" ? "white" : "gray.400"}
+                  >
+                    Booking IDE
+                  </Button>
+                )}
+              </HStack>
+            </HStack>
           </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6} color="gray.600">
-            <VStack spacing={4} align="start">
-              <Box>
-                <Text fontWeight="bold" color="brand.600" mb={2}>Current Session:</Text>
-                <Text>Robot Type: {robotNames[robot]?.name || robot}</Text>
-                <Text>IDE Status: Eclipse Theia {theiaStatus?.status === "running" ? "Running" : "Stopped"}</Text>
-                <Text>WebRTC Status: {hasAccess ? "Available" : "Booking Required"}</Text>
-                <Text>User: {user.name} {(user?.isDemoUser || user?.isDemoAdmin) ? "(Demo)" : ""}</Text>
-              </Box>
+          <ModalCloseButton color="gray.400" />
 
-              <Box>
-                <Text fontWeight="bold" color="brand.600" mb={2}>Container Lifecycle:</Text>
-                <VStack spacing={1} align="start" fontSize="sm">
-                  <Text color="gray.500">• IDE auto-starts on first access</Text>
-                  <Text color="gray.500">• Available 24/7 for code preview and editing</Text>
-                  <Text color="gray.500">• Persistent workspace in isolated container</Text>
-                  <Text color="gray.500">• Auto-cleanup after configurable timeout</Text>
-                </VStack>
-              </Box>
-
-              <Box>
-                <Text fontWeight="bold" color="brand.600" mb={2}>WebRTC Events:</Text>
-                <VStack spacing={1} align="start" fontSize="sm">
-                  {hasAccess ? (
-                    <>
-                      <Text color="green.600">✓ WebRTC access granted - active booking detected</Text>
-                      <Text color="gray.500">• Live robot feed available during session</Text>
-                      <Text color="gray.500">• Direct WebRTC connection to robot</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text color="orange.600">⚠ WebRTC access restricted</Text>
-                      <Text color="gray.500">• To access the robot feed, please book a session</Text>
-                      <Text color="gray.500">• IDE remains available for code development</Text>
-                    </>
-                  )}
-                </VStack>
-              </Box>
-
-              <Box>
-                <Text fontWeight="bold" color="brand.600" mb={2}>Code Push Results:</Text>
-                <VStack spacing={1} align="start" fontSize="sm">
-                  <Text color="gray.500">• "Run Code" pushes workspace code to robot endpoint</Text>
-                  <Text color="gray.500">• Code execution logged for debugging</Text>
-                  <Text color="gray.500">• Results available in robot simulation videos</Text>
-                </VStack>
-              </Box>
-
-              <Box>
-                <Text fontWeight="bold" color="brand.600" mb={2}>Usage Instructions:</Text>
-                <VStack spacing={1} align="start" fontSize="sm">
-                  <Text color="gray.600">• Use the IDE panel to write and test robot code (always available)</Text>
-                  <Text color="gray.600">• {userMode === "preview" ? "Book a session to execute code on robot" : "Click 'Run Code' to execute code on the robot"}</Text>
-                  <Text color="gray.600">• Monitor execution through the video feed (booking mode only)</Text>
-                  <Text color="gray.600">• Drag the center divider to resize panels</Text>
-                  <Text color="gray.600">• Preview Mode: Code editing only | Booking Mode: Full robot access</Text>
-                </VStack>
-              </Box>
-            </VStack>
+          <ModalBody p={0}>
+            {/* Terminal box */}
+            <Box
+              bg="#0F172A"
+              fontFamily="'Courier New', Courier, monospace"
+              fontSize="12px"
+              h="55vh"
+              overflowY="auto"
+              p={4}
+              position="relative"
+            >
+              {logsLoading && logs.length === 0 ? (
+                <HStack justify="center" mt={8}>
+                  <Spinner size="sm" color="blue.400" />
+                  <Text color="gray.400">Fetching logs...</Text>
+                </HStack>
+              ) : logsError ? (
+                <Text color="#FF6B6B">Error: {logsError}</Text>
+              ) : logs.length === 0 ? (
+                <Text color="gray.500">No log output yet. Container may still be starting.</Text>
+              ) : (
+                <>
+                  {logs.map((line, i) => {
+                    const lower = line.toLowerCase();
+                    let color = "#CBD5E0";
+                    if (lower.includes("error") || lower.includes("fatal") || lower.includes("exception"))
+                      color = "#FF6B6B";
+                    else if (lower.includes("warn"))
+                      color = "#FFD93D";
+                    else if (lower.includes("info") || lower.includes("✅") || lower.includes("started") || lower.includes("ready"))
+                      color = "#6BCB77";
+                    else if (lower.includes("debug"))
+                      color = "#74B9FF";
+                    return (
+                      <Text key={i} color={color} whiteSpace="pre-wrap" wordBreak="break-all" lineHeight="1.6">
+                        {line}
+                      </Text>
+                    );
+                  })}
+                  <Box ref={logsEndRef} />
+                </>
+              )}
+            </Box>
           </ModalBody>
+
+          <ModalFooter borderTop="1px solid rgba(255,255,255,0.08)" py={3} gap={2}>
+            <Text color="gray.500" fontSize="xs" flex="1">
+              {logs.length} line{logs.length !== 1 ? "s" : ""} · {user.name} · {logsType} container
+            </Text>
+            <Button
+              size="sm"
+              variant="ghost"
+              color="gray.400"
+              _hover={{ color: "white" }}
+              onClick={() => setAutoRefresh(r => !r)}
+            >
+              {autoRefresh ? "⏸ Pause" : "▶ Auto-refresh"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              color="gray.400"
+              _hover={{ color: "white" }}
+              isLoading={logsLoading}
+              onClick={() => fetchLogs()}
+            >
+              ↻ Refresh
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              color="gray.400"
+              _hover={{ color: "white" }}
+              onClick={() => navigator.clipboard.writeText(logs.join("\n"))}
+              isDisabled={logs.length === 0}
+            >
+              ⎘ Copy All
+            </Button>
+            <Button size="sm" variant="ghost" color="gray.400" _hover={{ color: "white" }} onClick={onLogsClose}>
+              Close
+            </Button>
+          </ModalFooter>
         </ModalContent>
       </Modal>
     </Box>

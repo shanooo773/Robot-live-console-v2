@@ -82,6 +82,8 @@ import {
   stopAdminWatch,
   getAdminSettings,
   updateAdminSettings,
+  getAdminCommunityUsers,
+  setUserCommunityBlock,
 } from "../api";
 import { ChevronDownIcon, DeleteIcon, EditIcon, AddIcon, ViewIcon } from "@chakra-ui/icons";
 
@@ -100,6 +102,11 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
   const [watchStatus, setWatchStatus] = useState(null);
   const [isWatchLoading, setIsWatchLoading] = useState(false);
   const [watchRobotSelection, setWatchRobotSelection] = useState({});
+  // Community moderation state
+  const [communityUsers, setCommunityUsers] = useState([]);
+  const [communityLoading, setCommunityLoading] = useState(false);
+  const [communityBlockLoading, setCommunityBlockLoading] = useState({});
+
   // Admin settings state
   const [adminSettings, setAdminSettings] = useState({ surveillance_base_image: "", allowed_images: [] });
   const [selectedBaseImage, setSelectedBaseImage] = useState("");
@@ -670,6 +677,38 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
         duration: 3000,
         isClosable: true,
       });
+    }
+  };
+
+  // Community moderation handlers
+  const loadCommunityUsers = async () => {
+    setCommunityLoading(true);
+    try {
+      const data = await getAdminCommunityUsers(authToken);
+      setCommunityUsers(Array.isArray(data) ? data : []);
+    } catch {
+      toast({ title: "Failed to load community users", status: "error", duration: 3000, isClosable: true });
+    } finally {
+      setCommunityLoading(false);
+    }
+  };
+
+  const handleToggleBlock = async (userId, currentlyBlocked) => {
+    setCommunityBlockLoading((prev) => ({ ...prev, [userId]: true }));
+    try {
+      await setUserCommunityBlock(authToken, userId, !currentlyBlocked);
+      setCommunityUsers((prev) =>
+        prev.map((u) => u.id === userId ? { ...u, community_blocked: !currentlyBlocked } : u)
+      );
+      toast({
+        title: !currentlyBlocked ? "User blocked from community" : "User unblocked",
+        status: !currentlyBlocked ? "warning" : "success",
+        duration: 3000, isClosable: true,
+      });
+    } catch {
+      toast({ title: "Action failed", status: "error", duration: 3000, isClosable: true });
+    } finally {
+      setCommunityBlockLoading((prev) => ({ ...prev, [userId]: false }));
     }
   };
 
@@ -1824,6 +1863,73 @@ const AdminDashboard = ({ user, authToken, onBack, onLogout }) => {
             </VStack>
           </CardBody>
         </Card>
+        {/* Community Moderation */}
+        <Card w="full" bg="gray.800" border="1px solid" borderColor="gray.600">
+          <CardHeader>
+            <HStack justify="space-between">
+              <Text fontSize="xl" fontWeight="bold" color="white">
+                💬 Community Moderation
+              </Text>
+              <Button
+                size="sm"
+                colorScheme="blue"
+                variant="outline"
+                onClick={loadCommunityUsers}
+                isLoading={communityLoading}
+              >
+                Load Users
+              </Button>
+            </HStack>
+          </CardHeader>
+          <CardBody pt={0}>
+            {communityUsers.length === 0 ? (
+              <Text color="gray.400" fontSize="sm">
+                Click "Load Users" to see community activity and manage user posting permissions.
+              </Text>
+            ) : (
+              <TableContainer>
+                <Table size="sm" variant="simple">
+                  <Thead>
+                    <Tr>
+                      <Th color="gray.400">User</Th>
+                      <Th color="gray.400">Email</Th>
+                      <Th color="gray.400" isNumeric>Messages</Th>
+                      <Th color="gray.400">Status</Th>
+                      <Th color="gray.400">Action</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {communityUsers.map((u) => (
+                      <Tr key={u.id}>
+                        <Td color="white" fontWeight="500">{u.name}</Td>
+                        <Td color="gray.300" fontSize="xs">{u.email}</Td>
+                        <Td color="white" isNumeric fontWeight="600">{u.total_messages}</Td>
+                        <Td>
+                          <Badge colorScheme={u.community_blocked ? "red" : "green"}>
+                            {u.community_blocked ? "Blocked" : "Active"}
+                          </Badge>
+                        </Td>
+                        <Td>
+                          <Button
+                            size="xs"
+                            colorScheme={u.community_blocked ? "green" : "red"}
+                            variant="outline"
+                            isLoading={communityBlockLoading[u.id]}
+                            onClick={() => handleToggleBlock(u.id, u.community_blocked)}
+                            isDisabled={u.role === "admin"}
+                          >
+                            {u.community_blocked ? "Unblock" : "Block"}
+                          </Button>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardBody>
+        </Card>
+
       </VStack>
 
       {/* Delete Confirmation Dialog */}

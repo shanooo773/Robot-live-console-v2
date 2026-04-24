@@ -596,6 +596,77 @@ export const stopAdminWatch = async (token) => {
   return response.data;
 };
 
+// Community API
+export const getCommunityPosts = async (token, page = 1, limit = 20) => {
+  const response = await API.get(`/community/posts?page=${page}&limit=${limit}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const createCommunityPost = async (token, content) => {
+  const response = await API.post("/community/posts", { content }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const getCommunityReplies = async (token, postId) => {
+  const response = await API.get(`/community/posts/${postId}/replies`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const createCommunityReply = async (token, postId, content) => {
+  const response = await API.post(`/community/posts/${postId}/reply`, { content }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const deleteCommunityPost = async (token, postId) => {
+  const response = await API.delete(`/community/posts/${postId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const deleteCommunityReply = async (token, replyId) => {
+  const response = await API.delete(`/community/replies/${replyId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const getCommunityLeaderboard = async (token) => {
+  const response = await API.get("/community/leaderboard", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const getAdminCommunityUsers = async (token) => {
+  const response = await API.get("/admin/community/users", {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const setUserCommunityBlock = async (token, userId, blocked) => {
+  const response = await API.patch(`/admin/community/users/${userId}/block`, { blocked }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
+export const getContainerLogs = async (token, type = "preview", lines = 200) => {
+  const response = await API.get(`/theia/logs?type=${type}&lines=${lines}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return response.data;
+};
+
 export const getAdminSettings = async (token) => {
   const response = await API.get("/admin/settings", {
     headers: { Authorization: `Bearer ${token}` }

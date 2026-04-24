@@ -45,7 +45,7 @@ const Navbar = ({ user, onNavigate, currentPage, onLogout, onAdminAccess }) => {
               key={link.key}
               className={`anybot-navbar__link ${currentPage === link.key ? "active" : ""}`}
               onClick={() => {
-                if (link.key === "dashboard" || link.key === "booking") {
+                if (["dashboard", "booking", "community", "docs"].includes(link.key)) {
                   onNavigate(link.key);
                 }
               }}

@@ -115,7 +115,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onNavigate, onAdmin
     : null;
 
   const robotInfo = selectedRobot
-    ? (ROBOT_DESCRIPTIONS[selectedRobot.type] || { label: selectedRobot.name, desc: "", sub: "" })
+    ? { ...(ROBOT_DESCRIPTIONS[selectedRobot.type] || { desc: "", sub: "" }), label: selectedRobot.name }
     : null;
 
   const sessionDuration = selectedSlot
@@ -124,7 +124,7 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onNavigate, onAdmin
 
   const getRobotLabel = (b) => {
     const r = robotLookup[String(b.robot_id)];
-    return r ? (ROBOT_DESCRIPTIONS[r.type]?.label || r.name) : (b.robot_name || b.robot_type || "Robot");
+    return r ? (r.name || ROBOT_DESCRIPTIONS[r.type]?.label) : (b.robot_name || b.robot_type || "Robot");
   };
 
   const getRobotEmoji = (b) => robotLookup[String(b.robot_id)]?.emoji || "🤖";
@@ -249,13 +249,13 @@ const BookingPage = ({ user, authToken, onBooking, onLogout, onNavigate, onAdmin
                 ) : (
                   <div className="bk-robots">
                     {availableRobots.map(robot => {
-                      const info       = ROBOT_DESCRIPTIONS[robot.type] || { label: robot.name, desc: robot.type, sub: "" };
+                      const info       = ROBOT_DESCRIPTIONS[robot.type] || { desc: robot.type, sub: "" };
                       const isSelected = selectedRobot?.id === robot.id;
                       const emoji      = robot.type?.includes("arm") ? "🦾" : robot.type?.includes("hand") ? "🤲" : "🤖";
                       return (
                         <div key={robot.id} className={`bk-robot-card ${isSelected ? "selected" : ""}`} onClick={() => setSelectedRobot(robot)}>
                           <div className="bk-robot-card__icon">{emoji}</div>
-                          <div className="bk-robot-card__name">{info.label}</div>
+                          <div className="bk-robot-card__name">{robot.name}</div>
                           <img
                             src={`https://img.icons8.com/fluency/80/${robot.type?.includes("arm") ? "robot-arm" : "robot-2"}.png`}
                             alt={info.label}

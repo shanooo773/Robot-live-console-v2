@@ -1174,6 +1174,63 @@ int main() {
             logger.error(f"Error scheduling cleanup for user {user_id}: {e}")
             return {"success": False, "error": str(e)}
     
+    def get_container_logs(self, user_id: int, container_type: str = "preview", lines: int = 200) -> Dict:
+        """Return the last N log lines from a user's preview or booking container.
+
+        Docker writes Theia output to stderr, so we capture both stdout and stderr
+        and merge them.  Lines are returned newest-last (chronological order).
+        """
+        try:
+            docker_check = subprocess.run(
+                ["docker", "--version"], capture_output=True, text=True, timeout=5
+            )
+            if docker_check.returncode != 0:
+                return {"logs": [], "error": "Docker service is not available"}
+
+            container_name = (
+                self.get_booking_container_name(user_id)
+                if container_type == "booking"
+                else self.get_preview_container_name(user_id)
+            )
+
+            lines = min(max(int(lines), 1), 500)
+
+            result = subprocess.run(
+                ["docker", "logs", "--tail", str(lines), "--timestamps", container_name],
+                capture_output=True, text=True, timeout=15
+            )
+
+            if result.returncode != 0:
+                stderr_lower = result.stderr.lower()
+                if "no such container" in stderr_lower or "no such object" in stderr_lower:
+                    return {
+                        "logs": [f"[{container_type} container has not been started yet]"],
+                        "container_name": container_name,
+                        "container_type": container_type,
+                        "lines": 0,
+                    }
+
+            # Docker interleaves stdout/stderr — merge both, split on newlines, drop blanks
+            raw = (result.stdout or "") + (result.stderr or "")
+            log_lines = [ln for ln in raw.splitlines() if ln.strip()]
+
+            logger.info(f"Fetched {len(log_lines)} log lines from {container_name} for user {user_id}")
+            return {
+                "logs": log_lines,
+                "container_name": container_name,
+                "container_type": container_type,
+                "lines": len(log_lines),
+            }
+
+        except subprocess.TimeoutExpired:
+            logger.warning(f"docker logs timed out for user {user_id} container_type={container_type}")
+            return {"logs": ["[Error: docker logs command timed out]"], "error": "timeout"}
+        except FileNotFoundError:
+            return {"logs": ["[Error: Docker is not installed or not in PATH]"], "error": "docker_not_found"}
+        except Exception as e:
+            logger.error(f"Error fetching container logs for user {user_id}: {e}")
+            return {"logs": [f"[Error: {str(e)}]"], "error": str(e)}
+
     def cleanup_idle_containers(self) -> Dict:
         """Clean up containers that have been idle for longer than the configured timeout"""
         try:

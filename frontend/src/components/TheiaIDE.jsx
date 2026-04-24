@@ -11,7 +11,7 @@ import {
   Spinner,
   useToast
 } from "@chakra-ui/react";
-const TheiaIDE = ({ user, authToken, onError }) => {
+const TheiaIDE = ({ user, authToken, slot, onError }) => {
   const [theiaStatus, setTheiaStatus] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
@@ -105,13 +105,29 @@ const TheiaIDE = ({ user, authToken, onError }) => {
     try {
       setIsStarting(true);
       setError(null);
-      
+
+      // Tell the backend exactly which container type to start.
+      // Preview (no active booking): mode="preview" → backend uses elswork/theia
+      //   image and mounts the per-user workspace dir derived from the JWT user_id.
+      // Real booking: send booking_id + robot_id so backend looks up the
+      //   admin-configured docker_image for that robot.
+      const isPreview = !slot?.bookingId || slot?.isPreview;
+      const startBody = isPreview
+        ? { mode: "preview" }
+        : {
+            mode: "booking",
+            booking_id: slot.bookingId,
+            robot_id: slot.robotId,
+            robot_type: slot.robotType,
+          };
+
       const response = await fetch('/theia/start', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify(startBody),
       });
 
       if (response.ok) {

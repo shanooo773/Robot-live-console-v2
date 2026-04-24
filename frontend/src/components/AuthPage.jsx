@@ -1,5 +1,5 @@
 import "../styles/login.css";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Github, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
 import { loginUser, registerUser, googleLogin, resendConfirmation } from "../api";
 import { useToast } from "@chakra-ui/react";
@@ -30,6 +30,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
   const [errorMsg, setErrorMsg] = useState("");
 
   const toast = useToast();
+  const googleInitialized = useRef(false);
 
   // Memoize Google response handler to prevent unnecessary re-renders
   // Fix: store JWT under 'token' so API interceptor attaches it
@@ -62,8 +63,9 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
     }
   }, [onAuth, toast]);
 
-  // Initialize Google Sign-In
+  // Initialize Google Sign-In — guard against double-init warning
   useEffect(() => {
+    if (googleInitialized.current) return;
     if (window.google && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
       try {
         window.google.accounts.id.initialize({
@@ -71,6 +73,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
           callback: handleGoogleResponse,
           auto_select: false,
         });
+        googleInitialized.current = true;
       } catch (error) {
         console.error("Google Sign-In initialization failed:", error);
       }

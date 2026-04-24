@@ -255,6 +255,36 @@ class DatabaseManager:
             )
         """)
 
+        # Community posts table
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS community_posts (
+                id INTEGER {primary_key},
+                user_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP {timestamp_default},
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+        """)
+
+        # Community replies table
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS community_replies (
+                id INTEGER {primary_key},
+                post_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP {timestamp_default},
+                FOREIGN KEY (post_id) REFERENCES community_posts (id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+        """)
+
+        # Add community_blocked column to users
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN community_blocked TINYINT(1) DEFAULT 0")
+        except pymysql.Error:
+            pass
+
         # Create default admin user if none exists
         self._create_default_admin(cursor, conn)
         
@@ -1707,3 +1737,233 @@ class DatabaseManager:
         )
         conn.close()
         return True
+
+    # ------------------------------------------------------------------
+    # Community
+    # ------------------------------------------------------------------
+
+    def _user_message_count(self, cursor, user_id: int) -> int:
+        """Total posts + replies for a user (used for ranking)."""
+        ph = self._get_placeholder()
+        cursor.execute(
+            f"SELECT COUNT(*) FROM community_posts WHERE user_id = {ph}", (user_id,)
+        )
+        posts = cursor.fetchone()[0]
+        cursor.execute(
+            f"SELECT COUNT(*) FROM community_replies WHERE user_id = {ph}", (user_id,)
+        )
+        replies = cursor.fetchone()[0]
+        return posts + replies
+
+    def is_community_blocked(self, user_id: int) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        ph = self._get_placeholder()
+        cursor.execute(
+            f"SELECT community_blocked FROM users WHERE id = {ph}", (user_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return bool(row and row[0])
+
+    def set_community_blocked(self, user_id: int, blocked: bool) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        ph = self._get_placeholder()
+        cursor.execute(
+            f"UPDATE users SET community_blocked = {ph} WHERE id = {ph}",
+            (1 if blocked else 0, user_id),
+        )
+        ok = cursor.rowcount > 0
+        conn.close()
+        return ok
+
+    def create_community_post(self, user_id: int, content: str) -> Dict[str, Any]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        ph = self._get_placeholder()
+        cursor.execute(
+            f"INSERT INTO community_posts (user_id, content) VALUES ({ph}, {ph})",
+            (user_id, content),
+        )
+        post_id = cursor.lastrowid
+        count = self._user_message_count(cursor, user_id)
+        cursor.execute(
+            f"SELECT id, name FROM users WHERE id = {ph}", (user_id,)
+        )
+        u = cursor.fetchone()
+        conn.close()
+        return {
+            "id": post_id,
+            "user_id": user_id,
+            "user_name": u[1] if u else "Unknown",
+            "content": content,
+            "reply_count": 0,
+            "total_messages": count,
+            "created_at": datetime.now().isoformat(),
+        }
+
+    def get_community_posts(self, page: int = 1, limit: int = 20) -> Dict[str, Any]:
+        offset = (page - 1) * limit
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        ph = self._get_placeholder()
+
+        cursor.execute("SELECT COUNT(*) FROM community_posts")
+        total = cursor.fetchone()[0]
+
+        cursor.execute(f"""
+            SELECT
+                cp.id, cp.content, cp.created_at,
+                u.id, u.name,
+                (SELECT COUNT(*) FROM community_replies cr WHERE cr.post_id = cp.id) AS reply_count
+            FROM community_posts cp
+            JOIN users u ON cp.user_id = u.id
+            ORDER BY cp.created_at DESC
+            LIMIT {ph} OFFSET {ph}
+        """, (limit, offset))
+        rows = cursor.fetchall()
+
+        posts = []
+        for r in rows:
+            count = self._user_message_count(cursor, r[3])
+            posts.append({
+                "id": r[0],
+                "content": r[1],
+                "created_at": r[2].isoformat() if r[2] else None,
+                "user_id": r[3],
+                "user_name": r[4],
+                "reply_count": r[5],
+                "total_messages": count,
+            })
+
+        conn.close()
+        return {"posts": posts, "total": total, "page": page, "limit": limit}
+
+    def get_community_replies(self, post_id: int) -> List[Dict[str, Any]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        ph = self._get_placeholder()
+        cursor.execute(f"""
+            SELECT cr.id, cr.content, cr.created_at, u.id, u.name
+            FROM community_replies cr
+            JOIN users u ON cr.user_id = u.id
+            WHERE cr.post_id = {ph}
+            ORDER BY cr.created_at ASC
+        """, (post_id,))
+        rows = cursor.fetchall()
+        replies = []
+        for r in rows:
+            count = self._user_message_count(cursor, r[3])
+            replies.append({
+                "id": r[0],
+                "post_id": post_id,
+                "content": r[1],
+                "created_at": r[2].isoformat() if r[2] else None,
+                "user_id": r[3],
+                "user_name": r[4],
+                "total_messages": count,
+            })
+        conn.close()
+        return replies
+
+    def create_community_reply(self, post_id: int, user_id: int, content: str) -> Dict[str, Any]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        ph = self._get_placeholder()
+        # Verify post exists
+        cursor.execute(f"SELECT id FROM community_posts WHERE id = {ph}", (post_id,))
+        if not cursor.fetchone():
+            conn.close()
+            raise ValueError("Post not found")
+        cursor.execute(
+            f"INSERT INTO community_replies (post_id, user_id, content) VALUES ({ph}, {ph}, {ph})",
+            (post_id, user_id, content),
+        )
+        reply_id = cursor.lastrowid
+        count = self._user_message_count(cursor, user_id)
+        cursor.execute(f"SELECT name FROM users WHERE id = {ph}", (user_id,))
+        u = cursor.fetchone()
+        conn.close()
+        return {
+            "id": reply_id,
+            "post_id": post_id,
+            "user_id": user_id,
+            "user_name": u[0] if u else "Unknown",
+            "content": content,
+            "total_messages": count,
+            "created_at": datetime.now().isoformat(),
+        }
+
+    def delete_community_post(self, post_id: int, requester_id: int, is_admin: bool) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        ph = self._get_placeholder()
+        cursor.execute(f"SELECT user_id FROM community_posts WHERE id = {ph}", (post_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False
+        if not is_admin and row[0] != requester_id:
+            conn.close()
+            raise PermissionError("Not allowed to delete this post")
+        cursor.execute(f"DELETE FROM community_posts WHERE id = {ph}", (post_id,))
+        ok = cursor.rowcount > 0
+        conn.close()
+        return ok
+
+    def delete_community_reply(self, reply_id: int, requester_id: int, is_admin: bool) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        ph = self._get_placeholder()
+        cursor.execute(f"SELECT user_id FROM community_replies WHERE id = {ph}", (reply_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False
+        if not is_admin and row[0] != requester_id:
+            conn.close()
+            raise PermissionError("Not allowed to delete this reply")
+        cursor.execute(f"DELETE FROM community_replies WHERE id = {ph}", (reply_id,))
+        ok = cursor.rowcount > 0
+        conn.close()
+        return ok
+
+    def get_community_leaderboard(self, limit: int = 10) -> List[Dict[str, Any]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        ph = self._get_placeholder()
+        cursor.execute(f"""
+            SELECT u.id, u.name,
+                (SELECT COUNT(*) FROM community_posts cp WHERE cp.user_id = u.id) +
+                (SELECT COUNT(*) FROM community_replies cr WHERE cr.user_id = u.id) AS total_messages
+            FROM users u
+            ORDER BY total_messages DESC
+            LIMIT {ph}
+        """, (limit,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [{"user_id": r[0], "user_name": r[1], "total_messages": r[2]} for r in rows]
+
+    def get_community_users_for_admin(self) -> List[Dict[str, Any]]:
+        """All users with their community message count and block status."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT u.id, u.name, u.email, u.role,
+                COALESCE(u.community_blocked, 0),
+                (SELECT COUNT(*) FROM community_posts cp WHERE cp.user_id = u.id) +
+                (SELECT COUNT(*) FROM community_replies cr WHERE cr.user_id = u.id) AS total_messages
+            FROM users u
+            ORDER BY total_messages DESC
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        return [
+            {
+                "id": r[0], "name": r[1], "email": r[2],
+                "role": r[3], "community_blocked": bool(r[4]),
+                "total_messages": r[5],
+            }
+            for r in rows
+        ]
