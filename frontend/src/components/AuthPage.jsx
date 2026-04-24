@@ -106,6 +106,8 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
       width: googleBtnRef.current.offsetWidth || 340,
       text: activeView === "login" ? "continue_with" : "signup_with",
       shape: "rectangular",
+      ux_mode: "redirect",
+      login_uri: `${window.location.origin}/auth/google/callback`,
       locale: "en",
     });
   }, [activeView]);

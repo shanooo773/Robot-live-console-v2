@@ -41,6 +41,26 @@ function App() {
       return;
     }
 
+    const googleToken = urlParams.get('google_token');
+    const googleError = urlParams.get('google_error');
+    if (googleToken) {
+      window.history.replaceState({}, document.title, "/");
+      localStorage.setItem("authToken", googleToken);
+      getCurrentUser(googleToken)
+        .then(userData => handleAuth(userData, googleToken))
+        .catch(() => {
+          localStorage.removeItem('authToken');
+          setCurrentPage("auth");
+        });
+      return;
+    }
+    if (googleError) {
+      window.history.replaceState({}, document.title, "/");
+      setAuthError(decodeURIComponent(googleError));
+      setCurrentPage("auth");
+      return;
+    }
+
     const code = urlParams.get('code');
     if (path === '/auth/github/callback' && code) {
       const redirectUri = `${window.location.origin}/auth/github/callback`;

@@ -5,9 +5,9 @@ import asyncio
 import uuid
 import re
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends, WebSocket, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, BackgroundTasks, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -926,6 +926,21 @@ async def google_login(request: Request, google_data: GoogleLogin):
     except Exception as e:
         logger.error(f"Google login unhandled error: {e}")
         raise HTTPException(status_code=500, detail="Google login failed. Please try again.")
+
+@app.post("/auth/google/callback")
+async def google_callback(request: Request, credential: str = Form(...)):
+    """Handles Google redirect-mode POST — verifies credential and redirects to frontend with token"""
+    auth_service = service_manager.get_auth_service()
+    try:
+        result = await asyncio.to_thread(auth_service.login_with_google, credential)
+        token = result["access_token"]
+        return RedirectResponse(url=f"/?google_token={token}", status_code=302)
+    except HTTPException as e:
+        import urllib.parse
+        return RedirectResponse(url=f"/?google_error={urllib.parse.quote(e.detail)}", status_code=302)
+    except Exception as e:
+        logger.error(f"Google callback error: {e}")
+        return RedirectResponse(url="/?google_error=Authentication+failed.+Please+try+again.", status_code=302)
 
 @app.post("/auth/github", response_model=TokenResponse)
 @limiter.limit("10/minute")
