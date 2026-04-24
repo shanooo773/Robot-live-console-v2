@@ -92,7 +92,7 @@ export const loginUser = async (credentials) => {
   return response.data;
 };
 export const googleLogin = async (idToken) => {
-  const response = await API.post("/auth/google", { id_token: idToken });
+  const response = await API.post("/auth/google", { id_token: idToken }, { timeout: 15000 });
   return response.data;
 }
 

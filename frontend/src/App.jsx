@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Box } from "@chakra-ui/react";
 import LandingPage from "./components/LandingPage";
 import AuthPage from "./components/AuthPage";
@@ -80,12 +80,12 @@ function App() {
     }
   }, []);
 
-  const handleAuth = (userData, token) => {
+  const handleAuth = useCallback((userData, token) => {
     setUser(userData);
     setAuthToken(token);
     setCurrentPage("dashboard");
     startTheiaWarmup(token);
-  };
+  }, []);
 
   const handleBooking = (slot) => {
     setSelectedSlot(slot);

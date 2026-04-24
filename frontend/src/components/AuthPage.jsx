@@ -31,6 +31,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
   const toast = useToast();
   const googleInitialized = useRef(false);
   const googleBtnRef = useRef(null);
+  const googleCallbackRef = useRef(null);
 
   useEffect(() => {
     if (oauthError) {
@@ -76,22 +77,29 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
     }
   }, [onAuth, toast]);
 
-  // Initialize Google Sign-In and render button — uses popup flow to avoid FedCM AbortErrors
+  // Keep callback ref current so initialize's wrapper always calls the latest handler
+  googleCallbackRef.current = handleGoogleResponse;
+
+  // Initialize once — stable wrapper via ref avoids stale closure without re-initializing
+  useEffect(() => {
+    if (!window.google || !import.meta.env.VITE_GOOGLE_CLIENT_ID) return;
+    if (googleInitialized.current) return;
+    try {
+      window.google.accounts.id.initialize({
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+        callback: (response) => googleCallbackRef.current(response),
+        auto_select: false,
+      });
+      googleInitialized.current = true;
+    } catch (error) {
+      console.error("Google Sign-In initialization failed:", error);
+    }
+  }, []);
+
+  // Render button only when the view changes — not on every parent re-render
   useEffect(() => {
     if (!window.google || !import.meta.env.VITE_GOOGLE_CLIENT_ID || !googleBtnRef.current) return;
-    if (!googleInitialized.current) {
-      try {
-        window.google.accounts.id.initialize({
-          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-          callback: handleGoogleResponse,
-          auto_select: false,
-        });
-        googleInitialized.current = true;
-      } catch (error) {
-        console.error("Google Sign-In initialization failed:", error);
-        return;
-      }
-    }
+    if (!googleInitialized.current) return;
     window.google.accounts.id.renderButton(googleBtnRef.current, {
       theme: "outline",
       size: "large",
@@ -100,7 +108,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
       shape: "rectangular",
       locale: "en",
     });
-  }, [handleGoogleResponse, activeView]);
+  }, [activeView]);
 
   const handleGithubSignIn = () => {
     const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID;

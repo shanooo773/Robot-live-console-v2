@@ -249,12 +249,17 @@ class AuthService:
                 )
             
             logger.info("🔐 Google OAuth login attempt")
-            
+
             # Verify the Google ID token
             try:
+                # Use a short-timeout transport so the VPS doesn't hang 120s waiting for Google's cert endpoint
+                class _ShortTimeoutRequest(requests.Request):
+                    def __call__(self, url, method="GET", body=None, headers=None, timeout=10, **kwargs):
+                        return super().__call__(url, method=method, body=body, headers=headers, timeout=timeout, **kwargs)
+
                 idinfo = google_id_token.verify_oauth2_token(
-                    id_token, 
-                    requests.Request(), 
+                    id_token,
+                    _ShortTimeoutRequest(),
                     google_client_id
                 )
                 
