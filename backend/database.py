@@ -193,7 +193,19 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE users ADD COLUMN google_name VARCHAR(255) NULL")
         except pymysql.Error:
             pass
-        
+
+        # Add github_id column for GitHub OAuth
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN github_id VARCHAR(255) NULL")
+        except pymysql.Error:
+            pass
+
+        # Add github_name column for GitHub OAuth
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN github_name VARCHAR(255) NULL")
+        except pymysql.Error:
+            pass
+
         # Migration: Copy code_api_url to upload_endpoint if upload_endpoint is empty
         try:
             cursor.execute("""
@@ -743,6 +755,69 @@ class DatabaseManager:
         finally:
             conn.close()
     
+    def upsert_github_user(self, email: str, name: str, github_id: str) -> Dict[str, Any]:
+        """Create or update user from GitHub OAuth"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        placeholder = self._get_placeholder()
+
+        try:
+            cursor.execute(f"""
+                SELECT id, name, email, role, github_id, created_at
+                FROM users WHERE github_id = {placeholder}
+            """, (github_id,))
+            existing_user = cursor.fetchone()
+
+            if not existing_user and email:
+                cursor.execute(f"""
+                    SELECT id, name, email, role, github_id, created_at
+                    FROM users WHERE email = {placeholder}
+                """, (email,))
+                existing_user = cursor.fetchone()
+
+            if existing_user:
+                cursor.execute(f"""
+                    UPDATE users
+                    SET github_id = {placeholder}, github_name = {placeholder},
+                        is_active = 1, email_confirmed_at = {placeholder}
+                    WHERE id = {placeholder}
+                """, (github_id, name, datetime.now(), existing_user[0]))
+
+                return {
+                    "id": existing_user[0],
+                    "name": name,
+                    "email": email,
+                    "role": existing_user[3],
+                    "github_id": github_id,
+                    "github_name": name,
+                    "is_active": True,
+                    "created_at": existing_user[5]
+                }
+            else:
+                password_hash = self._hash_password(secrets.token_urlsafe(32))
+
+                cursor.execute(f"""
+                    INSERT INTO users (name, email, password_hash, role, is_active,
+                                     email_confirmed_at, github_id, github_name)
+                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder},
+                            1, {placeholder}, {placeholder}, {placeholder})
+                """, (name, email, password_hash, "user", datetime.now(), github_id, name))
+
+                user_id = cursor.lastrowid
+
+                return {
+                    "id": user_id,
+                    "name": name,
+                    "email": email,
+                    "role": "user",
+                    "github_id": github_id,
+                    "github_name": name,
+                    "is_active": True,
+                    "created_at": datetime.now().isoformat()
+                }
+        finally:
+            conn.close()
+
     def get_all_assigned_ports(self) -> List[int]:
         """Get all currently assigned Theia ports (preview, booking, and admin watch)"""
         conn = self.get_connection()

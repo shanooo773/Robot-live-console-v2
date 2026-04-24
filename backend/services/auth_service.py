@@ -305,6 +305,84 @@ class AuthService:
             logger.error(f"❌ Google OAuth login failed: {e}")
             raise AuthServiceException(f"Google OAuth login failed: {str(e)}")
     
+    def login_with_github(self, code: str) -> Dict[str, Any]:
+        """Login or register user with GitHub OAuth code"""
+        import httpx
+
+        github_client_id = os.getenv('GITHUB_CLIENT_ID')
+        github_client_secret = os.getenv('GITHUB_CLIENT_SECRET')
+
+        if not github_client_id or not github_client_secret:
+            logger.error("❌ GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET not configured")
+            raise HTTPException(status_code=500, detail="GitHub OAuth not configured.")
+
+        logger.info("🔐 GitHub OAuth login attempt")
+
+        try:
+            # Exchange code for access token
+            token_response = httpx.post(
+                "https://github.com/login/oauth/access_token",
+                headers={"Accept": "application/json"},
+                data={
+                    "client_id": github_client_id,
+                    "client_secret": github_client_secret,
+                    "code": code,
+                },
+                timeout=10,
+            )
+            token_data = token_response.json()
+            access_token = token_data.get("access_token")
+
+            if not access_token:
+                logger.warning(f"⚠️ GitHub token exchange failed: {token_data}")
+                raise HTTPException(status_code=401, detail="Invalid GitHub authorization code.")
+
+            # Fetch user profile
+            user_response = httpx.get(
+                "https://api.github.com/user",
+                headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+                timeout=10,
+            )
+            github_user = user_response.json()
+
+            github_id = str(github_user.get("id"))
+            name = github_user.get("name") or github_user.get("login", "GitHub User")
+            email = github_user.get("email")
+
+            # If email is not public, fetch from emails endpoint
+            if not email:
+                emails_response = httpx.get(
+                    "https://api.github.com/user/emails",
+                    headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+                    timeout=10,
+                )
+                emails = emails_response.json()
+                primary = next((e for e in emails if e.get("primary") and e.get("verified")), None)
+                if primary:
+                    email = primary["email"]
+
+            if not email:
+                raise HTTPException(status_code=400, detail="GitHub account has no accessible email. Make your email public on GitHub and try again.")
+
+            logger.info(f"✅ GitHub user verified: {email}")
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ GitHub token exchange error: {e}")
+            raise HTTPException(status_code=401, detail="GitHub authentication failed.")
+
+        user = self.db.upsert_github_user(email, name, github_id)
+        logger.info(f"✅ GitHub user upserted: {email} (ID: {user['id']})")
+
+        self._ensure_user_onboarding(user['id'], user['email'])
+
+        token = self.auth_manager.create_access_token(
+            data={"sub": str(user["id"]), "email": user["email"], "role": user["role"]}
+        )
+
+        return {"access_token": token, "token_type": "bearer", "user": user}
+
     def _ensure_user_onboarding(self, user_id: int, user_email: str) -> None:
         """Ensure user has required onboarding setup (theia port and project directory)"""
         try:
