@@ -918,14 +918,16 @@ async def login(request: Request, user_data: UserLogin):
 async def google_login(request: Request, google_data: GoogleLogin):
     """Login or register user with Google OAuth"""
     auth_service = service_manager.get_auth_service()
-    return auth_service.login_with_google(google_data.id_token)
+    # verify_oauth2_token makes a blocking HTTP request to Google — run in thread pool
+    return await asyncio.to_thread(auth_service.login_with_google, google_data.id_token)
 
 @app.post("/auth/github", response_model=TokenResponse)
 @limiter.limit("10/minute")
 async def github_login(request: Request, github_data: GitHubLogin):
     """Login or register user with GitHub OAuth"""
     auth_service = service_manager.get_auth_service()
-    return auth_service.login_with_github(github_data.code, github_data.redirect_uri)
+    # GitHub token exchange is also blocking — run in thread pool
+    return await asyncio.to_thread(auth_service.login_with_github, github_data.code, github_data.redirect_uri)
 
 @app.get("/auth/me")
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
