@@ -5,7 +5,7 @@ import { loginUser, registerUser, googleLogin, resendConfirmation } from "../api
 import { useToast } from "@chakra-ui/react";
 import { FcGoogle } from "react-icons/fc";
 
-const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
+const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showRegPassword, setShowRegPassword] = useState(false);
@@ -17,6 +17,19 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode }) => {
       setActiveView(mode);
     }
   }, [mode]);
+
+  useEffect(() => {
+    if (oauthError) {
+      setErrorMsg(oauthError);
+      toast({
+        title: "GitHub login failed",
+        description: oauthError,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    }
+  }, [oauthError, toast]);
 
   const [loginData, setLoginData] = useState({ email: "", password: "" });
   const [registerData, setRegisterData] = useState({

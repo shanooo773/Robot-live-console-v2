@@ -20,6 +20,9 @@ VITE_API_URL=https://anybot.brainswarmrobotics.com
 
 # Google OAuth Configuration (optional)
 VITE_GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com
+
+# GitHub OAuth Configuration (optional)
+VITE_GITHUB_CLIENT_ID=YOUR_GITHUB_CLIENT_ID
 ```
 
 ### Getting Google OAuth Client ID (Optional)

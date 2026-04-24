@@ -305,7 +305,7 @@ class AuthService:
             logger.error(f"❌ Google OAuth login failed: {e}")
             raise AuthServiceException(f"Google OAuth login failed: {str(e)}")
     
-    def login_with_github(self, code: str) -> Dict[str, Any]:
+    def login_with_github(self, code: str, redirect_uri: Optional[str] = None) -> Dict[str, Any]:
         """Login or register user with GitHub OAuth code"""
         import httpx
 
@@ -319,15 +319,19 @@ class AuthService:
         logger.info("🔐 GitHub OAuth login attempt")
 
         try:
+            token_request_data = {
+                "client_id": github_client_id,
+                "client_secret": github_client_secret,
+                "code": code,
+            }
+            if redirect_uri:
+                token_request_data["redirect_uri"] = redirect_uri
+
             # Exchange code for access token
             token_response = httpx.post(
                 "https://github.com/login/oauth/access_token",
                 headers={"Accept": "application/json"},
-                data={
-                    "client_id": github_client_id,
-                    "client_secret": github_client_secret,
-                    "code": code,
-                },
+                data=token_request_data,
                 timeout=10,
             )
             token_data = token_response.json()

@@ -22,6 +22,7 @@ function App() {
   const [resetToken, setResetToken] = useState(null);
   const [verifyToken, setVerifyToken] = useState(null);
   const [authMode, setAuthMode] = useState("login");
+  const [authError, setAuthError] = useState("");
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -42,13 +43,16 @@ function App() {
 
     const code = urlParams.get('code');
     if (path === '/auth/github/callback' && code) {
-      githubLogin(code)
+      const redirectUri = `${window.location.origin}/auth/github/callback`;
+      githubLogin(code, redirectUri)
         .then(result => {
           localStorage.setItem("authToken", result.access_token);
           window.history.replaceState({}, document.title, "/");
           handleAuth(result.user, result.access_token);
         })
-        .catch(() => {
+        .catch((error) => {
+          const detail = error?.response?.data?.detail || "GitHub authentication failed. Please try again.";
+          setAuthError(detail);
           window.history.replaceState({}, document.title, "/");
           setCurrentPage("auth");
         });
@@ -146,6 +150,7 @@ function App() {
       {currentPage === "auth" && (
         <AuthPage
           mode={authMode}
+          oauthError={authError}
           onAuth={handleAuth}
           onBack={() => setCurrentPage("landing")}
           onForgotPassword={() => setCurrentPage("forgotPassword")}

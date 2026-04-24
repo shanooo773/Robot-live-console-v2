@@ -96,8 +96,12 @@ export const googleLogin = async (idToken) => {
   return response.data;
 }
 
-export const githubLogin = async (code) => {
-  const response = await API.post("/auth/github", { code });
+export const githubLogin = async (code, redirectUri = null) => {
+  const payload = { code };
+  if (redirectUri) {
+    payload.redirect_uri = redirectUri;
+  }
+  const response = await API.post("/auth/github", payload);
   return response.data;
 }
 
