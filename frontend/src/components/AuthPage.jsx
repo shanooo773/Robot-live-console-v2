@@ -1,8 +1,11 @@
 import "../styles/login.css";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Github, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
-import { loginUser, registerUser, googleLogin, resendConfirmation } from "../api";
+import { loginUser, registerUser, resendConfirmation } from "../api";
 import { useToast } from "@chakra-ui/react";
+
+const GOOGLE_LOGIN_URI = "https://anybot.brainswarmrobotics.com/auth/google/callback";
+const GOOGLE_NONCE_STORAGE_KEY = "gis_login_nonce";
 
 const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -31,7 +34,6 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
   const toast = useToast();
   const googleInitialized = useRef(false);
   const googleBtnRef = useRef(null);
-  const googleCallbackRef = useRef(null);
 
   useEffect(() => {
     if (oauthError) {
@@ -46,48 +48,26 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
     }
   }, [oauthError, toast]);
 
-  // Memoize Google response handler to prevent unnecessary re-renders
-  // Fix: store JWT under 'token' so API interceptor attaches it
-  const handleGoogleResponse = useCallback(async (response) => {
-    try {
-      setIsLoading(true);
-      const result = await googleLogin(response.credential);
-
-      localStorage.setItem("authToken", result.access_token);
-
-      onAuth(result.user, result.access_token);
-      toast({
-        title: "Google login successful",
-        description: "Welcome to Robot Programming Console!",
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-    } catch (error) {
-      console.error("Google login failed:", error);
-      toast({
-        title: "Google login failed",
-        description: error.response?.data?.detail || "Could not sign in with Google",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setIsLoading(false);
+  const ensureGoogleNonce = () => {
+    let nonce = sessionStorage.getItem(GOOGLE_NONCE_STORAGE_KEY);
+    if (!nonce) {
+      nonce = crypto.randomUUID();
+      sessionStorage.setItem(GOOGLE_NONCE_STORAGE_KEY, nonce);
     }
-  }, [onAuth, toast]);
+    document.cookie = `gis_nonce=${encodeURIComponent(nonce)}; Path=/; Max-Age=600; SameSite=Lax; Secure`;
+    return nonce;
+  };
 
-  // Keep callback ref current so initialize's wrapper always calls the latest handler
-  googleCallbackRef.current = handleGoogleResponse;
-
-  // Initialize once — stable wrapper via ref avoids stale closure without re-initializing
+  // Redirect-only GIS initialization
   useEffect(() => {
     if (!window.google || !import.meta.env.VITE_GOOGLE_CLIENT_ID) return;
     if (googleInitialized.current) return;
     try {
       window.google.accounts.id.initialize({
         client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-        callback: (response) => googleCallbackRef.current(response),
+        ux_mode: "redirect",
+        login_uri: GOOGLE_LOGIN_URI,
+        nonce: ensureGoogleNonce(),
         auto_select: false,
       });
       googleInitialized.current = true;
@@ -106,8 +86,6 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
       width: googleBtnRef.current.offsetWidth || 340,
       text: activeView === "login" ? "continue_with" : "signup_with",
       shape: "rectangular",
-      ux_mode: "redirect",
-      login_uri: `${window.location.origin}/auth/google/callback`,
       locale: "en",
     });
   }, [activeView]);

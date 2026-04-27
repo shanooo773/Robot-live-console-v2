@@ -91,8 +91,9 @@ export const loginUser = async (credentials) => {
   const response = await API.post("/auth/login", credentials);
   return response.data;
 };
-export const googleLogin = async (idToken) => {
-  const response = await API.post("/auth/google", { id_token: idToken }, { timeout: 15000 });
+
+export const googleExchangeCode = async (code) => {
+  const response = await API.post("/auth/google/exchange", { code }, { timeout: 15000 });
   return response.data;
 }
 

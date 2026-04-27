@@ -3,6 +3,7 @@ import time
 import json
 import asyncio
 import uuid
+import secrets
 import re
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, BackgroundTasks, Request, Form
@@ -51,6 +52,10 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 logger = setup_logging()
+
+GOOGLE_REDIRECT_URI = "https://anybot.brainswarmrobotics.com/auth/google/callback"
+GOOGLE_AUTH_CODE_TTL_SECONDS = 120
+google_auth_exchange_store: Dict[str, Dict[str, Any]] = {}
 
 # WebRTC imports for compatibility and future direct handling if needed
 try:
@@ -730,8 +735,8 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
-class GoogleLogin(BaseModel):
-    id_token: str
+class GoogleExchangeRequest(BaseModel):
+    code: str
 
 class GitHubLogin(BaseModel):
     code: str
@@ -913,34 +918,57 @@ async def login(request: Request, user_data: UserLogin):
     auth_service = service_manager.get_auth_service()
     return auth_service.login_user(user_data.email, user_data.password)
 
-@app.post("/auth/google", response_model=TokenResponse)
-@limiter.limit("10/minute")
-async def google_login(request: Request, google_data: GoogleLogin):
-    """Login or register user with Google OAuth"""
-    auth_service = service_manager.get_auth_service()
-    try:
-        # verify_oauth2_token makes a blocking HTTP request to Google — run in thread pool
-        return await asyncio.to_thread(auth_service.login_with_google, google_data.id_token)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Google login unhandled error: {e}")
-        raise HTTPException(status_code=500, detail="Google login failed. Please try again.")
-
 @app.post("/auth/google/callback")
 async def google_callback(request: Request, credential: str = Form(...)):
-    """Handles Google redirect-mode POST — verifies credential and redirects to frontend with token"""
+    """Handles GIS redirect-mode POST and returns short-lived exchange code via redirect."""
     auth_service = service_manager.get_auth_service()
+    nonce = request.cookies.get("gis_nonce")
     try:
-        result = await asyncio.to_thread(auth_service.login_with_google, credential)
-        token = result["access_token"]
-        return RedirectResponse(url=f"/?google_token={token}", status_code=302)
+        result = await asyncio.to_thread(auth_service.login_with_google, credential, nonce)
+
+        now = time.monotonic()
+        expired_codes = [code for code, payload in google_auth_exchange_store.items() if payload.get("expires_at", 0) <= now]
+        for code in expired_codes:
+            google_auth_exchange_store.pop(code, None)
+
+        one_time_code = secrets.token_urlsafe(32)
+        google_auth_exchange_store[one_time_code] = {
+            "access_token": result["access_token"],
+            "token_type": result["token_type"],
+            "user": result["user"],
+            "expires_at": now + GOOGLE_AUTH_CODE_TTL_SECONDS,
+        }
+
+        response = RedirectResponse(url=f"/?google_code={one_time_code}", status_code=302)
+        response.delete_cookie("gis_nonce", path="/")
+        return response
     except HTTPException as e:
         import urllib.parse
-        return RedirectResponse(url=f"/?google_error={urllib.parse.quote(e.detail)}", status_code=302)
+        response = RedirectResponse(url=f"/?google_error={urllib.parse.quote(e.detail)}", status_code=302)
+        response.delete_cookie("gis_nonce", path="/")
+        return response
     except Exception as e:
         logger.error(f"Google callback error: {e}")
-        return RedirectResponse(url="/?google_error=Authentication+failed.+Please+try+again.", status_code=302)
+        response = RedirectResponse(url="/?google_error=Authentication+failed.+Please+try+again.", status_code=302)
+        response.delete_cookie("gis_nonce", path="/")
+        return response
+
+@app.post("/auth/google/exchange", response_model=TokenResponse)
+@limiter.limit("15/minute")
+async def google_exchange_code(request: Request, exchange_request: GoogleExchangeRequest):
+    """Exchange one-time Google redirect code for application JWT."""
+    payload = google_auth_exchange_store.pop(exchange_request.code, None)
+    if not payload:
+        raise HTTPException(status_code=400, detail="Invalid or expired Google login code.")
+
+    if payload.get("expires_at", 0) <= time.monotonic():
+        raise HTTPException(status_code=400, detail="Invalid or expired Google login code.")
+
+    return {
+        "access_token": payload["access_token"],
+        "token_type": payload["token_type"],
+        "user": payload["user"]
+    }
 
 @app.post("/auth/github", response_model=TokenResponse)
 @limiter.limit("10/minute")
