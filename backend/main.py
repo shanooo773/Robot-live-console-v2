@@ -5,6 +5,7 @@ import asyncio
 import uuid
 import secrets
 import re
+from threading import Lock
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, BackgroundTasks, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,6 +57,7 @@ logger = setup_logging()
 GOOGLE_REDIRECT_URI = "https://anybot.brainswarmrobotics.com/auth/google/callback"
 GOOGLE_AUTH_CODE_TTL_SECONDS = 120
 google_auth_exchange_store: Dict[str, Dict[str, Any]] = {}
+google_auth_exchange_lock = Lock()
 
 # WebRTC imports for compatibility and future direct handling if needed
 try:
@@ -927,17 +929,18 @@ async def google_callback(request: Request, credential: str = Form(...)):
         result = await asyncio.to_thread(auth_service.login_with_google, credential, nonce)
 
         now = time.monotonic()
-        expired_codes = [code for code, payload in google_auth_exchange_store.items() if payload.get("expires_at", 0) <= now]
-        for code in expired_codes:
-            google_auth_exchange_store.pop(code, None)
-
         one_time_code = secrets.token_urlsafe(32)
-        google_auth_exchange_store[one_time_code] = {
-            "access_token": result["access_token"],
-            "token_type": result["token_type"],
-            "user": result["user"],
-            "expires_at": now + GOOGLE_AUTH_CODE_TTL_SECONDS,
-        }
+        with google_auth_exchange_lock:
+            expired_codes = [code for code, payload in google_auth_exchange_store.items() if payload.get("expires_at", 0) <= now]
+            for code in expired_codes:
+                google_auth_exchange_store.pop(code, None)
+
+            google_auth_exchange_store[one_time_code] = {
+                "access_token": result["access_token"],
+                "token_type": result["token_type"],
+                "user": result["user"],
+                "expires_at": now + GOOGLE_AUTH_CODE_TTL_SECONDS,
+            }
 
         response = RedirectResponse(url=f"/?google_code={one_time_code}", status_code=302)
         response.delete_cookie("gis_nonce", path="/")
@@ -957,7 +960,8 @@ async def google_callback(request: Request, credential: str = Form(...)):
 @limiter.limit("15/minute")
 async def google_exchange_code(request: Request, exchange_request: GoogleExchangeRequest):
     """Exchange one-time Google redirect code for application JWT."""
-    payload = google_auth_exchange_store.pop(exchange_request.code, None)
+    with google_auth_exchange_lock:
+        payload = google_auth_exchange_store.pop(exchange_request.code, None)
     if not payload:
         raise HTTPException(status_code=400, detail="Invalid or expired Google login code.")
 
