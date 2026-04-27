@@ -54,7 +54,8 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
       nonce = crypto.randomUUID();
       sessionStorage.setItem(GOOGLE_NONCE_STORAGE_KEY, nonce);
     }
-    document.cookie = `gis_nonce=${encodeURIComponent(nonce)}; Path=/; Max-Age=600; SameSite=Lax; Secure`;
+    const secureAttr = import.meta.env.PROD ? "; Secure" : "";
+    document.cookie = `gis_nonce=${encodeURIComponent(nonce)}; Path=/; Max-Age=600; SameSite=Lax${secureAttr}`;
     return nonce;
   };
 
