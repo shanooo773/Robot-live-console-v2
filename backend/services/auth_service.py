@@ -5,6 +5,7 @@ This service is completely independent of Docker and should always be available.
 
 import logging
 import os
+import hmac
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 from fastapi import HTTPException
@@ -225,7 +226,7 @@ class AuthService:
         """Verify if user has admin role"""
         return user.get("role") == "admin"
     
-    def login_with_google(self, id_token: str) -> Dict[str, Any]:
+    def login_with_google(self, id_token: str, expected_nonce: Optional[str] = None) -> Dict[str, Any]:
         """
         Login or register user with Google OAuth
         
@@ -273,6 +274,11 @@ class AuthService:
                         status_code=401,
                         detail="Google email not verified. Please verify your email with Google first."
                     )
+
+                token_nonce = idinfo.get("nonce")
+                if not expected_nonce or not token_nonce or not hmac.compare_digest(str(token_nonce), str(expected_nonce)):
+                    logger.warning("⚠️ Google nonce validation failed")
+                    raise HTTPException(status_code=401, detail="Invalid Google nonce")
 
                 # Extract user information from Google token
                 google_user_id = idinfo['sub']
