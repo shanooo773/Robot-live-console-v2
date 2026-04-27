@@ -931,9 +931,10 @@ async def google_callback(request: Request, credential: str = Form(...)):
         now = time.monotonic()
         one_time_code = secrets.token_urlsafe(32)
         with google_auth_exchange_lock:
-            expired_codes = [code for code, payload in google_auth_exchange_store.items() if payload.get("expires_at", 0) <= now]
-            for code in expired_codes:
-                google_auth_exchange_store.pop(code, None)
+            if len(google_auth_exchange_store) >= 200:
+                expired_codes = [code for code, payload in google_auth_exchange_store.items() if payload.get("expires_at", 0) <= now]
+                for code in expired_codes:
+                    google_auth_exchange_store.pop(code, None)
 
             google_auth_exchange_store[one_time_code] = {
                 "access_token": result["access_token"],
