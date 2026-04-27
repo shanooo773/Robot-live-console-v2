@@ -7,9 +7,9 @@ import secrets
 import re
 from threading import Lock
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends, WebSocket, BackgroundTasks, Request, Form
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -53,11 +53,6 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 logger = setup_logging()
-
-GOOGLE_REDIRECT_URI = "https://anybot.brainswarmrobotics.com/auth/google/callback"
-GOOGLE_AUTH_CODE_TTL_SECONDS = 120
-google_auth_exchange_store: Dict[str, Dict[str, Any]] = {}
-google_auth_exchange_lock = Lock()
 
 # WebRTC imports for compatibility and future direct handling if needed
 try:
