@@ -27,6 +27,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
   const [registrationEmail, setRegistrationEmail] = useState(null);
 
   const [errorMsg, setErrorMsg] = useState("");
+  const [isGoogleReady, setIsGoogleReady] = useState(false);
 
   const toast = useToast();
   const googleInitialized = useRef(false);
@@ -36,10 +37,25 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
   // Stable ref so GIS always invokes the latest handler version
   const handleGoogleResponseRef = useRef(null);
   handleGoogleResponseRef.current = async (response) => {
+    if (!response?.credential) {
+      const msg = "Google sign-in did not return a credential. Please try again.";
+      setErrorMsg(msg);
+      toast({
+        title: "Google login failed",
+        description: msg,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
     setIsLoading(true);
     setErrorMsg("");
     try {
       const result = await googleLogin(response.credential, googleNonceRef.current);
+      if (!result?.access_token) {
+        throw new Error("No access token in server response");
+      }
       localStorage.setItem("authToken", result.access_token);
       onAuth(result.user, result.access_token);
       toast({
@@ -49,7 +65,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
         isClosable: true,
       });
     } catch (error) {
-      const msg = error.response?.data?.detail || "Google login failed. Please try again.";
+      const msg = error.response?.data?.detail || error.message || "Google login failed. Please try again.";
       setErrorMsg(msg);
       toast({
         title: "Google login failed",
@@ -76,28 +92,38 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
     }
   }, [oauthError, toast]);
 
-  // GIS callback mode initialization
+  // GIS callback mode initialization — also handles late async script load
   useEffect(() => {
-    if (!window.google || !import.meta.env.VITE_GOOGLE_CLIENT_ID) return;
-    if (googleInitialized.current) return;
-    try {
-      googleNonceRef.current = crypto.randomUUID();
-      window.google.accounts.id.initialize({
-        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-        callback: (resp) => handleGoogleResponseRef.current(resp),
-        nonce: googleNonceRef.current,
-        auto_select: false,
-      });
-      googleInitialized.current = true;
-    } catch (error) {
-      console.error("Google Sign-In initialization failed:", error);
+    const initGIS = () => {
+      if (!window.google || !import.meta.env.VITE_GOOGLE_CLIENT_ID) return;
+      if (googleInitialized.current) return;
+      try {
+        googleNonceRef.current = crypto.randomUUID();
+        window.google.accounts.id.initialize({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          callback: (resp) => handleGoogleResponseRef.current(resp),
+          nonce: googleNonceRef.current,
+          auto_select: false,
+        });
+        googleInitialized.current = true;
+        setIsGoogleReady(true);
+      } catch (error) {
+        console.error("Google Sign-In initialization failed:", error);
+      }
+    };
+
+    // Try immediately (GIS already loaded) then fall back to script load event
+    initGIS();
+    const gisScript = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
+    if (gisScript && !googleInitialized.current) {
+      gisScript.addEventListener("load", initGIS);
+      return () => gisScript.removeEventListener("load", initGIS);
     }
   }, []);
 
-  // Render button only when the view changes — not on every parent re-render
+  // Render button whenever the view changes or GIS becomes ready
   useEffect(() => {
-    if (!window.google || !import.meta.env.VITE_GOOGLE_CLIENT_ID || !googleBtnRef.current) return;
-    if (!googleInitialized.current) return;
+    if (!isGoogleReady || !googleBtnRef.current) return;
     window.google.accounts.id.renderButton(googleBtnRef.current, {
       theme: "outline",
       size: "large",
@@ -106,7 +132,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
       shape: "rectangular",
       locale: "en",
     });
-  }, [activeView]);
+  }, [activeView, isGoogleReady]);
 
   const handleGithubSignIn = () => {
     const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID;

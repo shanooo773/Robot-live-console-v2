@@ -14,10 +14,20 @@ Replaced the previous **redirect-mode** Google Identity Services (GIS) implement
 - **Removed** `GOOGLE_LOGIN_URI` and `GOOGLE_NONCE_STORAGE_KEY` constants.
 - **Removed** `ensureGoogleNonce()` function (used sessionStorage + cookie for redirect-state nonce).
 - **Added** `googleNonceRef` (`useRef`) — nonce is now generated with `crypto.randomUUID()` and kept in memory for the lifetime of the component.
-- **Added** `handleGoogleResponse(response)` — GIS callback that POSTs `{credential, nonce}` to `POST /auth/google` and calls `onAuth` on success.
+- **Added** `isGoogleReady` (`useState`) — tracks when GIS has initialised; drives button rendering.
+- **Added** `handleGoogleResponse(response)` — GIS callback that:
+  - Validates `response.credential` is present before proceeding.
+  - POSTs `{credential, nonce}` to `POST /auth/google`.
+  - Validates `access_token` exists in the server response.
+  - Calls `onAuth` on success (stores token, updates auth state, navigates to dashboard).
+  - Shows a clear error toast/message on any failure.
 - **Changed** GIS initialization:
   - Removed `ux_mode: "redirect"` and `login_uri`.
   - Added `callback: handleGoogleResponse` and in-memory `nonce`.
+  - Added `gisScript.addEventListener("load", ...)` fallback to handle the async GIS script loading after the component has already mounted.
+  - Sets `isGoogleReady(true)` after successful initialisation.
+- **Changed** button rendering effect:
+  - Depends on `[activeView, isGoogleReady]` so the button is re-rendered both when the view changes and when GIS becomes ready after a late script load.
 
 #### `frontend/src/api.js`
 - **Removed** `googleExchangeCode` (called `POST /auth/google/exchange`).
@@ -27,6 +37,9 @@ Replaced the previous **redirect-mode** Google Identity Services (GIS) implement
 - **Removed** `googleExchangeCode` import.
 - **Removed** `google_code` URL parameter handling (no longer produced by backend).
 - **Removed** `google_error` URL parameter handling (no longer produced by backend).
+
+#### `frontend/src/components/DocsPage.jsx`
+- **Updated** OAuth flow description from "GIS redirect mode" to "GIS callback mode".
 
 ### Backend
 
@@ -38,9 +51,6 @@ Replaced the previous **redirect-mode** Google Identity Services (GIS) implement
 - **Removed** endpoint `POST /auth/google/exchange` (one-time code exchange).
 - **Added** Pydantic model: `GoogleLogin(credential: str, nonce: str)`.
 - **Added** endpoint `POST /auth/google` — receives `{credential, nonce}`, calls `auth_service.login_with_google`, returns JWT directly (`TokenResponse`).
-
-#### `backend/services/auth_service.py`
-No changes required — `login_with_google(id_token, expected_nonce)` already supports nonce validation using `hmac.compare_digest`.
 
 ---
 
@@ -136,3 +146,17 @@ All Google user information (email, name, `sub`) is extracted from the verified 
 - The nonce is compared inside the verified token claims (`idinfo.get("nonce")`) using `hmac.compare_digest` to prevent timing attacks.
 - No `client_secret` is used or exposed.
 - No tokens or sensitive data appear in URLs.
+- The GIS button is never rendered unless a VITE_GOOGLE_CLIENT_ID is present, preventing silent failures in unconfigured environments.
+
+---
+
+## Manual Test Steps
+
+1. Set `VITE_GOOGLE_CLIENT_ID` in `frontend/.env` (see `frontend/.env.example`).
+2. Set `GOOGLE_CLIENT_ID` in `backend/.env` (same value).
+3. Start the backend (`uvicorn main:app --reload`) and frontend (`npm run dev`).
+4. Open the app, click **Login**, then click **Continue with Google**.
+5. Complete the Google sign-in flow in the popup/One Tap UI.
+6. Verify you are redirected to the **dashboard** page.
+7. Refresh the page — session should persist (token in localStorage → `/auth/me` called → dashboard shown).
+8. Click **Logout** — token is removed and landing page is shown.

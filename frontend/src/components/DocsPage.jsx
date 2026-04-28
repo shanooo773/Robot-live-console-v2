@@ -324,7 +324,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`,
         type: "steps",
         title: "OAuth flows",
         items: [
-          "<strong>Google (GIS redirect mode)</strong> — Browser posts credential to /auth/google/callback, then frontend exchanges one-time code via POST /auth/google/exchange",
+          "<strong>Google (GIS callback mode)</strong> — GIS callback delivers an ID token directly to the browser; frontend POSTs { credential, nonce } to POST /auth/google, which verifies the token and returns a JWT",
           "<strong>GitHub</strong> — redirect user to GitHub, receive ?code=xxx, POST /auth/github with { \"code\": \"xxx\" }",
           "Both return the same response shape as /auth/login.",
         ],
