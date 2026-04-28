@@ -33,7 +33,9 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
   const googleBtnRef = useRef(null);
   const googleNonceRef = useRef(null);
 
-  const handleGoogleResponse = async (response) => {
+  // Stable ref so GIS always invokes the latest handler version
+  const handleGoogleResponseRef = useRef(null);
+  handleGoogleResponseRef.current = async (response) => {
     setIsLoading(true);
     setErrorMsg("");
     try {
@@ -82,7 +84,7 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
       googleNonceRef.current = crypto.randomUUID();
       window.google.accounts.id.initialize({
         client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-        callback: handleGoogleResponse,
+        callback: (resp) => handleGoogleResponseRef.current(resp),
         nonce: googleNonceRef.current,
         auto_select: false,
       });
