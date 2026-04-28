@@ -11,7 +11,7 @@ import DocsPage from "./components/DocsPage";
 import ForgotPasswordPage from "./components/ForgotPasswordPage";
 import ResetPasswordPage from "./components/ResetPasswordPage";
 import VerifyEmailPage from "./components/VerifyEmailPage";
-import { getCurrentUser, stopBookingContainer, stopTheiaContainer, githubLogin, googleExchangeCode } from "./api";
+import { getCurrentUser, stopBookingContainer, stopTheiaContainer, githubLogin } from "./api";
 import { startTheiaWarmup, stopTheiaWarmup } from "./utils/theiaWarmup";
 
 function App() {
@@ -38,29 +38,6 @@ function App() {
     if (path === '/reset-password' && token) {
       setResetToken(token);
       setCurrentPage("resetPassword");
-      return;
-    }
-
-    const googleCode = urlParams.get('google_code');
-    const googleError = urlParams.get('google_error');
-    if (googleCode) {
-      window.history.replaceState({}, document.title, "/");
-      sessionStorage.removeItem("gis_login_nonce");
-      googleExchangeCode(googleCode)
-        .then(result => {
-          localStorage.setItem("authToken", result.access_token);
-          handleAuth(result.user, result.access_token);
-        })
-        .catch(() => {
-          localStorage.removeItem('authToken');
-          setCurrentPage("auth");
-        });
-      return;
-    }
-    if (googleError) {
-      window.history.replaceState({}, document.title, "/");
-      setAuthError(decodeURIComponent(googleError));
-      setCurrentPage("auth");
       return;
     }
 
