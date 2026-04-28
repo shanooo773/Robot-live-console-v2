@@ -1,11 +1,8 @@
 import "../styles/login.css";
 import { useState, useEffect, useRef } from "react";
 import { Github, Mail, Lock, Eye, EyeOff, User } from "lucide-react";
-import { loginUser, registerUser, resendConfirmation } from "../api";
+import { loginUser, registerUser, resendConfirmation, googleLogin } from "../api";
 import { useToast } from "@chakra-ui/react";
-
-const GOOGLE_LOGIN_URI = "https://anybot.brainswarmrobotics.com/auth/google/callback";
-const GOOGLE_NONCE_STORAGE_KEY = "gis_login_nonce";
 
 const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -34,6 +31,37 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
   const toast = useToast();
   const googleInitialized = useRef(false);
   const googleBtnRef = useRef(null);
+  const googleNonceRef = useRef(null);
+
+  // Stable ref so GIS always invokes the latest handler version
+  const handleGoogleResponseRef = useRef(null);
+  handleGoogleResponseRef.current = async (response) => {
+    setIsLoading(true);
+    setErrorMsg("");
+    try {
+      const result = await googleLogin(response.credential, googleNonceRef.current);
+      localStorage.setItem("authToken", result.access_token);
+      onAuth(result.user, result.access_token);
+      toast({
+        title: "Google login successful",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      const msg = error.response?.data?.detail || "Google login failed. Please try again.";
+      setErrorMsg(msg);
+      toast({
+        title: "Google login failed",
+        description: msg,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (oauthError) {
@@ -48,27 +76,16 @@ const AuthPage = ({ onAuth, onBack, onForgotPassword, mode, oauthError }) => {
     }
   }, [oauthError, toast]);
 
-  const ensureGoogleNonce = () => {
-    let nonce = sessionStorage.getItem(GOOGLE_NONCE_STORAGE_KEY);
-    if (!nonce) {
-      nonce = crypto.randomUUID();
-      sessionStorage.setItem(GOOGLE_NONCE_STORAGE_KEY, nonce);
-    }
-    const secureAttr = import.meta.env.PROD ? "; Secure" : "";
-    document.cookie = `gis_nonce=${encodeURIComponent(nonce)}; Path=/; Max-Age=600; SameSite=Lax${secureAttr}`;
-    return nonce;
-  };
-
-  // Redirect-only GIS initialization
+  // GIS callback mode initialization
   useEffect(() => {
     if (!window.google || !import.meta.env.VITE_GOOGLE_CLIENT_ID) return;
     if (googleInitialized.current) return;
     try {
+      googleNonceRef.current = crypto.randomUUID();
       window.google.accounts.id.initialize({
         client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-        ux_mode: "redirect",
-        login_uri: GOOGLE_LOGIN_URI,
-        nonce: ensureGoogleNonce(),
+        callback: (resp) => handleGoogleResponseRef.current(resp),
+        nonce: googleNonceRef.current,
         auto_select: false,
       });
       googleInitialized.current = true;

@@ -92,8 +92,8 @@ export const loginUser = async (credentials) => {
   return response.data;
 };
 
-export const googleExchangeCode = async (code) => {
-  const response = await API.post("/auth/google/exchange", { code }, { timeout: 15000 });
+export const googleLogin = async (credential, nonce) => {
+  const response = await API.post("/auth/google", { credential, nonce }, { timeout: 15000 });
   return response.data;
 }
 
