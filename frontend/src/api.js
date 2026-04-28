@@ -93,7 +93,7 @@ export const loginUser = async (credentials) => {
 };
 
 export const googleLogin = async (credential, nonce) => {
-  const response = await API.post("/auth/google", { credential, nonce }, { timeout: 15000 });
+  const response = await API.post("/auth/google", { credential, nonce }, { timeout: 60000 });
   return response.data;
 }
 
