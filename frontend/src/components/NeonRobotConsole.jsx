@@ -194,10 +194,8 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout, onNavigate 
   const [selectedFile, setSelectedFile] = useState(null);
   const [filesLoading, setFilesLoading] = useState(false);
 
-  // Modal state
+  // Logs modal state
   const { isOpen: isLogsOpen, onOpen: onLogsOpen, onClose: onLogsClose } = useDisclosure();
-
-  // Logs state
   const [logs, setLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState(null);

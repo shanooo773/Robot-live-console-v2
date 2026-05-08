@@ -687,8 +687,12 @@ export const setUserCommunityBlock = async (token, userId, blocked) => {
 };
 
 export const getContainerLogs = async (token, type = "preview", lines = 200) => {
-  const response = await API.get(`/theia/logs?type=${type}&lines=${lines}`, {
-    headers: { Authorization: `Bearer ${token}` }
+  const response = await API.get(`/theia/logs?type=${type}&lines=${lines}&_t=${Date.now()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+    }
   });
   return response.data;
 };
