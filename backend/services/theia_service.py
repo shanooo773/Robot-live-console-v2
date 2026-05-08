@@ -53,7 +53,7 @@ class TheiaContainerManager:
         self.allowed_images = _build_allowed_images()
         
         # Container lifecycle configuration
-        self.idle_timeout_hours = int(os.getenv('THEIA_IDLE_TIMEOUT_HOURS', 2))  # 2 hours idle timeout
+        self.idle_timeout_hours = int(os.getenv('THEIA_IDLE_TIMEOUT_HOURS', 1))  # 1 hour idle timeout
         self.logout_grace_period_minutes = int(os.getenv('THEIA_LOGOUT_GRACE_MINUTES', 5))  # 5 minutes grace period
         
         # Port mapping storage (userid → port) - now backed by database
