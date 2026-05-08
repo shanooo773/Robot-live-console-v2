@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 class LearningService:
     COURSE_ID = "ros2-foundation"
     COURSE_TITLE = "ROS2 Foundation"
-    MAX_LESSONS = 8
+    MAX_LESSONS = 9
     FALLBACK_SORT_ORDER = 10_000
 
     def __init__(self, db_manager, course_directory: Path):
@@ -51,7 +51,7 @@ class LearningService:
 
         files.sort(key=sort_key)
 
-        numbered_non_zero = [p for p in files if (self._lesson_order_from_name(p.stem) or 0) >= 1]
+        numbered_non_zero = [p for p in files if self._lesson_order_from_name(p.stem) is not None]
         if len(numbered_non_zero) >= self.MAX_LESSONS:
             return numbered_non_zero[: self.MAX_LESSONS]
         return files[: self.MAX_LESSONS]
