@@ -22,6 +22,12 @@ import {
   useDisclosure,
   IconButton,
   Tooltip,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  MenuDivider,
+  MenuGroup,
 } from "@chakra-ui/react";
 import {
   ChevronRightIcon,
@@ -162,7 +168,7 @@ const MarkdownLessonContent = ({ content }) => {
   return <VStack align="stretch" spacing={1}>{nodes}</VStack>;
 };
 
-const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
+const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout, onNavigate }) => {
   // Layout state
   const [panelLayout, setPanelLayout] = useState("ide-expanded"); // "split", "ide-expanded", "video-expanded"
   const [dividerPosition, setDividerPosition] = useState(50);
@@ -605,7 +611,6 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
         {/* Left: Logo + lesson nav */}
         <HStack spacing={0} flex="1" h="100%" overflow="hidden">
           <HStack spacing={2} pr={4} mr={2} borderRight="1px solid #2a2a2a" h="100%" align="center" flexShrink={0}>
-            <Text fontSize="md" lineHeight="1">🤖</Text>
             <Text color="#e0e0e0" fontWeight="700" fontSize="sm" letterSpacing="-0.01em">AnyBot</Text>
           </HStack>
 
@@ -744,32 +749,116 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
             Logs
           </Button>
 
-          <Button
-            size="sm"
-            variant="ghost"
-            color="#666"
-            _hover={{ color: "#e0e0e0", bg: "rgba(255,255,255,0.06)" }}
-            onClick={onBack}
-            fontSize="xs"
-            h="32px"
-          >
-            Back
-          </Button>
-
           <Box w="1px" h="20px" bg="#2a2a2a" flexShrink={0} />
 
-          <Tooltip label={`${user.name} — click to logout`} placement="bottom">
-            <Avatar
-              size="xs"
-              name={user.name}
-              bg="#2563eb"
-              cursor="pointer"
-              onClick={onLogout}
-            />
-          </Tooltip>
           {isDemoUser && (
             <Badge colorScheme="orange" variant="subtle" fontSize="xs">DEMO</Badge>
           )}
+
+          {/* Profile dropdown */}
+          <Menu placement="bottom-end">
+            <MenuButton
+              as={Box}
+              cursor="pointer"
+              borderRadius="full"
+              _hover={{ ring: "2px", ringColor: "#3b82f6", ringOffset: "2px", ringOffsetColor: "#1a1a1a" }}
+              transition="box-shadow 0.15s"
+            >
+              <Avatar size="xs" name={user.name} bg="#2563eb" />
+            </MenuButton>
+            <MenuList
+              bg="#1e1e1e"
+              border="1px solid #2a2a2a"
+              boxShadow="0 8px 32px rgba(0,0,0,0.6)"
+              py={1}
+              minW="200px"
+            >
+              {/* User info header */}
+              <Box px={4} py={3} borderBottom="1px solid #2a2a2a">
+                <Text color="#e0e0e0" fontWeight="600" fontSize="sm">{user.name}</Text>
+                <Text color="#555" fontSize="xs" mt={0.5}>{user.email || ""}</Text>
+              </Box>
+
+              <MenuGroup>
+                <MenuItem
+                  bg="transparent"
+                  color="#999"
+                  fontSize="xs"
+                  _hover={{ bg: "rgba(255,255,255,0.06)", color: "#e0e0e0" }}
+                  onClick={() => onNavigate?.("dashboard")}
+                  py={2}
+                >
+                  📊 Dashboard
+                </MenuItem>
+                <MenuItem
+                  bg="rgba(59,130,246,0.08)"
+                  color="#3b82f6"
+                  fontSize="xs"
+                  fontWeight="600"
+                  _hover={{ bg: "rgba(59,130,246,0.14)", color: "#60a5fa" }}
+                  py={2}
+                  cursor="default"
+                >
+                  {"</>"} Development Console
+                </MenuItem>
+                <MenuItem
+                  bg="transparent"
+                  color="#999"
+                  fontSize="xs"
+                  _hover={{ bg: "rgba(255,255,255,0.06)", color: "#e0e0e0" }}
+                  onClick={() => onNavigate?.("booking")}
+                  py={2}
+                >
+                  📅 Book a Session
+                </MenuItem>
+                <MenuItem
+                  bg="transparent"
+                  color="#999"
+                  fontSize="xs"
+                  _hover={{ bg: "rgba(255,255,255,0.06)", color: "#e0e0e0" }}
+                  onClick={() => onNavigate?.("community")}
+                  py={2}
+                >
+                  💬 Community
+                </MenuItem>
+                <MenuItem
+                  bg="transparent"
+                  color="#999"
+                  fontSize="xs"
+                  _hover={{ bg: "rgba(255,255,255,0.06)", color: "#e0e0e0" }}
+                  onClick={() => onNavigate?.("docs")}
+                  py={2}
+                >
+                  📖 Docs
+                </MenuItem>
+                {user?.role === "admin" && (
+                  <MenuItem
+                    bg="transparent"
+                    color="#999"
+                    fontSize="xs"
+                    _hover={{ bg: "rgba(255,255,255,0.06)", color: "#e0e0e0" }}
+                    onClick={() => onNavigate?.("admin")}
+                    py={2}
+                  >
+                    ⚙️ Admin Panel
+                  </MenuItem>
+                )}
+              </MenuGroup>
+
+              <MenuDivider borderColor="#2a2a2a" my={1} />
+
+              <MenuItem
+                bg="transparent"
+                color="#f87171"
+                fontSize="xs"
+                _hover={{ bg: "rgba(220,38,38,0.1)", color: "#fca5a5" }}
+                onClick={onLogout}
+                py={2}
+              >
+                ↩ Sign Out
+              </MenuItem>
+            </MenuList>
+          </Menu>
         </HStack>
       </Box>
 

@@ -209,6 +209,7 @@ function App() {
           authToken={authToken}
           onBack={() => setCurrentPage("booking")}
           onLogout={handleLogout}
+          onNavigate={handleNavigate}
         />
       )}
 
