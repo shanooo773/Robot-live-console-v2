@@ -1203,6 +1203,19 @@ async def get_ros2_foundation_lesson(lesson_id: str, _current_user: dict = Depen
     }
 
 
+@app.get("/learning/assets/{file_path:path}")
+async def get_learning_asset(file_path: str, _current_user: dict = Depends(get_current_user)):
+    """Serve static image/asset files from ROS2 Foundations/assets/."""
+    assets_dir = (course_directory / "assets").resolve()
+    full_path = (assets_dir / file_path).resolve()
+    # Prevent path traversal outside the assets directory
+    if not str(full_path).startswith(str(assets_dir)):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not full_path.exists() or not full_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Asset not found: {file_path}")
+    return FileResponse(full_path)
+
+
 @app.get("/learning/progress", response_model=LearningProgressResponse)
 async def get_learning_progress(
     course_id: str,

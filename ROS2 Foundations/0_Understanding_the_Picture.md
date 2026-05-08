@@ -88,7 +88,7 @@ For this course:
 
 Now go **Back to dashboard**, and click **Projects**
 
-![](/home/muneeb/Desktop/HiWonder-MentorPi_A1-Learning_Paths/assets/session_booked.png)
+![](../assets/session_booked.png)
 
 ![](../assets/go_to_projects.png)
 
@@ -124,7 +124,7 @@ Next,
 
 You have the following windows / Panes in Code Editor. The Code Editor Window is divided into multiple panes, you can use each pane for different purpose.
 
-![](/home/muneeb/Desktop/HiWonder-MentorPi_A1-Learning_Paths/assets/rdc_panes.png)
+![](../assets/rdc_panes.png)
 
 - Code Editor: Used to editing the code from code file
 - Terminal: Used to execute commands.

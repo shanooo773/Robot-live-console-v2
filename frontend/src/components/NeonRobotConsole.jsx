@@ -134,6 +134,47 @@ const MarkdownLessonContent = ({ content }) => {
       return;
     }
 
+    // Image: ![alt](src)
+    const imageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)/);
+    if (imageMatch) {
+      const [, alt, rawSrc] = imageMatch;
+      // Normalise any relative assets path → /learning/assets/X
+      // Handles: ../assets/X  ./assets/X  assets/X  /learning/assets/X
+      // Ignores absolute system paths like /home/...
+      let src = null;
+      const assetMatch = rawSrc.match(/(?:\.\.\/|\.\/)?assets\/(.+)/);
+      if (assetMatch) {
+        src = `/learning/assets/${assetMatch[1]}`;
+      } else if (rawSrc.startsWith("/learning/assets/")) {
+        src = rawSrc;
+      }
+      if (src) {
+        nodes.push(
+          <Box key={key} my={3} borderRadius="8px" overflow="hidden" border="1px solid #2a2a2a" bg="#0a0a0a">
+            <Box
+              as="img"
+              src={src}
+              alt={alt || ""}
+              maxW="100%"
+              display="block"
+              onError={(e) => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }}
+            />
+            <Box
+              display="none"
+              alignItems="center"
+              justifyContent="center"
+              p={4}
+              color="#555"
+              fontSize="xs"
+            >
+              Image unavailable: {alt || src}
+            </Box>
+          </Box>
+        );
+      }
+      return;
+    }
+
     if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
       nodes.push(
         <HStack key={key} align="start" spacing={2}>
@@ -173,6 +214,9 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout, onNavigate 
   const [panelLayout, setPanelLayout] = useState("ide-expanded"); // "split", "ide-expanded", "video-expanded"
   const [dividerPosition, setDividerPosition] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
+  const [learningPanelWidth, setLearningPanelWidth] = useState(380);
+  const [isLearningDragging, setIsLearningDragging] = useState(false);
+  const learningPanelRef = useRef();
 
   // Existing state
   const [robot, setRobot] = useState(slot?.robotType || "turtlebot");
@@ -401,6 +445,31 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout, onNavigate 
     setDividerPosition(Math.min(Math.max(newPosition, 20), 80));
   };
   const handleMouseUp = () => { setIsDragging(false); document.body.style.userSelect = ''; };
+
+  const handleLearningMouseDown = (e) => {
+    e.preventDefault();
+    setIsLearningDragging(true);
+    document.body.style.userSelect = 'none';
+  };
+  const handleLearningMouseMove = useCallback((e) => {
+    if (!isLearningDragging) return;
+    setLearningPanelWidth(Math.min(Math.max(e.clientX, 200), 600));
+  }, [isLearningDragging]);
+  const handleLearningMouseUp = useCallback(() => {
+    setIsLearningDragging(false);
+    document.body.style.userSelect = '';
+  }, []);
+
+  useEffect(() => {
+    if (isLearningDragging) {
+      document.addEventListener('mousemove', handleLearningMouseMove);
+      document.addEventListener('mouseup', handleLearningMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleLearningMouseMove);
+        document.removeEventListener('mouseup', handleLearningMouseUp);
+      };
+    }
+  }, [isLearningDragging, handleLearningMouseMove, handleLearningMouseUp]);
 
   const fetchLogs = useCallback(async (typeOverride) => {
     const type = typeOverride || logsTypeRef.current;
@@ -865,15 +934,16 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout, onNavigate 
 
         {/* ── Left Learning Panel ── */}
         <Box
-          w={isLearningPanelOpen ? "380px" : "48px"}
-          minW={isLearningPanelOpen ? "380px" : "48px"}
+          ref={learningPanelRef}
+          w={isLearningPanelOpen ? `${learningPanelWidth}px` : "48px"}
+          minW={isLearningPanelOpen ? `${learningPanelWidth}px` : "48px"}
           flexShrink={0}
           display="flex"
           flexDirection="column"
           bg="#141414"
-          borderRight="1px solid #2a2a2a"
           overflow="hidden"
-          transition="width 0.2s ease, min-width 0.2s ease"
+          transition={isLearningDragging ? "none" : "width 0.2s ease, min-width 0.2s ease"}
+          position="relative"
         >
           {isLearningPanelOpen ? (
             <>
@@ -1121,6 +1191,40 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout, onNavigate 
             </VStack>
           )}
         </Box>
+
+        {/* ── Learning panel drag handle ── */}
+        {isLearningPanelOpen && (
+          <Box
+            w="4px"
+            flexShrink={0}
+            bg={isLearningDragging ? "#3b82f6" : "#2a2a2a"}
+            cursor="col-resize"
+            _hover={{ bg: "#3b82f6" }}
+            transition="background 0.15s"
+            onMouseDown={handleLearningMouseDown}
+            position="relative"
+            zIndex={10}
+          >
+            <Box
+              position="absolute"
+              top="50%"
+              left="50%"
+              transform="translate(-50%, -50%)"
+              w="14px"
+              h="28px"
+              bg="rgba(255,255,255,0.06)"
+              borderRadius="3px"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              color="#555"
+              fontSize="9px"
+              pointerEvents="none"
+            >
+              ⋮
+            </Box>
+          </Box>
+        )}
 
         {/* ── Right: IDE + Video ── */}
         <Box flex="1" display="flex" flexDirection="column" overflow="hidden" minW={0}>
