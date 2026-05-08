@@ -274,6 +274,27 @@ export const getRobots = async (token) => {
   return ensureArray(response.data);
 };
 
+// Learning APIs
+export const getLearningLessons = async () => {
+  const response = await API.get("/learning/courses/ros2-foundation/lessons");
+  return response.data;
+};
+
+export const getLearningLesson = async (lessonId) => {
+  const response = await API.get(`/learning/courses/ros2-foundation/lessons/${encodeURIComponent(lessonId)}`);
+  return response.data;
+};
+
+export const getLearningProgress = async (courseId = "ros2-foundation") => {
+  const response = await API.get(`/learning/progress?course_id=${encodeURIComponent(courseId)}`);
+  return response.data;
+};
+
+export const upsertLearningProgress = async (payload) => {
+  const response = await API.put("/learning/progress", payload);
+  return response.data;
+};
+
 
 
 // Health check API

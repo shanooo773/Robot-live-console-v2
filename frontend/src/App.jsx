@@ -23,6 +23,17 @@ function App() {
   const [verifyToken, setVerifyToken] = useState(null);
   const [authMode, setAuthMode] = useState("login");
   const [authError, setAuthError] = useState("");
+  const createPreviewSlot = useCallback((bookedBy = null) => ({
+    id: `code_preview_${Date.now()}`,
+    robotType: 'turtlebot',
+    date: new Date().toISOString().split('T')[0],
+    startTime: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+    endTime: new Date(Date.now() + 1 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+    bookingId: 'code_preview',
+    available: true,
+    bookedBy,
+    isPreview: true
+  }), []);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -71,21 +82,26 @@ function App() {
         .then(userData => {
           setUser(userData);
           setAuthToken(authTokenStored);
-          setCurrentPage("dashboard");
+          setSelectedSlot(createPreviewSlot(userData?.name));
+          setCurrentPage("editor");
           startTheiaWarmup(authTokenStored);
         })
         .catch(() => {
           localStorage.removeItem('authToken');
+          setCurrentPage("auth");
         });
+    } else {
+      setCurrentPage("auth");
     }
-  }, []);
+  }, [createPreviewSlot]);
 
   const handleAuth = useCallback((userData, token) => {
     setUser(userData);
     setAuthToken(token);
-    setCurrentPage("dashboard");
+    setSelectedSlot(createPreviewSlot(userData?.name));
+    setCurrentPage("editor");
     startTheiaWarmup(token);
-  }, []);
+  }, [createPreviewSlot]);
 
   const handleBooking = (slot) => {
     setSelectedSlot(slot);
@@ -108,20 +124,17 @@ function App() {
 
   const handleNavigate = (page) => {
     if (page === "editor") {
-      setSelectedSlot({
-        id: `code_preview_${Date.now()}`,
-        robotType: 'turtlebot',
-        date: new Date().toISOString().split('T')[0],
-        startTime: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-        endTime: new Date(Date.now() + 1 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-        bookingId: 'code_preview',
-        available: true,
-        bookedBy: user?.name,
-        isPreview: true
-      });
+      setSelectedSlot(createPreviewSlot(user?.name));
     }
     setCurrentPage(page);
   };
+
+  useEffect(() => {
+    const protectedPages = new Set(["dashboard", "booking", "editor", "community", "docs", "admin"]);
+    if (!user && protectedPages.has(currentPage)) {
+      setCurrentPage("auth");
+    }
+  }, [currentPage, user]);
 
   const handleAdminAccess = () => setCurrentPage("admin");
 
@@ -189,12 +202,12 @@ function App() {
         />
       )}
 
-      {currentPage === "editor" && (
+      {currentPage === "editor" && user && (
         <NeonRobotConsole
           user={user}
           slot={selectedSlot}
           authToken={authToken}
-          onBack={() => setCurrentPage("dashboard")}
+          onBack={() => setCurrentPage("booking")}
           onLogout={handleLogout}
         />
       )}
