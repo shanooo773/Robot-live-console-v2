@@ -71,6 +71,7 @@ except ImportError as e:
 # Import our modules with fallback handling
 from database import DatabaseManager
 from auth import auth_manager, get_current_user, require_admin
+from services.learning_service import LearningService
 
 # Import streams router
 try:
@@ -86,7 +87,6 @@ except ImportError as e:
 try:
     from services.service_manager import AdminServiceManager
     from services.theia_service import TheiaContainerManager
-    from services.learning_service import LearningService
     SERVICES_AVAILABLE = True
     logger.info("Service modules loaded successfully")
 except ImportError as e:
@@ -94,7 +94,6 @@ except ImportError as e:
     SERVICES_AVAILABLE = False
     AdminServiceManager = None
     TheiaContainerManager = None
-    from services.learning_service import LearningService
 
 # CORS configuration based on environment
 def get_cors_origins():

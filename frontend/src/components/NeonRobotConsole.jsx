@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { 
   Box, 
   HStack, 
@@ -223,7 +223,10 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
 
   const toast = useToast();
   const containerRef = useRef();
-  const completedCount = lessons.filter((lesson) => completedLessonIds.has(lesson.id)).length;
+  const completedCount = useMemo(
+    () => lessons.filter((lesson) => completedLessonIds.has(lesson.id)).length,
+    [lessons, completedLessonIds]
+  );
 
   // Load robot names and check access (existing logic)
   const loadRobotNames = async () => {
@@ -982,7 +985,7 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
               <Box p={4} borderBottom="1px solid rgba(255,255,255,0.08)">
                 <Text color="white" fontWeight="700" fontSize="lg">ROS2 Foundation</Text>
                 <Text color="gray.400" fontSize="xs" mt={1}>
-                  Progress: {completedCount}/{lessons.length || 8}
+                  Progress: {learningLoading ? "Loading..." : `${completedCount}/${lessons.length}`}
                 </Text>
                 <Progress
                   mt={2}
