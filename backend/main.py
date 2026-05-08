@@ -1171,7 +1171,9 @@ def _require_learning_course(course_id: str) -> None:
 
 
 def _extract_current_user_id(current_user: dict) -> int:
-    user_id = current_user.get("sub") or current_user.get("id")
+    user_id = current_user.get("sub")
+    if user_id is None:
+        user_id = current_user.get("id")
     if isinstance(user_id, str) and user_id.isdigit():
         user_id = int(user_id)
     if not isinstance(user_id, int):

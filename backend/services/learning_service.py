@@ -7,6 +7,7 @@ class LearningService:
     COURSE_ID = "ros2-foundation"
     COURSE_TITLE = "ROS2 Foundation"
     MAX_LESSONS = 8
+    FALLBACK_SORT_ORDER = 10_000
 
     def __init__(self, db_manager, course_directory: Path):
         self.db = db_manager
@@ -30,7 +31,7 @@ class LearningService:
     @staticmethod
     def _lesson_id_from_stem(stem: str) -> str:
         lesson_id = re.sub(r"[^a-z0-9]+", "-", stem.lower()).strip("-")
-        return lesson_id or "lesson"
+        return lesson_id or f"lesson-{abs(hash(stem))}"
 
     @staticmethod
     def _lesson_title_from_stem(stem: str) -> str:
@@ -40,7 +41,15 @@ class LearningService:
 
     def _discover_lesson_files(self) -> List[Path]:
         files = [path for path in self.course_directory.glob("*.md") if path.is_file()]
-        files.sort(key=lambda p: ((self._lesson_order_from_name(p.stem) or 10_000), p.name.lower()))
+
+        def sort_key(path: Path):
+            lesson_order = self._lesson_order_from_name(path.stem)
+            return (
+                lesson_order if lesson_order is not None else self.FALLBACK_SORT_ORDER,
+                path.name.lower(),
+            )
+
+        files.sort(key=sort_key)
 
         numbered_non_zero = [p for p in files if (self._lesson_order_from_name(p.stem) or 0) >= 1]
         if len(numbered_non_zero) >= self.MAX_LESSONS:

@@ -49,7 +49,7 @@ import {
   upsertLearningProgress,
 } from "../api";
 
-const renderBoldText = (text) => {
+const parseInlineBoldMarkdown = (text) => {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) {
@@ -141,7 +141,7 @@ const MarkdownLessonContent = ({ content }) => {
       nodes.push(
         <HStack key={key} align="start" spacing={2}>
           <Text color="blue.300">•</Text>
-          <Text color="gray.200" fontSize="sm">{renderBoldText(trimmed.slice(2))}</Text>
+          <Text color="gray.200" fontSize="sm">{parseInlineBoldMarkdown(trimmed.slice(2))}</Text>
         </HStack>
       );
       return;
@@ -150,7 +150,7 @@ const MarkdownLessonContent = ({ content }) => {
     if (/^\d+\.\s+/.test(trimmed)) {
       nodes.push(
         <Text key={key} color="gray.200" fontSize="sm">
-          {renderBoldText(trimmed)}
+          {parseInlineBoldMarkdown(trimmed)}
         </Text>
       );
       return;
@@ -158,7 +158,7 @@ const MarkdownLessonContent = ({ content }) => {
 
     nodes.push(
       <Text key={key} color="gray.200" fontSize="sm" lineHeight="1.7">
-        {renderBoldText(line)}
+        {parseInlineBoldMarkdown(line)}
       </Text>
     );
   });

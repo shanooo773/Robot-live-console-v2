@@ -1795,10 +1795,10 @@ class DatabaseManager:
             INSERT INTO learning_progress (user_id, course_id, lesson_id, completed)
             VALUES ({ph}, {ph}, {ph}, {ph})
             ON DUPLICATE KEY UPDATE
-                completed = VALUES(completed),
+                completed = {ph},
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (user_id, course_id, lesson_id, 1 if completed else 0),
+            (user_id, course_id, lesson_id, 1 if completed else 0, 1 if completed else 0),
         )
         conn.close()
         return True
