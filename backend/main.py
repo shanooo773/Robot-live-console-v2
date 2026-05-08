@@ -1180,8 +1180,7 @@ def _extract_current_user_id(current_user: dict) -> int:
 
 
 @app.get("/learning/courses/ros2-foundation/lessons")
-async def list_ros2_foundation_lessons(current_user: dict = Depends(get_current_user)):
-    _ = current_user
+async def list_ros2_foundation_lessons(_current_user: dict = Depends(get_current_user)):
     lessons = learning_service.list_lessons()
     return {
         "course_id": LearningService.COURSE_ID,
@@ -1191,8 +1190,7 @@ async def list_ros2_foundation_lessons(current_user: dict = Depends(get_current_
 
 
 @app.get("/learning/courses/ros2-foundation/lessons/{lesson_id}")
-async def get_ros2_foundation_lesson(lesson_id: str, current_user: dict = Depends(get_current_user)):
-    _ = current_user
+async def get_ros2_foundation_lesson(lesson_id: str, _current_user: dict = Depends(get_current_user)):
     try:
         lesson = learning_service.get_lesson(lesson_id)
     except KeyError as exc:

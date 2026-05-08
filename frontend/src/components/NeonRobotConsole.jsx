@@ -49,7 +49,7 @@ import {
   upsertLearningProgress,
 } from "../api";
 
-const renderInlineMarkdown = (text) => {
+const renderBoldText = (text) => {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) {
@@ -141,7 +141,7 @@ const MarkdownLessonContent = ({ content }) => {
       nodes.push(
         <HStack key={key} align="start" spacing={2}>
           <Text color="blue.300">•</Text>
-          <Text color="gray.200" fontSize="sm">{renderInlineMarkdown(trimmed.slice(2))}</Text>
+          <Text color="gray.200" fontSize="sm">{renderBoldText(trimmed.slice(2))}</Text>
         </HStack>
       );
       return;
@@ -150,7 +150,7 @@ const MarkdownLessonContent = ({ content }) => {
     if (/^\d+\.\s+/.test(trimmed)) {
       nodes.push(
         <Text key={key} color="gray.200" fontSize="sm">
-          {renderInlineMarkdown(trimmed)}
+          {renderBoldText(trimmed)}
         </Text>
       );
       return;
@@ -158,7 +158,7 @@ const MarkdownLessonContent = ({ content }) => {
 
     nodes.push(
       <Text key={key} color="gray.200" fontSize="sm" lineHeight="1.7">
-        {renderInlineMarkdown(line)}
+        {renderBoldText(line)}
       </Text>
     );
   });
@@ -1064,7 +1064,7 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
             </VStack>
           ) : (
             <VStack h="100%" justify="center">
-              <Tooltip label="Open Learning Panel" placement="right">
+              <Tooltip label="Expand Learning Panel" placement="right">
                 <IconButton
                   aria-label="Open learning panel"
                   icon={<ChevronRightIcon />}
