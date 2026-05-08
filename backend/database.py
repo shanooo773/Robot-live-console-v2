@@ -255,6 +255,20 @@ class DatabaseManager:
             )
         """)
 
+        # Learning progress table (per-user, per-course, per-lesson completion)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS learning_progress (
+                id INTEGER {primary_key},
+                user_id INTEGER NOT NULL,
+                course_id VARCHAR(120) NOT NULL,
+                lesson_id VARCHAR(255) NOT NULL,
+                completed TINYINT(1) DEFAULT 0,
+                updated_at TIMESTAMP {timestamp_default} ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_user_course_lesson (user_id, course_id, lesson_id),
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+        """)
+
         # Community posts table
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS community_posts (
@@ -1734,6 +1748,57 @@ class DatabaseManager:
             ON DUPLICATE KEY UPDATE setting_value = {placeholder}
             """,
             (key, value, value),
+        )
+        conn.close()
+        return True
+
+    # ------------------------------------------------------------------
+    # Learning progress
+    # ------------------------------------------------------------------
+
+    def get_learning_progress(self, user_id: int, course_id: str) -> Dict[str, Any]:
+        """Get per-lesson completion for a user's course progress."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        ph = self._get_placeholder()
+        cursor.execute(
+            f"""
+            SELECT lesson_id, completed, updated_at
+            FROM learning_progress
+            WHERE user_id = {ph} AND course_id = {ph}
+            """,
+            (user_id, course_id),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        lesson_status = {row[0]: bool(row[1]) for row in rows}
+        completed_lessons = [lesson_id for lesson_id, done in lesson_status.items() if done]
+        latest_updated = None
+        if rows:
+            latest_updated = max((row[2] for row in rows if row[2] is not None), default=None)
+
+        return {
+            "course_id": course_id,
+            "lesson_status": lesson_status,
+            "completed_lessons": completed_lessons,
+            "updated_at": latest_updated.isoformat() if latest_updated else None,
+        }
+
+    def set_learning_progress(self, user_id: int, course_id: str, lesson_id: str, completed: bool) -> bool:
+        """Upsert completion state for a single lesson."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        ph = self._get_placeholder()
+        cursor.execute(
+            f"""
+            INSERT INTO learning_progress (user_id, course_id, lesson_id, completed)
+            VALUES ({ph}, {ph}, {ph}, {ph})
+            ON DUPLICATE KEY UPDATE
+                completed = VALUES(completed),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (user_id, course_id, lesson_id, 1 if completed else 0),
         )
         conn.close()
         return True

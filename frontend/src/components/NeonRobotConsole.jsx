@@ -11,6 +11,7 @@ import {
   Spinner,
   Alert,
   AlertIcon,
+  Progress,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -29,13 +30,146 @@ import {
   SettingsIcon,
   InfoIcon,
   ChevronRightIcon,
+  ChevronLeftIcon,
   ViewOffIcon,
 } from "@chakra-ui/icons";
 import TheiaIDE from "./TheiaIDE";
 import WebRTCVideoPlayer from "./WebRTCVideoPlayer";
 import RobotSelector from "./RobotSelector";
 import FileSelector from "./FileSelector";
-import { checkAccess, getVideo, getMyActiveBookings, getAvailableRobots, getContainerLogs } from "../api";
+import {
+  checkAccess,
+  getVideo,
+  getMyActiveBookings,
+  getAvailableRobots,
+  getContainerLogs,
+  getLearningLessons,
+  getLearningLesson,
+  getLearningProgress,
+  upsertLearningProgress,
+} from "../api";
+
+const renderInlineMarkdown = (text) => {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <Text as="span" key={index} fontWeight="700">{part.slice(2, -2)}</Text>;
+    }
+    return <Text as="span" key={index}>{part}</Text>;
+  });
+};
+
+const MarkdownLessonContent = ({ content }) => {
+  const lines = content.split("\n");
+  const nodes = [];
+  let inCodeBlock = false;
+  let codeLines = [];
+
+  const flushCodeBlock = (keyPrefix) => {
+    if (!codeLines.length) {
+      return null;
+    }
+    const block = (
+      <Box
+        key={`${keyPrefix}-code`}
+        bg="rgba(15, 23, 42, 0.8)"
+        border="1px solid rgba(255,255,255,0.1)"
+        borderRadius="8px"
+        p={3}
+        overflowX="auto"
+      >
+        <Text color="gray.200" fontFamily="mono" fontSize="xs" whiteSpace="pre-wrap">
+          {codeLines.join("\n")}
+        </Text>
+      </Box>
+    );
+    codeLines = [];
+    return block;
+  };
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    const key = `line-${index}`;
+
+    if (trimmed.startsWith("```")) {
+      if (inCodeBlock) {
+        const blockNode = flushCodeBlock(key);
+        if (blockNode) nodes.push(blockNode);
+      }
+      inCodeBlock = !inCodeBlock;
+      return;
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(line);
+      return;
+    }
+
+    if (!trimmed) {
+      nodes.push(<Box key={key} h={2} />);
+      return;
+    }
+
+    if (trimmed.startsWith("### ")) {
+      nodes.push(
+        <Text key={key} color="blue.200" fontWeight="700" fontSize="md">
+          {trimmed.replace(/^###\s*/, "")}
+        </Text>
+      );
+      return;
+    }
+
+    if (trimmed.startsWith("## ")) {
+      nodes.push(
+        <Text key={key} color="blue.100" fontWeight="700" fontSize="lg">
+          {trimmed.replace(/^##\s*/, "")}
+        </Text>
+      );
+      return;
+    }
+
+    if (trimmed.startsWith("# ")) {
+      nodes.push(
+        <Text key={key} color="white" fontWeight="800" fontSize="xl">
+          {trimmed.replace(/^#\s*/, "")}
+        </Text>
+      );
+      return;
+    }
+
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+      nodes.push(
+        <HStack key={key} align="start" spacing={2}>
+          <Text color="blue.300">•</Text>
+          <Text color="gray.200" fontSize="sm">{renderInlineMarkdown(trimmed.slice(2))}</Text>
+        </HStack>
+      );
+      return;
+    }
+
+    if (/^\d+\.\s+/.test(trimmed)) {
+      nodes.push(
+        <Text key={key} color="gray.200" fontSize="sm">
+          {renderInlineMarkdown(trimmed)}
+        </Text>
+      );
+      return;
+    }
+
+    nodes.push(
+      <Text key={key} color="gray.200" fontSize="sm" lineHeight="1.7">
+        {renderInlineMarkdown(line)}
+      </Text>
+    );
+  });
+
+  if (inCodeBlock) {
+    const blockNode = flushCodeBlock("tail");
+    if (blockNode) nodes.push(blockNode);
+  }
+
+  return <VStack align="stretch" spacing={1}>{nodes}</VStack>;
+};
 
 const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
   // Layout state
@@ -76,8 +210,20 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
   const logsAutoRefreshRef = useRef(null);
   const logsEndRef = useRef(null);
 
+  // Learning panel state
+  const [isLearningPanelOpen, setIsLearningPanelOpen] = useState(true);
+  const [lessons, setLessons] = useState([]);
+  const [selectedLessonId, setSelectedLessonId] = useState(null);
+  const [selectedLessonContent, setSelectedLessonContent] = useState("");
+  const [learningLoading, setLearningLoading] = useState(true);
+  const [lessonLoading, setLessonLoading] = useState(false);
+  const [learningError, setLearningError] = useState("");
+  const [completedLessonIds, setCompletedLessonIds] = useState(new Set());
+  const [progressSaving, setProgressSaving] = useState(false);
+
   const toast = useToast();
   const containerRef = useRef();
+  const completedCount = lessons.filter((lesson) => completedLessonIds.has(lesson.id)).length;
 
   // Load robot names and check access (existing logic)
   const loadRobotNames = async () => {
@@ -136,6 +282,83 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
       console.error('Error checking Theia status:', error);
     }
     return null;
+  };
+
+  const loadLearningPanelData = useCallback(async () => {
+    if (!authToken) return;
+    setLearningLoading(true);
+    setLearningError("");
+    try {
+      const [lessonResponse, progressResponse] = await Promise.all([
+        getLearningLessons(),
+        getLearningProgress("ros2-foundation"),
+      ]);
+      const availableLessons = lessonResponse?.lessons || [];
+      setLessons(availableLessons);
+
+      const completed = new Set(progressResponse?.completed_lessons || []);
+      setCompletedLessonIds(completed);
+
+      if (availableLessons.length > 0) {
+        const firstIncomplete = availableLessons.find((lesson) => !completed.has(lesson.id));
+        setSelectedLessonId((currentSelected) => (
+          currentSelected && availableLessons.some((lesson) => lesson.id === currentSelected)
+            ? currentSelected
+            : (firstIncomplete?.id || availableLessons[0].id)
+        ));
+      }
+    } catch (error) {
+      console.error("Failed to load learning lessons/progress:", error);
+      setLearningError(error?.response?.data?.detail || "Unable to load lessons right now.");
+    } finally {
+      setLearningLoading(false);
+    }
+  }, [authToken]);
+
+  const loadLessonContent = useCallback(async (lessonId) => {
+    if (!lessonId) return;
+    setLessonLoading(true);
+    setLearningError("");
+    try {
+      const lesson = await getLearningLesson(lessonId);
+      setSelectedLessonContent(lesson?.content || "");
+    } catch (error) {
+      console.error("Failed to load lesson content:", error);
+      setLearningError(error?.response?.data?.detail || "Unable to load lesson content.");
+      setSelectedLessonContent("");
+    } finally {
+      setLessonLoading(false);
+    }
+  }, []);
+
+  const toggleLessonCompletion = async () => {
+    if (!selectedLessonId) return;
+    const currentlyCompleted = completedLessonIds.has(selectedLessonId);
+    setProgressSaving(true);
+    try {
+      const progress = await upsertLearningProgress({
+        course_id: "ros2-foundation",
+        lesson_id: selectedLessonId,
+        completed: !currentlyCompleted,
+      });
+      setCompletedLessonIds(new Set(progress?.completed_lessons || []));
+      toast({
+        title: currentlyCompleted ? "Lesson marked incomplete" : "Lesson marked complete",
+        status: "success",
+        duration: 2000,
+        isClosable: true,
+      });
+    } catch (error) {
+      toast({
+        title: "Progress update failed",
+        description: error?.response?.data?.detail || "Could not save lesson progress.",
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setProgressSaving(false);
+    }
   };
 
   useEffect(() => {
@@ -220,6 +443,16 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
 
     checkUserAccessAndMode();
   }, [authToken, user, toast, robot]);
+
+  useEffect(() => {
+    loadLearningPanelData();
+  }, [loadLearningPanelData]);
+
+  useEffect(() => {
+    if (selectedLessonId) {
+      loadLessonContent(selectedLessonId);
+    }
+  }, [selectedLessonId, loadLessonContent]);
 
   // Load workspace files when Theia status changes to running
   useEffect(() => {
@@ -609,6 +842,17 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
           
           {/* Center - Panel controls (keep resizer functionality) */}
           <HStack spacing={2}>
+            <Tooltip label={isLearningPanelOpen ? "Collapse Learning Panel" : "Expand Learning Panel"} placement="bottom">
+              <IconButton
+                icon={isLearningPanelOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+                size="sm"
+                variant="ghost"
+                color="gray.300"
+                onClick={() => setIsLearningPanelOpen((open) => !open)}
+                _hover={{ bg: "rgba(255,255,255,0.1)", color: "white" }}
+              />
+            </Tooltip>
+
             <Tooltip label="Expand IDE" placement="bottom">
               <IconButton
                 icon={<ChevronRightIcon />}
@@ -719,13 +963,126 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
 
       {/* Main Content Area */}
       <Box
-        ref={containerRef}
         mt="60px"
         h="calc(100vh - 60px)"
         display="flex"
         position="relative"
       >
-        {/* Left Panel - Eclipse Theia IDE */}
+        {/* Learning Panel */}
+        <Box
+          w={isLearningPanelOpen ? "360px" : "56px"}
+          h="100%"
+          borderRight="1px solid rgba(255,255,255,0.08)"
+          bg="#111827"
+          transition="width 0.2s ease"
+          overflow="hidden"
+        >
+          {isLearningPanelOpen ? (
+            <VStack h="100%" align="stretch" spacing={0}>
+              <Box p={4} borderBottom="1px solid rgba(255,255,255,0.08)">
+                <Text color="white" fontWeight="700" fontSize="lg">ROS2 Foundation</Text>
+                <Text color="gray.400" fontSize="xs" mt={1}>
+                  Progress: {completedCount}/{lessons.length || 8}
+                </Text>
+                <Progress
+                  mt={2}
+                  value={lessons.length ? (completedCount / lessons.length) * 100 : 0}
+                  size="sm"
+                  colorScheme="green"
+                  borderRadius="full"
+                />
+              </Box>
+
+              <Box p={3} borderBottom="1px solid rgba(255,255,255,0.08)" maxH="220px" overflowY="auto">
+                {learningLoading ? (
+                  <HStack color="gray.300">
+                    <Spinner size="sm" />
+                    <Text fontSize="sm">Loading lessons...</Text>
+                  </HStack>
+                ) : (
+                  <VStack spacing={2} align="stretch">
+                    {lessons.map((lesson) => {
+                      const isSelected = lesson.id === selectedLessonId;
+                      const isCompleted = completedLessonIds.has(lesson.id);
+                      return (
+                        <Button
+                          key={lesson.id}
+                          justifyContent="space-between"
+                          variant={isSelected ? "solid" : "ghost"}
+                          colorScheme={isSelected ? "blue" : "gray"}
+                          color={isSelected ? "white" : "gray.200"}
+                          size="sm"
+                          onClick={() => setSelectedLessonId(lesson.id)}
+                        >
+                          <Text fontSize="xs" noOfLines={1} textAlign="left">
+                            {lesson.title}
+                          </Text>
+                          <Text fontSize="xs">{isCompleted ? "✅" : "⬜"}</Text>
+                        </Button>
+                      );
+                    })}
+                  </VStack>
+                )}
+              </Box>
+
+              <Box flex="1" overflowY="auto" p={4}>
+                {lessonLoading ? (
+                  <HStack color="gray.300" mt={2}>
+                    <Spinner size="sm" />
+                    <Text fontSize="sm">Loading lesson content...</Text>
+                  </HStack>
+                ) : learningError ? (
+                  <Alert status="error" borderRadius="md" fontSize="sm">
+                    <AlertIcon />
+                    {learningError}
+                  </Alert>
+                ) : selectedLessonContent ? (
+                  <MarkdownLessonContent content={selectedLessonContent} />
+                ) : (
+                  <Text color="gray.400" fontSize="sm">
+                    Select a lesson to get started.
+                  </Text>
+                )}
+              </Box>
+
+              <Box p={4} borderTop="1px solid rgba(255,255,255,0.08)">
+                <Button
+                  w="full"
+                  colorScheme={selectedLessonId && completedLessonIds.has(selectedLessonId) ? "yellow" : "green"}
+                  onClick={toggleLessonCompletion}
+                  isLoading={progressSaving}
+                  isDisabled={!selectedLessonId}
+                >
+                  {selectedLessonId && completedLessonIds.has(selectedLessonId)
+                    ? "Mark Lesson Incomplete"
+                    : "Mark Lesson Complete"}
+                </Button>
+              </Box>
+            </VStack>
+          ) : (
+            <VStack h="100%" justify="center">
+              <Tooltip label="Open Learning Panel" placement="right">
+                <IconButton
+                  aria-label="Open learning panel"
+                  icon={<ChevronRightIcon />}
+                  variant="ghost"
+                  color="gray.300"
+                  onClick={() => setIsLearningPanelOpen(true)}
+                  _hover={{ bg: "rgba(255,255,255,0.08)", color: "white" }}
+                />
+              </Tooltip>
+            </VStack>
+          )}
+        </Box>
+
+        <Box
+          ref={containerRef}
+          h="100%"
+          flex="1"
+          display="flex"
+          position="relative"
+        >
+          {/* Left Panel - Eclipse Theia IDE */}
         <Box
           w={getLeftPanelWidth()}
           h="100%"
@@ -902,6 +1259,7 @@ const NeonRobotConsole = ({ user, slot, authToken, onBack, onLogout }) => {
               )}
             </VStack>
           </Box>
+        </Box>
         </Box>
       </Box>
 

@@ -86,6 +86,7 @@ except ImportError as e:
 try:
     from services.service_manager import AdminServiceManager
     from services.theia_service import TheiaContainerManager
+    from services.learning_service import LearningService
     SERVICES_AVAILABLE = True
     logger.info("Service modules loaded successfully")
 except ImportError as e:
@@ -93,6 +94,7 @@ except ImportError as e:
     SERVICES_AVAILABLE = False
     AdminServiceManager = None
     TheiaContainerManager = None
+    from services.learning_service import LearningService
 
 # CORS configuration based on environment
 def get_cors_origins():
@@ -129,6 +131,7 @@ except Exception as e:
             self._user_id_counter = 1
             self._bookings = []
             self._booking_id_counter = 1
+            self._learning_progress = {}
             
             # Initialize demo robots for demo user access
             self._robots = [
@@ -518,6 +521,24 @@ except Exception as e:
                     active.append(booking)
             return active
 
+        def get_learning_progress(self, user_id: int, course_id: str) -> Dict[str, Any]:
+            user_progress = self._learning_progress.get((user_id, course_id), {})
+            lesson_status = {lesson_id: bool(done) for lesson_id, done in user_progress.items()}
+            completed_lessons = [lesson_id for lesson_id, done in lesson_status.items() if done]
+            return {
+                "course_id": course_id,
+                "lesson_status": lesson_status,
+                "completed_lessons": completed_lessons,
+                "updated_at": datetime.now().isoformat() if lesson_status else None,
+            }
+
+        def set_learning_progress(self, user_id: int, course_id: str, lesson_id: str, completed: bool) -> bool:
+            key = (user_id, course_id)
+            if key not in self._learning_progress:
+                self._learning_progress[key] = {}
+            self._learning_progress[key][lesson_id] = bool(completed)
+            return True
+
     db = MockDatabaseManager()
 
 # Initialize service manager with fallback
@@ -554,6 +575,9 @@ else:
     
     service_manager = FallbackServiceManager(db)
     theia_manager = None
+
+course_directory = LearningService.resolve_default_course_directory(Path(__file__).resolve().parent.parent)
+learning_service = LearningService(db_manager=db, course_directory=course_directory)
 
 async def _booking_autostop_loop():
     """Periodic background task: stop booking containers when their booking time ends."""
@@ -875,6 +899,20 @@ class RobotResponse(BaseModel):
     created_at: str
     updated_at: Optional[str] = None
 
+class LearningProgressUpdate(BaseModel):
+    course_id: str
+    lesson_id: str
+    completed: bool
+
+
+class LearningProgressResponse(BaseModel):
+    course_id: str
+    completed_lessons: List[str]
+    lesson_status: Dict[str, bool]
+    completed_count: int
+    total_lessons: int
+    updated_at: Optional[str] = None
+
 
 def _validate_container_image(image: Optional[str]) -> Optional[str]:
     """Validate and normalize container image names."""
@@ -1126,6 +1164,95 @@ async def get_available_slots(date: str, robot_id: Optional[int] = None, robot_t
         "max_session_duration": "2 hours",
         "slot_duration": "1 hour"
     }
+
+
+def _require_learning_course(course_id: str) -> None:
+    if course_id != LearningService.COURSE_ID:
+        raise HTTPException(status_code=404, detail=f"Course '{course_id}' not found")
+
+
+def _extract_current_user_id(current_user: dict) -> int:
+    user_id = current_user.get("sub") or current_user.get("id")
+    if isinstance(user_id, str) and user_id.isdigit():
+        user_id = int(user_id)
+    if not isinstance(user_id, int):
+        raise HTTPException(status_code=401, detail="Invalid user token payload")
+    return user_id
+
+
+@app.get("/learning/courses/ros2-foundation/lessons")
+async def list_ros2_foundation_lessons(current_user: dict = Depends(get_current_user)):
+    _ = current_user
+    lessons = learning_service.list_lessons()
+    return {
+        "course_id": LearningService.COURSE_ID,
+        "course_title": LearningService.COURSE_TITLE,
+        "lessons": lessons,
+    }
+
+
+@app.get("/learning/courses/ros2-foundation/lessons/{lesson_id}")
+async def get_ros2_foundation_lesson(lesson_id: str, current_user: dict = Depends(get_current_user)):
+    _ = current_user
+    try:
+        lesson = learning_service.get_lesson(lesson_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "course_id": LearningService.COURSE_ID,
+        **lesson,
+    }
+
+
+@app.get("/learning/progress", response_model=LearningProgressResponse)
+async def get_learning_progress(
+    course_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_learning_course(course_id)
+    user_id = _extract_current_user_id(current_user)
+    progress = learning_service.get_progress(user_id, course_id)
+    lessons = learning_service.list_lessons()
+    completed_lessons = progress.get("completed_lessons", [])
+    return LearningProgressResponse(
+        course_id=course_id,
+        completed_lessons=completed_lessons,
+        lesson_status=progress.get("lesson_status", {}),
+        completed_count=len(completed_lessons),
+        total_lessons=len(lessons),
+        updated_at=progress.get("updated_at"),
+    )
+
+
+@app.put("/learning/progress", response_model=LearningProgressResponse)
+@app.post("/learning/progress", response_model=LearningProgressResponse)
+async def upsert_learning_progress(
+    payload: LearningProgressUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_learning_course(payload.course_id)
+    user_id = _extract_current_user_id(current_user)
+    try:
+        learning_service.get_lesson(payload.lesson_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    progress = learning_service.set_progress(
+        user_id=user_id,
+        course_id=payload.course_id,
+        lesson_id=payload.lesson_id,
+        completed=payload.completed,
+    )
+    lessons = learning_service.list_lessons()
+    completed_lessons = progress.get("completed_lessons", [])
+    return LearningProgressResponse(
+        course_id=payload.course_id,
+        completed_lessons=completed_lessons,
+        lesson_status=progress.get("lesson_status", {}),
+        completed_count=len(completed_lessons),
+        total_lessons=len(lessons),
+        updated_at=progress.get("updated_at"),
+    )
 
 # Admin Endpoints
 @app.get("/admin/users", response_model=List[UserResponse])
