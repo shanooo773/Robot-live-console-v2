@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Box, 
   Button, 
@@ -16,6 +16,11 @@ const TheiaIDE = ({ user, authToken, slot, onError }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState(null);
+  // Brief buffer after preview_ready becomes true to let Theia fully initialize.
+  // Without this, the iframe can hit a 502 in the narrow window where TCP is open
+  // but the HTTP server isn't yet processing requests reliably.
+  const [iframeFinalizing, setIframeFinalizing] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
   const toast = useToast();
 
   // Check Theia status on component mount
@@ -43,6 +48,33 @@ const TheiaIDE = ({ user, authToken, slot, onError }) => {
     }, 5000);
 
     return () => clearInterval(interval);
+  }, [theiaStatus]);
+
+  // When the container first becomes ready, hold a 2-second buffer before
+  // rendering the iframe. This covers the narrow window where is_theia_ready()
+  // passes on the backend but Theia hasn't finished initializing HTTP routing.
+  const prevIsRunningRef = React.useRef(false);
+  useEffect(() => {
+    const hasActiveBooking = theiaStatus?.has_active_booking;
+    const containerRunning = !!(theiaStatus && (
+      (hasActiveBooking && theiaStatus?.booking_status === "running") ||
+      (!hasActiveBooking && theiaStatus?.preview_status === "running") ||
+      theiaStatus?.status === "running"
+    ));
+    const containerReady = hasActiveBooking
+      ? (theiaStatus?.booking_ready ?? false)
+      : (theiaStatus?.preview_ready ?? false);
+    const nowRunning = containerRunning && containerReady;
+
+    if (nowRunning && !prevIsRunningRef.current) {
+      setIframeFinalizing(true);
+      const t = setTimeout(() => setIframeFinalizing(false), 2000);
+      prevIsRunningRef.current = true;
+      return () => clearTimeout(t);
+    }
+    if (!nowRunning) {
+      prevIsRunningRef.current = false;
+    }
   }, [theiaStatus]);
 
   const checkTheiaStatus = async () => {
@@ -323,12 +355,13 @@ const TheiaIDE = ({ user, authToken, slot, onError }) => {
         overflow="hidden"
         position="relative"
       >
-        {isRunning && activeUrl ? (
+        {isRunning && activeUrl && !iframeFinalizing ? (
           <iframe
+            key={iframeKey}
             src={activeUrl}
             width="100%"
             height="100%"
-            style={{ 
+            style={{
               border: "none",
               background: "#1e1e1e"
             }}
@@ -341,21 +374,22 @@ const TheiaIDE = ({ user, authToken, slot, onError }) => {
             }}
           />
         ) : (
-          <VStack 
-            spacing={4} 
-            justify="center" 
-            align="center" 
-            h="100%" 
-            p={8} 
+          <VStack
+            spacing={4}
+            justify="center"
+            align="center"
+            h="100%"
+            p={8}
             textAlign="center"
           >
-            {/* Always show starting state for non-running containers - removed the startup message */}
             <Spinner size="xl" color="blue.400" />
             <Text color="gray.300" fontSize="lg" fontWeight="bold">
-              Starting IDE...
+              {iframeFinalizing ? "Finalizing IDE..." : "Starting IDE..."}
             </Text>
             <Text color="gray.500" fontSize="sm">
-              Your development environment is being prepared.
+              {iframeFinalizing
+                ? "Almost ready, launching your environment."
+                : "Your development environment is being prepared."}
             </Text>
           </VStack>
         )}

@@ -1,4 +1,5 @@
 import os
+import http.client
 import socket
 import subprocess
 import json
@@ -613,12 +614,21 @@ int main() {
             return False
     
     def is_theia_ready(self, port: int) -> bool:
-        """Check if the Theia HTTP server at the given host port is accepting TCP connections."""
+        """Check if Theia's HTTP server is actually serving responses (not just TCP-open)."""
+        conn = None
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=1):
-                return True
-        except OSError:
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            conn.request("GET", "/")
+            conn.getresponse()
+            return True
+        except Exception:
             return False
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def _get_single_container_status(self, user_id: int, container_name: str, port_cache: dict) -> Dict:
         """Helper: get status of a single named container using exact name matching via docker inspect"""
